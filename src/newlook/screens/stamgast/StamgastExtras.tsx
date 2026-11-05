@@ -188,7 +188,7 @@ export function PripominkySheet() {
   const failure = denied ? t.settings.pubReminders.denied[denied] : null;
   if (step === 'offer') {
     return (
-      <Sheet closeIcon={false} top={470} scroll={false}>
+      <Sheet closeIcon={false} scroll={false}>
         <View style={[{ width: 64, height: 64, borderRadius: 18, backgroundColor: C.control }, s.center]}>
           <Icon name="bell-ring" size={28} color={C.yellow} />
         </View>
@@ -209,7 +209,7 @@ export function PripominkySheet() {
     );
   }
   return (
-    <Sheet closeIcon={false} top={340} scroll={false}>
+    <Sheet closeIcon={false} scroll={false}>
       <View style={{ gap: 10 }}>
         <D s={30}>{failure ? failure.title : copy.remindPermsTitle}</D>
         <T s={15} c={C.text2} lh={1.45}>

@@ -409,7 +409,7 @@ export function OtevirackaDenSheet() {
     nvBack(router);
   };
   return (
-    <Sheet title={L().dayTitle(L().daysLower[day])} top={470} scroll={false}>
+    <Sheet title={L().dayTitle(L().daysLower[day])} scroll={false}>
       {intervals.map((x, i) => (
         <View key={i} style={[s.row, { gap: 10, alignItems: 'flex-end' }]}>
           <Field label={L().from} style={s.fill}>

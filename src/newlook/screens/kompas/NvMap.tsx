@@ -34,6 +34,8 @@ export type NvMapHandle = { centerOn: (at: Point) => void };
 
 const COUNTRY_REGION = { latitude: 49.85, longitude: 15.2, latitudeDelta: 3.6, longitudeDelta: 3.6 };
 const NEAR_DELTA = 0.017;
+/** The Google zoom that shows about NEAR_DELTA across a phone screen. */
+const NEAR_ZOOM = 15;
 
 export function nearRegion(at: Point): Region {
   return { latitude: at.lat, longitude: at.lng, latitudeDelta: NEAR_DELTA, longitudeDelta: NEAR_DELTA };
@@ -80,12 +82,16 @@ export const NvMap = forwardRef<NvMapHandle, Props>(function NvMap(
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [view]);
 
+  // react-native-maps on iOS drops an instant region move made before the map's first layout or
+  // while its camera still moves, and the map would stay on the whole country. Setting
+  // the camera directly once the map is ready has neither limit.
+  const [ready, setReady] = useState(false);
   useEffect(() => {
-    if (!me || centered.current || view === 'stopy') return;
+    if (!ready || !me || centered.current || view === 'stopy') return;
     centered.current = true;
-    ref.current?.animateToRegion(nearRegion(me), 0);
+    ref.current?.setCamera({ center: { latitude: me.lat, longitude: me.lng }, zoom: NEAR_ZOOM });
     onRegion?.(nearRegion(me));
-  }, [me, onRegion, view]);
+  }, [me, onRegion, ready, view]);
 
   const shown = useMemo(() => (view === 'stopy' ? [] : pins), [pins, view]);
 
@@ -103,6 +109,7 @@ export const NvMap = forwardRef<NvMapHandle, Props>(function NvMap(
       toolbarEnabled={false}
       mapPadding={padding}
       userInterfaceStyle="dark"
+      onMapReady={() => setReady(true)}
       onRegionChangeComplete={(region) => onRegion?.(region)}
     >
       {view !== 'stopy' ? (

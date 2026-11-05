@@ -163,7 +163,7 @@ export function TourPozvatSheet() {
   const where = [plan?.title, when].filter(Boolean).join(' · ');
 
   return (
-    <Sheet title={t.nv.sdileni.inviteTitle} top={290} scroll={false}>
+    <Sheet title={t.nv.sdileni.inviteTitle} scroll={false}>
       <Stage>
         <View ref={stickerRef} collapsable={false} onLayout={onLayout} style={{ padding: 8 }}>
           <StickerKdoJde where={where} />
@@ -219,7 +219,7 @@ export function NalepkySheet() {
   ];
 
   return (
-    <Sheet title={t.nv.sdileni.stickersTitle} top={130} scroll={false}>
+    <Sheet title={t.nv.sdileni.stickersTitle} scroll={false}>
       <Stage bg={bg}>
         <View ref={stickerRef} collapsable={false} onLayout={onLayout} style={{ padding: 8 }}>
           {kind === 'tacek' ? (
@@ -260,7 +260,7 @@ export function SdileniSouhlasSheet() {
   const shareDefault = useVycepStore((st) => st.shareDefault);
   const [all, setAll] = useState(shareDefault === 'public');
   return (
-    <Sheet title={t.nv.sdileni.consentTitle} top={330} scroll={false}>
+    <Sheet title={t.nv.sdileni.consentTitle} scroll={false}>
       <T s={15} c={C.text2} lh={1.45} style={{ marginTop: -8 }}>
         {t.nv.sdileni.consentBody}
       </T>

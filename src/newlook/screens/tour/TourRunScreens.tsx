@@ -421,7 +421,7 @@ export function TourStopSheet() {
   const stop = idx >= 0 ? stops[idx] : undefined;
   const one = useMemo(() => (stop ? [stop] : []), [stop]);
   const facts = useFacts(one, plan && !run ? plan.scheduledDate : null, !!run);
-  if (!stop) return <Sheet title={t.tours.errors.unavailable} top={340} scroll={false}>{null}</Sheet>;
+  if (!stop) return <Sheet title={t.tours.errors.unavailable} scroll={false}>{null}</Sheet>;
   const states = run ? stopStates(stops, run.statuses) : undefined;
   const status = run?.statuses[stop.id];
   const line = facts[stop.id];
@@ -429,7 +429,7 @@ export function TourStopSheet() {
     if (await markRunStop(stop!.id, next)) nvBack(router);
   }
   return (
-    <Sheet title={stop.name} top={340} scroll={false}>
+    <Sheet title={stop.name} scroll={false}>
       <View style={{ gap: 4, marginTop: -12 }}>
         <T s={15} c={C.text2}>
           {t.nv.tour.stopAt(idx + 1, stop.address)}
@@ -569,12 +569,12 @@ export function TourPrizvatSheet() {
   useEffect(() => {
     if (hasCrew) void useToursStore.getState().refreshCrew();
   }, [hasCrew]);
-  if (!run) return <Sheet title={t.tours.crewInvite} top={310} scroll={false}><T s={15} c={C.text2}>{tx.noRun}</T></Sheet>;
+  if (!run) return <Sheet title={t.tours.crewInvite} scroll={false}><T s={15} c={C.text2}>{tx.noRun}</T></Sheet>;
   const members = hasCrew ? going(crew!) : [];
   const target = pingStop(run);
   const together = members.length > 1;
   return (
-    <Sheet title={t.tours.crewInvite} top={310} scroll={false}>
+    <Sheet title={t.tours.crewInvite} scroll={false}>
       {inviting(crew) ? (
         <>
           <View style={{ alignSelf: 'center', padding: 16, borderRadius: 24, backgroundColor: C.white }} accessible accessibilityRole="image" accessibilityLabel={t.tours.crewQrA11y}>
@@ -694,7 +694,7 @@ function PingFriends({ run }: { run: TourRun | null }) {
     toast(result.status === 'sent' ? { kind: 'saved', title: t.nv.tour.pinged, sub: t.nv.tour.pingedSub(names, together(run)), icon: 'bell-ring' } : { kind: 'info', title: t.tours.crewPingQueued, icon: 'bell' });
   }
   return (
-    <Sheet title={t.tours.crewPing} top={470} scroll={false}>
+    <Sheet title={t.tours.crewPing} scroll={false}>
       {run && target ? (
         <T s={14} c={C.text2} lh={1.4} style={{ marginTop: -10 }}>
           {t.tours.crewPingNote(run.snapshot.title, target.stop.name, target.heading, together(run))}
@@ -772,7 +772,7 @@ function InviteFriends({ plan }: { plan: TourPlan }) {
     if (error) toast({ kind: 'error', title: error });
   }
   return (
-    <Sheet title={tx.sendInvite} top={420} scroll={false}>
+    <Sheet title={tx.sendInvite} scroll={false}>
       <T s={14} c={C.text2} lh={1.4} style={{ marginTop: -10 }}>
         {[plan.title, inviteDetail(plan)].filter(Boolean).join(' · ')}
       </T>
@@ -814,7 +814,7 @@ export function TourUkoncitSheet() {
   const router = useRouter();
   const run = useActiveTourRun();
   const [busy, setBusy] = useState(false);
-  if (!run) return <Sheet title={t.tours.endTitle} top={630} scroll={false}><T s={15} c={C.text2}>{t.nv.tour.noRun}</T></Sheet>;
+  if (!run) return <Sheet title={t.tours.endTitle} scroll={false}><T s={15} c={C.text2}>{t.nv.tour.noRun}</T></Sheet>;
   // Someone who walked their half is done, not walking out on the party.
   const leaving = !!run.crew && !run.crew.organizer && !run.crew.refused && !run.crew.completion;
   const organizer = !!run.crew?.organizer && !run.crew.refused;
@@ -832,7 +832,7 @@ export function TourUkoncitSheet() {
     if (ended) router.push({ pathname: '/nv/tour-historie', params: { run: ended.id } } as unknown as Href);
   }
   return (
-    <Sheet title={leaving ? t.tours.crewLeaveTitle : t.tours.endTitle} top={630} scroll={false}>
+    <Sheet title={leaving ? t.tours.crewLeaveTitle : t.tours.endTitle} scroll={false}>
       <T s={16} c={C.text2} style={{ marginTop: -8 }}>
         {leaving ? t.tours.crewLeaveMessage : t.tours.endMessage}
       </T>

@@ -349,7 +349,7 @@ export function OpravitPivoSheet() {
   if (!session || !drink) return null;
   const next = name.trim();
   return (
-    <Sheet title={old.editDrinkTitle} top={560} scroll={false}>
+    <Sheet title={old.editDrinkTitle} scroll={false}>
       <Input testID="drink-rename-input" value={name} onChangeText={setName} placeholder={old.editDrinkPlaceholder} autoFocus />
       <Button
         label={old.editDrinkSave}

@@ -500,7 +500,7 @@ export function OdznakSheet() {
 
   if (state.secret && !got) {
     return (
-      <Sheet top={560} scroll={false} contentStyle={{ alignItems: 'center' }}>
+      <Sheet scroll={false} contentStyle={{ alignItems: 'center' }}>
         <View style={[{ width: 128, height: 128, borderRadius: 26, borderWidth: 2, borderStyle: 'dashed', borderColor: '#FFFFFF4D', marginTop: -20 }, s.center]}>
           <D s={64} c={C.text2}>
             ?
@@ -528,7 +528,7 @@ export function OdznakSheet() {
     const missing = total - state.value;
     const size = weekdays ? 40 : 44;
     return (
-      <Sheet top={weekdays ? 490 : 430} scroll={false} contentStyle={{ alignItems: 'center' }}>
+      <Sheet scroll={false} contentStyle={{ alignItems: 'center' }}>
         <View style={[{ width: 130, height: 130, marginTop: -20 }, s.center]}>
           <ProgressRing size={130} progress={state.value / total} stroke={14} />
           <Icon name={badge.icon} size={40} color={got ? C.yellow : C.text2} />
@@ -592,7 +592,7 @@ export function OdznakSheet() {
 
   if (state.kind === 'once') {
     return (
-      <Sheet top={430} scroll={false}>
+      <Sheet scroll={false}>
         {medal}
         <View style={[s.row, { alignSelf: 'center', height: 38, borderRadius: 19, paddingHorizontal: 14, gap: 6, backgroundColor: C.control }]}>
           <Icon name={got ? 'check' : 'lock'} size={15} color={got ? C.yellow : C.text2} />
@@ -614,7 +614,7 @@ export function OdznakSheet() {
 
   const still = nvStillLine(badge);
   return (
-    <Sheet top={310} scroll={false}>
+    <Sheet scroll={false}>
       {medal}
       {got && quip ? (
         <View style={{ padding: 14, borderRadius: 16, backgroundColor: C.card }}>
@@ -698,7 +698,7 @@ export function NovyLevelSheet() {
   if (!xp) return null;
   const shown = (events ?? []).slice(0, 3);
   return (
-    <Sheet closeIcon={false} top={400} scroll={false}>
+    <Sheet closeIcon={false} scroll={false}>
       <View style={{ alignItems: 'center', gap: 16 }}>
         <View style={{ width: 124, height: 124 }}>
           <ProgressRing size={124} progress={0.999} stroke={8} />
@@ -1292,7 +1292,7 @@ export function DokonciUcetSheet() {
   };
 
   return (
-    <Sheet closeIcon={false} top={480} scroll={false} onClose={dismiss}>
+    <Sheet closeIcon={false} scroll={false} onClose={dismiss}>
       <View style={{ gap: 6 }}>
         <Kicker color={C.yellow}>{P().finishAccount.kicker}</Kicker>
         <D s={34}>{P().finishAccount.title}</D>
@@ -2272,7 +2272,7 @@ export function PozvankaDoPartySheet() {
 
   if (state === 'friend' && inviter) {
     return (
-      <Sheet closeIcon={false} top={520} scroll={false}>
+      <Sheet closeIcon={false} scroll={false}>
         <View style={{ alignItems: 'center', gap: 14, paddingVertical: 12 }}>
           <Kicker>{P().invite.kicker}</Kicker>
           <ProfilAvatar uri={inviter.avatarUrl} initial={initialOf(inviter)} size={84} />
@@ -2294,7 +2294,7 @@ export function PozvankaDoPartySheet() {
     const message =
       state === 'loading' ? t.friends.claimLoading : state === 'expired' ? t.friends.claimExpired : state === 'self' ? t.friends.claimSelf : t.friends.claimInvalid;
     return (
-      <Sheet closeIcon={false} top={520} scroll={false}>
+      <Sheet closeIcon={false} scroll={false}>
         <View style={{ alignItems: 'center', gap: 14, paddingVertical: 12 }}>
           <Kicker>{P().invite.kicker}</Kicker>
           {state === 'loading' ? <Spinner /> : <Icon name="users" size={40} color={C.muted} />}
@@ -2319,7 +2319,7 @@ export function PozvankaDoPartySheet() {
     ? badgeStates(stats.badgeProgress).filter((state) => PUBLIC_BADGE_KEYS.has(state.key) && state.tier > 0).length
     : 0;
   return (
-    <Sheet closeIcon={false} top={360} scroll={false}>
+    <Sheet closeIcon={false} scroll={false}>
       <View style={{ alignItems: 'center', gap: 10, marginTop: -6 }}>
         <Kicker>{P().invite.kicker}</Kicker>
         <ProfilAvatar uri={inviter.avatarUrl} initial={initialOf(inviter)} size={84} />
