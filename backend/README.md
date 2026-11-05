@@ -309,6 +309,7 @@ All settings are read from environment variables or a `.env` file. See `.env.exa
 | `PUB_REPORTS_THROTTLE_RATE` | `30/min` | Per-IP rate limit for `POST /v1/pub-reports` |
 | `PUB_REPORT_GLOBAL_HIDE_THRESHOLD` | `3` | Distinct active reporting accounts required before a pub is hidden globally |
 | `CLIENT_EVENTS_THROTTLE_RATE` | `120/min` | Per-IP rate limit for `POST /v1/client-events` |
+| `OPS_LIVE_TOKEN` | _(unset)_ | Bearer secret for `GET /v1/ops/live`; unset disables the endpoint |
 | `PUBLIC_READS_THROTTLE_RATE` | `120/min` | Per-IP rate limit for public changelog and report-filter reads |
 | `API_RATE_LIMIT_RETENTION_DAYS` | `2` | Retention for expired shared throttle buckets |
 | `ACCOUNT_EXPORT_JOB_RETENTION_DAYS` | `30` | Retention for delivered and terminally failed durable export jobs |
@@ -380,6 +381,14 @@ uv run python manage.py prune_client_events --dry-run
 ```
 
 The report includes usage totals, screen popularity, top walkers, client error/API-failure breakdowns and recent feedback with contact-like text redacted.
+
+`GET /v1/ops/live` returns live counters for the operator's desk clock:
+`registrations_today`, `active_today`, `registrations_total` and
+`last_registration_at`. It needs `Authorization: Bearer $OPS_LIVE_TOKEN` and
+answers 404 while the token is unset. "Today" starts at midnight Europe/Prague.
+Registrations count existing `Account` rows, so purged and merged accounts drop
+out. Active accounts are distinct accounts with an `app_open` (cold start) or
+`app_foreground` (resume) event today. The response is cached for 30 seconds.
 
 ---
 

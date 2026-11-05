@@ -16,6 +16,7 @@ POST   drinks       → DrinksView
 DELETE drinks/<client_id> → DrinksView
 GET    release-notes → ReleaseNotesView
 GET    health/      → HealthView
+GET    ops/live     → OpsLiveView
 GET    transit/stops → TransitStopsView
 GET    transit/last-direct → TransitLastDirectView
 """
@@ -53,6 +54,7 @@ from .community_event_views import (
     CommunityEventTeamMembershipView,
 )
 from .label_scan_views import BeerLabelScanView
+from .ops_views import OpsLiveView
 from .parta_views import (
     FriendCheerView,
     FriendPingView,
@@ -568,6 +570,7 @@ urlpatterns = [
     path("me/stats", MyStatsView.as_view(), name="me-stats"),
     path("release-notes", ReleaseNotesView.as_view(), name="release-notes"),
     path("health", HealthView.as_view(), name="health"),
+    path("ops/live", OpsLiveView.as_view(), name="ops-live"),
     path("account", AccountView.as_view(), name="account"),
     path(
         "account/deletion-status",
