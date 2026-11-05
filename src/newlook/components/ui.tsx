@@ -37,7 +37,7 @@ export function T({ s: size = 15, w = 400, c = C.white, lh, style, ...rest }: TP
 
 /** Sofia Sans Extra Condensed: big numbers and headlines. */
 export function D({ s: size = 44, c = C.white, lh = 1.05, style, ...rest }: TProps) {
-  return <Text maxFontSizeMultiplier={1.1} {...rest} style={[display(size, c, lh), style]} />;
+  return <Text maxFontSizeMultiplier={1.1} textBreakStrategy="balanced" lineBreakStrategyIOS="push-out" {...rest} style={[display(size, c, lh), style]} />;
 }
 
 /** The one spinner color of the new look; dark only on yellow or white buttons. */
@@ -98,6 +98,8 @@ const BUTTON: Record<ButtonKind, { bg: string; fg: string; extra?: ViewStyle }> 
   danger: { bg: C.control, fg: C.danger, extra: shadow.raised },
 };
 
+const DISABLED_PRIMARY: { bg: string; fg: string; extra?: ViewStyle } = { bg: C.control, fg: C.muted };
+
 export function Button({
   label,
   sub,
@@ -121,7 +123,9 @@ export function Button({
   flex?: boolean;
   testID?: string;
 }) {
-  const k = BUTTON[kind];
+  // A dimmed yellow turns brown on the dark ground, so a disabled primary sits back as a plain control.
+  const dimmedPrimary = !!disabled && kind === 'primary';
+  const k = dimmedPrimary ? DISABLED_PRIMARY : BUTTON[kind];
   const labelSize = height >= 56 ? 17 : height >= 50 ? 16 : 15;
   return (
     <Press
@@ -142,7 +146,7 @@ export function Button({
         },
         k.extra,
         flex && { flex: 1 },
-        disabled && { opacity: 0.4 },
+        disabled && !dimmedPrimary && { opacity: 0.4 },
         style,
       ]}
     >
@@ -153,7 +157,7 @@ export function Button({
         </T>
       </View>
       {sub ? (
-        <T s={12} w={600} c={kind === 'primary' ? C.onYellowMuted : C.muted}>
+        <T s={12} w={600} c={kind === 'primary' && !dimmedPrimary ? C.onYellowMuted : C.muted}>
           {sub}
         </T>
       ) : null}
@@ -245,6 +249,7 @@ export function Chip({
       onPress={onPress}
       accessibilityRole="button"
       accessibilityState={{ selected: !!active }}
+      hitSlop={{ top: Math.max(0, (44 - height) / 2), bottom: Math.max(0, (44 - height) / 2) }}
       style={[
         s.row,
         {
@@ -310,6 +315,7 @@ export function Segmented<K extends string>({
             onPress={() => onChange(o.key)}
             accessibilityRole="tab"
             accessibilityState={{ selected: on }}
+            hitSlop={{ top: Math.max(0, (44 - height) / 2) + 3, bottom: Math.max(0, (44 - height) / 2) + 3 }}
             style={[
               s.fill,
               s.center,
@@ -417,7 +423,7 @@ const TOGGLE_OFF_TRACK = '#39393D';
 const TOGGLE_OFF_KNOB = '#FFFFFF';
 
 /** The knob slides and both colors blend over the same stretch; the switch never shrinks under the finger. */
-export function Toggle({ value, onChange, testID }: { value: boolean; onChange: (v: boolean) => void; testID?: string }) {
+export function Toggle({ value, onChange, testID, label }: { value: boolean; onChange: (v: boolean) => void; testID?: string; label?: string }) {
   const move = useSharedValue(value ? 1 : 0);
   const tone = useSharedValue(value ? 1 : 0);
   useEffect(() => {
@@ -438,6 +444,8 @@ export function Toggle({ value, onChange, testID }: { value: boolean; onChange: 
       }}
       accessibilityRole="switch"
       accessibilityState={{ checked: value }}
+      accessibilityLabel={label}
+      hitSlop={{ top: 7, bottom: 7, left: 8, right: 8 }}
     >
       <Animated.View style={[{ width: 51, height: 31, borderRadius: 16, padding: 2 }, track]}>
         <Animated.View style={[{ width: 27, height: 27, borderRadius: 14 }, knob]} />
