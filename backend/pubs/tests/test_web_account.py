@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import io
 import uuid
 
 import pytest
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import Client
+from PIL import Image
 from rest_framework.test import APIClient
 
 import pubs.emailer as emailer
@@ -178,6 +181,27 @@ def test_accepting_a_friend_request_on_the_web():
     assert [f["nickname"] for f in _bearer(friend_token).get("/v1/friends").json()["friends"]] == ["tomas"]
     page = client.get("/parta").content.decode()
     assert "chce do party" not in page and "klara" in page
+
+
+def test_friend_avatars_load_from_the_api_host(settings, tmp_path):
+    # Production serves uploads only on the API host; the website host answers /media/ with 404.
+    settings.MEDIA_ROOT = str(tmp_path)
+    settings.PUBLIC_API_ORIGIN = "https://api.example.com"
+    _member("tomas@example.com", "tomas")
+    _, friend_token = _member("klara@example.com", "klara")
+    photo = io.BytesIO()
+    Image.new("RGB", (64, 64), (180, 60, 30)).save(photo, format="PNG")
+    uploaded = _bearer(friend_token).put(
+        "/v1/account/me/avatar", {"avatar": SimpleUploadedFile("a.png", photo.getvalue(), "image/png")}, format="multipart"
+    )
+    assert uploaded.status_code == 200
+    request_id = _bearer(friend_token).post("/v1/friends/requests", {"nickname": "tomas"}, format="json").json()["id"]
+    client = _web("tomas@example.com")
+    client.post(f"/v1/friends/requests/{request_id}/accept", content_type="application/json", **_csrf(client))
+
+    page = client.get("/parta").content.decode()
+
+    assert 'src="http://api.example.com/media/avatars/' in page
 
 
 def test_profile_privacy_and_export_from_the_web(monkeypatch, settings):
