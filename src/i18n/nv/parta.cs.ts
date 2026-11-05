@@ -239,5 +239,5 @@ export const partaCs = {
   photoToday: (time: string) => `dnes ${time}`,
   photoYesterday: (time: string) => `včera ${time}`,
   beerPhotos: 'Pivní fotky',
-  allPhotos: (n: number) => `Všech ${n}`,
+  allPhotos: (n: number) => czechPlural(n, { one: 'Všechny', few: `Všechny ${n}`, many: `Všech ${n}` }),
 };

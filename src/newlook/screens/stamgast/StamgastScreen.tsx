@@ -46,7 +46,7 @@ import { logDrink, useCounterNudges } from './counterActions';
 import { DegreePicker, KindPicker } from '../piva/StylePicker';
 import { FriendEveningCard, leaveFriendHome, useFriendHomeEvening } from '../parta/FriendEveningCard';
 import { DiaryView } from './DiaryView';
-import { durationLabel, servingLine } from './stamgastFormat';
+import { durationLabel, nameStatesDegree, servingLine } from './stamgastFormat';
 import { currentCountPlace, useCountPlace, useCountPlaceHost, useNvPlaceStore } from './placeStore';
 
 type Mode = 'pocitat' | 'denik' | 'tour';
@@ -74,8 +74,7 @@ function useBeerQuestion(beerName: string | null): BeerQuestion | null {
     const controller = new AbortController();
     void fetchBeerPage({ beerName }, null, controller.signal).then((page) => {
       if (controller.signal.aborted || !page?.productKey) return;
-      const nameStatesDegree = /\d\s*°/.test(beerName);
-      setKnown({ name: beerName, key: page.productKey, kind: !page.styleSettled && !page.myStyle, degree: !page.degree && !page.myDegree && !nameStatesDegree });
+      setKnown({ name: beerName, key: page.productKey, kind: !page.styleSettled && !page.myStyle, degree: !page.degree && !page.myDegree && !nameStatesDegree(beerName) });
     });
     return () => controller.abort();
   }, [beerName]);
@@ -344,6 +343,8 @@ function CounterView() {
   const stickerShown = !!session && nudges.stickerFor === session.clientId && count >= 3;
   const tourBanner = nudges.tourBanner && run?.statuses[nudges.tourBanner.stopId] === 'visited' ? nudges.tourBanner : null;
 
+  // A direct log gives its own impact; a second buzz from the button would double it.
+  const logsDirectly = !!place && !resumable && !!repeat;
   const ctaLabel = !place || (!repeat && !resumable) ? copy.logBeer : resumable ? t.counter.resumeEvening : copy.oneMore;
   const ctaSub = resumable
     ? t.counter.resumeSub(beerCountLabel(sessionCount(resumable)))
@@ -353,7 +354,7 @@ function CounterView() {
 
   return (
     <View style={{ flex: 1 }}>
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: SCREEN_X, paddingTop: 20, gap: 20, paddingBottom: tabSpace + (question ? 340 : nudges.newBeer ? 180 : 100) }}>
+      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: SCREEN_X, paddingTop: 20, gap: 20, paddingBottom: tabSpace + 100 }}>
         <View style={{ alignItems: 'center' }}>
           <Press
             haptic
@@ -389,6 +390,48 @@ function CounterView() {
           <QuickAction icon="camera" label={copy.quickPhoto} onPress={() => router.push('/nv/do-denicku')} />
           <QuickAction icon="circle-check" label={copy.quickDone} onPress={finish} />
         </View>
+        {nudges.newBeer && question ? (
+          <Animated.View key={question.step} entering={riseIn} exiting={sinkOut}>
+            <View style={{ gap: 10 }}>
+              <T s={15} w={700} style={{ paddingHorizontal: 4 }}>
+                {question.step === 'kind' ? t.nv.piva.stylePick.nudgeTitle(nudges.newBeer.name) : t.nv.piva.stylePick.nudgeDegree(nudges.newBeer.name)}
+              </T>
+              {question.step === 'kind' ? (
+                <KindPicker onPick={(style) => answer({ style })} onUnknown={() => answer({ style: 'unknown' }, true)} />
+              ) : (
+                <DegreePicker onPick={(degree) => answer({ degree })} onUnknown={() => answer({}, true)} />
+              )}
+            </View>
+          </Animated.View>
+        ) : nudges.newBeer ? (
+          <Animated.View key="rate" entering={riseIn} exiting={sinkOut}>
+            <View style={[s.row, { padding: 14, paddingRight: 16, borderRadius: 22, backgroundColor: C.card, gap: 12 }]}>
+              <View style={[s.fill, { gap: 2 }]}>
+                <T s={15} w={700}>
+                  {copy.newBeerTitle}
+                </T>
+              </View>
+              <Press
+                haptic
+                onPress={() => {
+                  const beer = nudges.newBeer;
+                  nudges.set({ newBeer: null });
+                  if (beer) router.push({ pathname: '/nv/hodnoceni', params: { id: '-', name: beer.name, pub: beer.pubName } });
+                }}
+                style={[s.row, { height: 40, borderRadius: 20, paddingHorizontal: 14, gap: 6, backgroundColor: C.control }]}
+              >
+                <Icon name="star" size={16} color={C.yellow} />
+                <T s={15} w={700}>
+                  {copy.rate}
+                </T>
+                <Icon name="chevron-right" size={14} color={C.text2} />
+              </Press>
+              <Press onPress={() => nudges.set({ newBeer: null })} hitSlop={10} accessibilityLabel={copy.close}>
+                <Icon name="x" size={16} color={C.muted} />
+              </Press>
+            </View>
+          </Animated.View>
+        ) : null}
         {stickerShown ? (
           <Animated.View entering={fadeIn} style={[s.row, { gap: 12, padding: 12, borderRadius: 22, backgroundColor: C.yellowWash, borderWidth: 1, borderColor: C.yellowEdge }]}>
             <View style={[{ width: 52, height: 52, borderRadius: 26, backgroundColor: C.white, borderWidth: 3, borderColor: C.yellow }, s.center]}>
@@ -484,47 +527,8 @@ function CounterView() {
         </View>
       </ScrollView>
       <BottomFade height={tabSpace + 130} />
-      {nudges.newBeer && question ? (
-        <Animated.View key={question.step} entering={riseIn} exiting={sinkOut} style={{ position: 'absolute', left: SCREEN_X, right: SCREEN_X, bottom: tabSpace + 86 }}>
-          <View style={[{ padding: 14, borderRadius: 22, backgroundColor: C.toast, borderWidth: 1, borderColor: C.line, gap: 10 }, shadow.raised]}>
-            <T s={15} w={700}>
-              {question.step === 'kind' ? t.nv.piva.stylePick.nudgeTitle(nudges.newBeer.name) : t.nv.piva.stylePick.nudgeDegree(nudges.newBeer.name)}
-            </T>
-            {question.step === 'kind' ? (
-              <KindPicker onPick={(style) => answer({ style })} onUnknown={() => answer({ style: 'unknown' }, true)} />
-            ) : (
-              <DegreePicker onPick={(degree) => answer({ degree })} onUnknown={() => answer({}, true)} />
-            )}
-          </View>
-        </Animated.View>
-      ) : nudges.newBeer ? (
-        <Animated.View key="rate" entering={riseIn} exiting={sinkOut} style={{ position: 'absolute', left: SCREEN_X, right: SCREEN_X, bottom: tabSpace + 86 }}>
-          <View style={[s.row, { padding: 14, paddingRight: 10, borderRadius: 22, backgroundColor: C.toast, borderWidth: 1, borderColor: C.line, gap: 10 }, shadow.raised]}>
-            <View style={[s.fill, { gap: 2 }]}>
-              <T s={15} w={700}>
-                {copy.newBeerTitle}
-              </T>
-            </View>
-            <Press
-              haptic
-              onPress={() => {
-                const beer = nudges.newBeer;
-                nudges.set({ newBeer: null });
-                if (beer) router.push({ pathname: '/nv/hodnoceni', params: { id: '-', name: beer.name, pub: beer.pubName } });
-              }}
-              style={[s.row, { height: 40, borderRadius: 20, paddingHorizontal: 14, gap: 6, backgroundColor: C.control }]}
-            >
-              <Icon name="star" size={16} color={C.yellow} />
-              <T s={15} w={700}>
-                {copy.rate}
-              </T>
-              <Icon name="chevron-right" size={14} color={C.text2} />
-            </Press>
-          </View>
-        </Animated.View>
-      ) : null}
       <View style={{ position: 'absolute', left: SCREEN_X, right: SCREEN_X, bottom: tabSpace + 12 }}>
-        <Button testID="counter-primary" height={60} label={ctaLabel} sub={ctaSub} onPress={oneMore} />
+        <Button testID="counter-primary" height={60} label={ctaLabel} sub={ctaSub} haptic={!logsDirectly} onPress={oneMore} />
       </View>
     </View>
   );

@@ -24,6 +24,7 @@ import { Sheet } from '../../components/overlays';
 import { Button, D, IconButton, Kicker, Press, Row, Segmented, Spinner, T, Tile } from '../../components/ui';
 import { C, SCREEN_X, font, s } from '../../theme';
 import { toast } from '../../ui/store';
+import { distanceLabel } from '../kompas/format';
 import { useKompasState } from '../kompas/state';
 import { myRating } from '../piva/model';
 import { useMyRatings } from '../piva/useMyRatings';
@@ -31,7 +32,6 @@ import { logDrink } from './counterActions';
 import { beerTally, drinkTally } from './eveningData';
 import { useBackfillPick, useCountPlace, useNvPlaceStore } from './placeStore';
 import { addBeersToMenu, usePubMenu } from './pubMenu';
-import { distanceLabel } from './stamgastFormat';
 
 type Kind = 'pivo' | 'vino' | 'nealko' | 'panak';
 type HomeServing = 'lahvac' | 'plech' | 'jinak';

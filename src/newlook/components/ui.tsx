@@ -109,6 +109,7 @@ export function Button({
   disabled,
   flex,
   testID,
+  haptic = true,
 }: {
   label: string;
   sub?: string;
@@ -120,12 +121,13 @@ export function Button({
   disabled?: boolean;
   flex?: boolean;
   testID?: string;
+  haptic?: boolean;
 }) {
   const k = BUTTON[kind];
   const labelSize = height >= 56 ? 17 : height >= 50 ? 16 : 15;
   return (
     <Press
-      haptic
+      haptic={haptic}
       disabled={disabled}
       onPress={onPress}
       accessibilityRole="button"
