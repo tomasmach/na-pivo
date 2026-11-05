@@ -126,11 +126,13 @@ def test_pending_deletion_ends_web_writes():
 
 def test_diary_groups_a_night_by_the_drinking_day(django_assert_max_num_queries):
     client, account, csrf = _web()
+    # Both nights must fall in the month the page shows, even in the first days of a month.
+    back = 5 if _local(5, 0).month == _local(4, 0).month else 6
     # 23:30 and 01:30 belong to one night: the drinking day rolls at 04:00, as in the app.
-    late, after_midnight = _local(5, 23, 30), _local(4, 1, 30)
+    late, after_midnight = _local(back, 23, 30), _local(back - 1, 1, 30)
     assert _drink(client, late, csrf=csrf).status_code == 201
     assert _drink(client, after_midnight, csrf=csrf, beer={"name": "Hořký kocour 12°", "price_czk": 52, "volume_ml": 500}).status_code == 201
-    assert _drink(client, _local(4, 20), csrf=csrf, pub=False, place_context="private").status_code == 201
+    assert _drink(client, _local(back - 1, 20), csrf=csrf, pub=False, place_context="private").status_code == 201
 
     day = d.drinking_day(late)
     with django_assert_max_num_queries(12):
