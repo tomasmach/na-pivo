@@ -148,6 +148,7 @@
 
   // Toggles save on change and flip back when the server says no.
   // Radios stay enabled so arrow keys keep focus; a short pause saves only the choice the user stops on.
+  // Radio saves go one after another, so the server and the last saved value always follow click order.
   document.addEventListener("change", function (e) {
     var input = e.target.closest("input[data-toggle]");
     if (!input) return;
@@ -155,7 +156,10 @@
     if (input.type !== "radio") return save(input, scope);
     var change = scope.changes = (scope.changes || 0) + 1;
     clearTimeout(scope.saveTimer);
-    scope.saveTimer = setTimeout(function () { save(input, scope, change); }, 400);
+    scope.saveTimer = setTimeout(function () {
+      var run = function () { return save(input, scope, change); };
+      scope.saving = (scope.saving || Promise.resolve()).then(run, run);
+    }, 400);
   });
   async function save(input, scope, change) {
     var value = input.type === "checkbox" ? input.checked : input.value;
