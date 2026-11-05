@@ -16,9 +16,13 @@ import { fetchPartaPlans, type PartaPlan } from '@/data/partaPlansClient';
 import type { CommunityEventsDashboard } from '@/data/communityEventsClient';
 import { usePartaSignalStore } from '@/stores/partaSignalStore';
 
+import { byPlanTime, livePingPlans } from './partaModel';
+
 type PartaState = {
   dashboard: FriendsDashboard | null;
   plans: PartaPlan[] | null;
+  /** Rows in `plans` that are dashboard pub pings, not new-look plans: they cannot be edited. */
+  pingIds: string[];
   loading: boolean;
   /** The last refresh failed; whatever is shown is the saved copy. */
   failed: boolean;
@@ -39,6 +43,7 @@ let inFlight: Promise<void> | null = null;
 export const usePartaStore = create<PartaState>((set, get) => ({
   dashboard: null,
   plans: null,
+  pingIds: [],
   loading: false,
   failed: false,
   generation: snapshotGeneration(),
@@ -49,20 +54,28 @@ export const usePartaStore = create<PartaState>((set, get) => ({
     inFlight = (async () => {
       const generation = snapshotGeneration();
       // An account switch must not show the previous account's crew.
-      if (generation !== get().generation) set({ dashboard: null, plans: null, meetups: null, generation });
+      if (generation !== get().generation) set({ dashboard: null, plans: null, pingIds: [], meetups: null, generation });
       set({ loading: true });
       const sameAccount = () => generation === snapshotGeneration();
       const dashboardRequest = fetchFriendsDashboard();
       // Invitations show as soon as they arrive; the dashboard is the heavier request.
       const plansRequest = fetchPartaPlans().then((plans) => {
-        if (plans && sameAccount()) set({ plans });
+        if (!plans || !sameAccount()) return plans;
+        const { plans: shown, pingIds } = get();
+        const knownPings = (shown ?? []).filter((p) => pingIds.includes(p.id));
+        set({ plans: [...plans, ...knownPings].sort(byPlanTime) });
         return plans;
       });
       await showSavedCopies(generation);
       const [dashboard, plans] = await Promise.all([dashboardRequest, plansRequest]);
       if (!sameAccount()) return;
+      // Live pub pings come only with the dashboard, so they join the invitations here.
+      const pingSource = dashboard ?? get().dashboard;
+      const pings = plans && pingSource ? livePingPlans(pingSource, plans) : null;
       set({
         dashboard: dashboard ?? get().dashboard,
+        plans: plans ? [...plans, ...(pings ?? [])].sort(byPlanTime) : get().plans,
+        ...(plans ? { pingIds: (pings ?? []).map((ping) => ping.id) } : {}),
         failed: !dashboard || !plans,
         loading: false,
       });
@@ -89,9 +102,9 @@ export const usePartaStore = create<PartaState>((set, get) => ({
   upsertPlan: (plan) => {
     const plans = get().plans ?? [];
     const rest = plans.filter((p) => p.id !== plan.id);
-    set({ plans: [...rest, plan].sort((a, b) => Date.parse(a.scheduledFor || a.startedAt) - Date.parse(b.scheduledFor || b.startedAt)) });
+    set({ plans: [...rest, plan].sort(byPlanTime) });
   },
-  removePlan: (id) => set({ plans: (get().plans ?? []).filter((p) => p.id !== id) }),
+  removePlan: (id) => set({ plans: (get().plans ?? []).filter((p) => p.id !== id), pingIds: get().pingIds.filter((pingId) => pingId !== id) }),
   setMyResponse: (id, response) =>
     set({
       plans: (get().plans ?? []).map((p) => {

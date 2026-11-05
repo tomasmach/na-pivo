@@ -30,7 +30,7 @@ import { C, SCREEN_X, s } from '../../theme';
 import { lastTogetherLabel, personInitial, personName, planTime, planTitle, ticketDay } from './partaModel';
 import { CheerButton } from './cheer';
 import { usePartaStore } from './partaStore';
-import { pingPerson, respondToPlan } from './planActions';
+import { endPing, pingPerson, respondToPlan } from './planActions';
 import { PartaPhotoStrip } from './PartaPhotos';
 
 const RSVP: { key: 'going' | 'maybe' | 'cant'; label: () => string; icon: IconName }[] = [
@@ -63,9 +63,37 @@ export function RsvpRow({ plan, dark }: { plan: PartaPlan; dark?: boolean }) {
   );
 }
 
-export function PlanStub({ plan }: { plan: PartaPlan }) {
+/** My own pub ping: who is coming, and the way to end it. */
+function MyPingStub({ plan, onEnded }: { plan: PartaPlan; onEnded?: () => void }) {
+  const going = plan.responses.goingProfiles;
+  return (
+    <View style={[s.row, { gap: 10, height: 40 }]}>
+      {going.length ? <Stack initials={going.slice(0, 4).map(personInitial)} /> : <Icon name="users" size={16} color={C.muted} />}
+      <T s={14} w={600} c={C.text2} style={s.fill} numberOfLines={1}>
+        {plan.responses.going ? t.nv.parta.goingCount(plan.responses.going) : t.nv.parta.nobodyGoingYet}
+      </T>
+      <Press
+        haptic
+        hitSlop={8}
+        accessibilityRole="button"
+        accessibilityLabel={t.nv.parta.endPingA11y}
+        onPress={() => endPing(plan, onEnded)}
+        style={[s.row, { height: 30, borderRadius: 15, paddingHorizontal: 12, gap: 6, backgroundColor: C.control }]}
+      >
+        <Icon name="x" size={15} color={C.white} />
+        <T s={14} w={700}>
+          {t.nv.parta.endPing}
+        </T>
+      </Press>
+    </View>
+  );
+}
+
+export function PlanStub({ plan, onEnded }: { plan: PartaPlan; onEnded?: () => void }) {
   const router = useRouter();
   const partySize = usePartaStore((st) => st.dashboard?.friends.length);
+  const ping = usePartaStore((st) => st.pingIds.includes(plan.id));
+  if (plan.isMine && ping) return <MyPingStub plan={plan} onEnded={onEnded} />;
   if (plan.isMine) {
     const n = plan.inviteeCount ?? 0;
     return (
@@ -125,7 +153,9 @@ function GoingStub({ plan }: { plan: PartaPlan }) {
   );
 }
 
-export function PlanTicket({ plan, width, big }: { plan: PartaPlan; width?: number; big?: boolean }) {
+/** `onEnded` runs after I end my own pub ping from the ticket. */
+export function PlanTicket({ plan, width, big, onEnded }: { plan: PartaPlan; width?: number; big?: boolean; onEnded?: () => void }) {
+  const ping = usePartaStore((st) => st.pingIds.includes(plan.id));
   const yellow = !plan.myResponse && !plan.isMine;
   const day = ticketDay(planTime(plan));
   return (
@@ -133,14 +163,14 @@ export function PlanTicket({ plan, width, big }: { plan: PartaPlan; width?: numb
       width={width}
       big={big}
       yellow={yellow}
-      kicker={plan.isMine ? t.nv.parta.yourPlan : t.nv.parta.inviteFrom(personName(plan.account))}
+      kicker={plan.isMine ? (ping ? t.nv.parta.yourPing : t.nv.parta.yourPlan) : t.nv.parta.inviteFrom(personName(plan.account))}
       kickerIcon={plan.placeKind === 'pub' ? 'beer' : 'house'}
       dayNum={day.dayNum}
       dayName={day.dayName}
       time={day.time}
       title={planTitle(plan)}
       quote={plan.message || undefined}
-      stub={yellow || big || plan.isMine ? <PlanStub plan={plan} /> : <GoingStub plan={plan} />}
+      stub={yellow || big || plan.isMine ? <PlanStub plan={plan} onEnded={onEnded} /> : <GoingStub plan={plan} />}
     />
   );
 }
@@ -240,6 +270,7 @@ export function PartaScreen() {
       trackUiInteraction('parta_activity_share', res.ok || isRetriableFriendError(res) ? 'success' : 'failure');
       if (res.ok) {
         toast({ kind: 'saved', title: t.nv.parta.called, sub: t.nv.parta.calledSub, icon: 'megaphone' });
+        void usePartaStore.getState().reload();
       } else if (isRetriableFriendError(res)) {
         await enqueueFriendOp({ op: 'activity', clientId, payload: { pub } });
         toast({ kind: 'offline', title: t.nv.parta.calledOffline, icon: 'cloud-off' });

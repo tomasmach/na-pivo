@@ -1,8 +1,43 @@
 import { intlLocale, t } from '@/i18n';
-import type { FriendProfile } from '@/data/friendsClient';
+import type { FriendProfile, FriendPubActivity, FriendsDashboard } from '@/data/friendsClient';
 import type { PartaPlan } from '@/data/partaPlansClient';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * Pub pings ("cinknutí") sent without a place kind, by released apps or by "Svolat partu",
+ * reach Parta only through the friends dashboard. They become plan rows here so they can
+ * be answered and ended like any other invitation. New-look invitations are already in `plans`.
+ */
+export function livePingPlans(
+  dashboard: Pick<FriendsDashboard, 'activeFriends' | 'myActiveActivity'>,
+  plans: readonly Pick<PartaPlan, 'id'>[],
+  now = Date.now(),
+): PartaPlan[] {
+  const known = new Set(plans.map((plan) => plan.id));
+  const rows = [
+    ...(dashboard.myActiveActivity ? [{ activity: dashboard.myActiveActivity, isMine: true }] : []),
+    ...dashboard.activeFriends.map((activity) => ({ activity, isMine: false })),
+  ];
+  return rows
+    .filter(({ activity }) => activity.id && activity.active && !known.has(activity.id) && Date.parse(activity.expiresAt) > now)
+    .filter(({ activity }, i, all) => all.findIndex((row) => row.activity.id === activity.id) === i)
+    .map(({ activity, isMine }: { activity: FriendPubActivity; isMine: boolean }) => ({
+      ...activity,
+      placeKind: 'pub',
+      address: '',
+      lat: null,
+      lng: null,
+      isMine,
+      inviteeCount: null,
+      inviteUrl: null,
+    }));
+}
+
+/** Soonest first, as the plans list comes from the server. */
+export function byPlanTime(a: PartaPlan, b: PartaPlan): number {
+  return Date.parse(a.scheduledFor || a.startedAt) - Date.parse(b.scheduledFor || b.startedAt);
+}
 
 /** How the new look names people: the name they chose, else their handle. */
 export function personName(profile: Pick<FriendProfile, 'displayName' | 'nickname'> | null | undefined): string {
