@@ -64,15 +64,15 @@ function record(place: CountPlace, beer: CountableDrink, menu?: readonly Communi
  * The only count path of the new look. A tap that lands suspiciously soon
  * after the last drink writes nothing until the drinker confirms it.
  */
-export function logDrink(place: CountPlace, beer: CountableDrink, menu?: readonly CommunityBeer[]): void {
+export function logDrink(place: CountPlace, beer: CountableDrink, menu?: readonly CommunityBeer[], opts?: { silentTap?: boolean }): void {
   const at = lastAlcoholAt();
   if (beer.drinkType === 'soft_drink' || !isRapidDrink(at)) {
     record(place, beer, menu);
     return;
   }
   const minutes = minutesAgo(at);
-  // The tap that led here skipped its own haptic, expecting the count to give one.
-  if (useSettingsStore.getState().hapticEnabled) fireSelectionHaptic();
+  // A silent tap expected the count to buzz; the question opens instead, so it buzzes here.
+  if (opts?.silentTap && useSettingsStore.getState().hapticEnabled) fireSelectionHaptic();
   dialog({
     title: t.nv.stamgast.rapidAgain(minutes),
     actions: [

@@ -315,7 +315,7 @@ function CounterView() {
       return;
     }
     trackUiInteraction('counter_repeat_drink');
-    logDrink(target, repeat);
+    logDrink(target, repeat, undefined, { silentTap: true });
   };
 
   const finish = () => {

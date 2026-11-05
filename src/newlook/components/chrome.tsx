@@ -230,8 +230,8 @@ export function Screen({
       </View>
       {scroll ? (
         <KeyboardAwareScrollView
-          {...scrollProps}
           scrollEventThrottle={16}
+          {...scrollProps}
           onScroll={(e) => {
             const under = e.nativeEvent.contentOffset.y > 0;
             if (under !== scrolled) setScrolled(under);

@@ -187,7 +187,7 @@ export function PivaScreen() {
                 <Chip key={f ?? 'all'} label={styleFilterLabel(f)} active={style === f} plain onPress={() => setStyle(f)} />
               ))}
             </ScrollView>
-            {page && !page.items.length ? null : (
+            {page?.items.length ? (
               <View style={[s.row, { gap: 6, marginTop: -4 }]}>
                 <T s={12} w={500} c={C.muted}>
                   {p.legendLead}
@@ -204,7 +204,7 @@ export function PivaScreen() {
                   {p.legendBottom}
                 </T>
               </View>
-            )}
+            ) : null}
             {ranking.state.status === 'loading' ? (
               <View>
                 {GHOST_ROWS.map((i) => (

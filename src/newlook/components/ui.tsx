@@ -353,13 +353,13 @@ export function Tile({ icon, color = C.yellow, size = 40, bg = C.control, radius
   );
 }
 
-/** List row inside a card: optional leading element, title + sub, trailing slot. */
 /** A switch in a row reads the row's title to a screen reader instead of a bare "switch". */
 function namedSwitch(trailing: React.ReactNode, title: React.ReactNode): React.ReactNode {
   if (!React.isValidElement<{ label?: string }>(trailing) || trailing.type !== Toggle || trailing.props.label || typeof title !== 'string') return trailing;
   return React.cloneElement(trailing, { label: title });
 }
 
+/** List row inside a card: optional leading element, title + sub, trailing slot. */
 export function Row({
   title,
   sub,
