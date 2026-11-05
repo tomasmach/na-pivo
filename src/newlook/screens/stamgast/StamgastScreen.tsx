@@ -181,7 +181,7 @@ function TourTab({ tabSpace }: { tabSpace: number }) {
     const repeat = repeatOf(lastBeerOf(current));
     if (repeat) {
       // Another pub pours at its own price; the stop's price is asked in the drink sheet.
-      logDrink({ kind: 'pub', pub }, { name: repeat.name, drinkType: 'beer', volumeMl: repeat.volumeMl });
+      logDrink({ kind: 'pub', pub }, { name: repeat.name, drinkType: 'beer', volumeMl: repeat.volumeMl }, undefined, { silentTap: true });
     } else {
       router.push('/nv/zapis');
     }
@@ -196,7 +196,7 @@ function TourTab({ tabSpace }: { tabSpace: number }) {
       <View style={[s.row, { position: 'absolute', left: SCREEN_X, right: SCREEN_X, bottom: tabSpace + 12, gap: 10 }]}>
         {next && index >= 0 ? (
           <>
-            <Button label={copy.tourLogAt(index)} icon="beer" flex height={56} onPress={logAtStop} />
+            <Button label={copy.tourLogAt(index)} icon="beer" flex height={56} haptic={!repeatOf(lastBeerOf(current))} onPress={logAtStop} />
             {typeof glance?.minutes === 'number' ? (
               <Button label={copy.tourWalk(glance.minutes)} icon="navigation" kind="raised" height={56} onPress={() => router.push('/nv/tour-mapa')} />
             ) : null}

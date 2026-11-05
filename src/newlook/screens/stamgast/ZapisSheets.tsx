@@ -307,6 +307,7 @@ export function ZapisSheet() {
         ...(serving ? serving : chosenSize?.volumeMl ? { volumeMl: chosenSize.volumeMl } : {}),
       },
       menu.beers,
+      { silentTap: true },
     );
     nvBack(router);
   };
@@ -319,7 +320,7 @@ export function ZapisSheet() {
     <Sheet
       title={copy.whatDrink}
       top={140}
-      footer={<Button testID="drink-save" height={60} label={copy.logBeer} sub={footerSub} disabled={!selected} onPress={save} />}
+      footer={<Button testID="drink-save" height={60} label={copy.logBeer} sub={footerSub} disabled={!selected} haptic={!place} onPress={save} />}
     >
       <Press onPress={() => router.push('/nv/zmenit-misto')} style={[s.row, { gap: 6, marginTop: -8 }]}>
         <Icon name={home ? 'house' : 'map-pin'} size={16} color={C.yellow} />
@@ -726,12 +727,13 @@ export function VyfotScreen() {
           </View>
           <Button
             height={58}
+            haptic={false}
             label={copy.logBeer}
             sub={`${phase.beer.name} · ${(serving === 'lahvac' ? copy.bottle : copy.can).toLowerCase()} ${formatVolume(phase.beer.volumeMl ?? 500)}`}
             onPress={() => {
               const target: CountPlace = place?.kind === 'outside' ? place : { kind: 'outside', context: 'private' };
               if (place?.kind !== 'outside') useNvPlaceStore.getState().setOutside('private');
-              logDrink(target, { name: phase.beer.name, drinkType: 'beer', servingType: serving === 'lahvac' ? 'bottle' : 'can', volumeMl: phase.beer.volumeMl ?? 500 });
+              logDrink(target, { name: phase.beer.name, drinkType: 'beer', servingType: serving === 'lahvac' ? 'bottle' : 'can', volumeMl: phase.beer.volumeMl ?? 500 }, undefined, { silentTap: true });
               router.dismissTo('/nv/stamgast');
             }}
           />

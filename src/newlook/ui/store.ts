@@ -17,7 +17,7 @@ export type Toast = {
   onPress?: () => void;
 };
 
-export type DialogAction = { label: string; kind?: 'primary' | 'raised' | 'danger'; onPress?: () => void };
+export type DialogAction = { label: string; kind?: 'primary' | 'raised' | 'danger'; onPress?: () => void; haptic?: boolean };
 export type Dialog = { title: string; body?: string; actions: DialogAction[] };
 
 type UiState = {

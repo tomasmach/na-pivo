@@ -140,6 +140,7 @@ export function DialogHost() {
               label={a.label}
               kind={a.kind ?? 'raised'}
               flex={d.actions.length <= 2}
+              haptic={a.haptic}
               onPress={() => {
                 hide();
                 a.onPress?.();

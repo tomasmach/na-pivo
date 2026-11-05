@@ -77,7 +77,7 @@ export function logDrink(place: CountPlace, beer: CountableDrink, menu?: readonl
     title: t.nv.stamgast.rapidAgain(minutes),
     actions: [
       { label: t.counter.cancel, kind: 'raised' },
-      { label: t.counter.rapidInlineConfirm, kind: 'primary', onPress: () => record(place, beer, menu) },
+      { label: t.counter.rapidInlineConfirm, kind: 'primary', haptic: false, onPress: () => record(place, beer, menu) },
     ],
   });
 }
