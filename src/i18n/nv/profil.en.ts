@@ -167,7 +167,7 @@ export const profilEn: Strings['nv']['profil'] = {
     login: 'Sign in',
     register: 'Sign up',
     apple: 'Continue with Apple',
-    google: 'G  Continue with Google',
+    google: 'Continue with Google',
     orEmail: 'or with email',
     email: 'Email',
     password: 'Password',

@@ -74,6 +74,7 @@ import { switchPalette } from '@/theme/switchPalette';
 import { formatPrice } from '@/utils/currency';
 import { dateTimeFormat, numberFormat } from '@/utils/intlFormat';
 
+import { AppleLogo, GoogleLogo } from '../../components/BrandLogo';
 import { BackHeader, Screen } from '../../components/chrome';
 import { Field, Input, PageTitle } from '../../components/forms';
 import { Icon, type IconName } from '../../components/Icon';
@@ -1549,7 +1550,11 @@ export function PrihlasovaniSheet() {
     }
   };
 
-  const icons: Record<AuthProvider, IconName> = { email: 'mail', google: 'globe', apple: 'apple' };
+  const logos: Record<AuthProvider, React.ReactNode> = {
+    email: <Icon name="mail" size={19} color={C.white} />,
+    google: <GoogleLogo size={19} />,
+    apple: <AppleLogo size={19} color={C.white} />,
+  };
   return (
     <Sheet title={P().loginMethods.title} top={single ? 560 : 600} scroll={passwordOpen}>
       {single ? (
@@ -1565,7 +1570,7 @@ export function PrihlasovaniSheet() {
             <Row
               key={provider}
               last={i === all.length - 1}
-              leading={<Tile icon={icons[provider]} color={C.white} />}
+              leading={<Tile>{logos[provider]}</Tile>}
               title={P().loginMethods[provider]}
               sub={locked ? P().loginMethods.onlyOne : linked ? P().loginMethods.linked : P().loginMethods.notLinked}
               trailing={
@@ -1739,10 +1744,10 @@ export function PrihlaseniScreen() {
         }}
       />
       {appleSupported ? (
-        <Button label={busy === 'apple' ? t.account.loading : P().signIn.apple} icon="apple" kind="white" height={52} disabled={busy !== null} onPress={() => void social('apple')} />
+        <Button label={busy === 'apple' ? t.account.loading : P().signIn.apple} leading={<AppleLogo size={18} color={C.black} />} kind="white" height={52} disabled={busy !== null} onPress={() => void social('apple')} />
       ) : null}
       {googleConfigured ? (
-        <Button label={busy === 'google' ? t.account.loading : P().signIn.google} kind="raised" height={52} disabled={busy !== null} onPress={() => void social('google')} />
+        <Button label={busy === 'google' ? t.account.loading : P().signIn.google} leading={<GoogleLogo size={18} />} kind="raised" height={52} disabled={busy !== null} onPress={() => void social('google')} />
       ) : null}
       {appleSupported || googleConfigured ? (
         <View style={[s.row, { gap: 12 }]}>

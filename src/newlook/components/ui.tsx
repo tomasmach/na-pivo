@@ -105,6 +105,7 @@ export function Button({
   label,
   sub,
   icon,
+  leading,
   kind = 'primary',
   height = 52,
   onPress,
@@ -117,6 +118,7 @@ export function Button({
   label: string;
   sub?: string;
   icon?: IconName;
+  leading?: React.ReactNode;
   kind?: ButtonKind;
   height?: number;
   onPress?: () => void;
@@ -154,6 +156,7 @@ export function Button({
       ]}
     >
       <View style={[s.row, { gap: 8 }]}>
+        {leading}
         {icon ? <Icon name={icon} size={labelSize + 1} color={k.fg} /> : null}
         <T s={labelSize} w={700} c={k.fg} style={{ flexShrink: 1, textAlign: 'center' }}>
           {label}
@@ -346,10 +349,10 @@ export function Card({ children, style, pad = 16 }: { children: React.ReactNode;
   );
 }
 
-export function Tile({ icon, color = C.yellow, size = 40, bg = C.control, radius = 12 }: { icon: IconName; color?: string; size?: number; bg?: string; radius?: number }) {
+export function Tile({ icon, children, color = C.yellow, size = 40, bg = C.control, radius = 12 }: { icon?: IconName; children?: React.ReactNode; color?: string; size?: number; bg?: string; radius?: number }) {
   return (
     <View style={[{ width: size, height: size, borderRadius: radius, backgroundColor: bg }, s.center]}>
-      <Icon name={icon} size={Math.round(size * 0.48)} color={color} />
+      {children ?? (icon ? <Icon name={icon} size={Math.round(size * 0.48)} color={color} /> : null)}
     </View>
   );
 }

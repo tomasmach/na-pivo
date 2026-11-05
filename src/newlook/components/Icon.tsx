@@ -117,7 +117,6 @@ import BookmarkIcon from 'lucide-react-native/icons/bookmark';
 import EyeOffIcon from 'lucide-react-native/icons/eye-off';
 import InfoIcon from 'lucide-react-native/icons/info';
 import SkipForwardIcon from 'lucide-react-native/icons/skip-forward';
-import AppleIcon from 'lucide-react-native/icons/apple';
 import SettingsIcon from 'lucide-react-native/icons/settings';
 import ImageIcon from 'lucide-react-native/icons/image';
 import CalendarCheckIcon from 'lucide-react-native/icons/calendar-check';
@@ -261,7 +260,6 @@ const ICONS = {
   'eye-off': EyeOffIcon,
   'info': InfoIcon,
   'skip-forward': SkipForwardIcon,
-  'apple': AppleIcon,
   'settings': SettingsIcon,
   'image': ImageIcon,
   'calendar-check': CalendarCheckIcon,
