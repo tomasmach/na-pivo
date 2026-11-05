@@ -136,6 +136,10 @@ import MoonStarIcon from 'lucide-react-native/icons/moon-star';
 import TimerIcon from 'lucide-react-native/icons/timer';
 import SignalIcon from 'lucide-react-native/icons/signal';
 import WifiIcon from 'lucide-react-native/icons/wifi';
+import CreditCardIcon from 'lucide-react-native/icons/credit-card';
+import AccessibilityIcon from 'lucide-react-native/icons/accessibility';
+import CarIcon from 'lucide-react-native/icons/car';
+import WindIcon from 'lucide-react-native/icons/wind';
 import BatteryFullIcon from 'lucide-react-native/icons/battery-full';
 
 // Deep imports: the package root would evaluate all ~1,850 icons at startup.
@@ -275,6 +279,10 @@ const ICONS = {
   'timer': TimerIcon,
   'signal': SignalIcon,
   'wifi': WifiIcon,
+  'credit-card': CreditCardIcon,
+  'accessibility': AccessibilityIcon,
+  'car': CarIcon,
+  'wind': WindIcon,
   'battery-full': BatteryFullIcon,
   history: RotateCcwClockIcon,
   'trash-2': TrashIcon,

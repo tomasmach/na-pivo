@@ -68,6 +68,7 @@ export const kompasCs = {
   addPub: 'Přidat hospodu',
   editFilters: 'Upravit filtry',
   clearFilters: 'Zrušit filtry',
+  navigationFailed: 'Navigaci se nepodařilo otevřít.',
 
   // — Filtry sheet —
   filtersTitle: 'Kam dneska?',
@@ -87,6 +88,11 @@ export const kompasCs = {
   billiards: 'Kulečník',
   foosball: 'Fotbálek',
   standsAndCamps: 'Stánky a kempy',
+  practicalGroup: 'Praktické',
+  amenityLimit: (count: number) =>
+    `Vyber nejvýš ${count} ${czechPlural(count, { one: 'vlastnost', few: 'vlastnosti', many: 'vlastností' })}, ať má kompas kde hledat.`,
+  navigateHome: 'Navigovat domů',
+  homeUnset: 'Nastavit',
 
   // — Vrstvy sheet —
   layersTitle: 'Mapa ukazuje',
@@ -153,6 +159,17 @@ export const kompasCs = {
   eventToday: (time: string) => `Dnes od ${time}`,
   eventTomorrow: (time: string) => `Zítra od ${time}`,
   eventOn: (date: string, time: string) => `${date} od ${time}`,
+  hoursToday: 'dnes',
+  addHours: 'Doplnit otevíračku',
+  daysShort: {
+    mo: 'Po',
+    tu: 'Út',
+    we: 'St',
+    th: 'Čt',
+    fr: 'Pá',
+    sa: 'So',
+    su: 'Ne',
+  },
   about: 'O hospodě',
   lastWeekBeers: (n: number) => `Minulý týden tu padlo ${beers(n)}`,
   lastWeekBeersSub: 'od lidí z Na pivo',
@@ -280,6 +297,12 @@ export const kompasCs = {
   previously: 'Dříve tu bylo',
   firstBeer: 'Zapsat první pivo',
   removeBeer: 'Odebrat pivo',
+  saveBeer: 'Uložit pivo',
+  addSmallBeer: (volume: string) => `Přidat malé ${volume}`,
+  volumeOther: 'Jiné',
+  volumeCustomLabel: 'Objem v ml',
+  invalidPrice: 'Tahle cena nedává smysl.',
+  invalidVolume: (volumes: string) => `Zapsat jde jen ${volumes} ml.`,
   amenityYes: 'Má',
   amenityNo: 'Nemá',
   amenitiesHint: 'Klepni na to, co tu víš jistě.',

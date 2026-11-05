@@ -65,3 +65,8 @@ export function buildNavigationUrl(
   if (googlePlaceId) params.set('destination_place_id', googlePlaceId);
   return `https://www.google.com/maps/dir/?${params.toString()}`;
 }
+
+export async function openHomeInMaps(point: HomePoint): Promise<void> {
+  const url = buildNavigationUrl(point, useSettingsStore.getState().navigationProvider);
+  await Linking.openURL(url);
+}

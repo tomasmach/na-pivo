@@ -7,7 +7,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { haversineMeters } from '@/compass/distance';
 import type { AmenityKey } from '@/data/amenities';
-import { CRAFT_BEER_FILTER_KEY } from '@/data/pubSearchFilters';
+import { CRAFT_BEER_FILTER_KEY, MAX_AMENITY_FILTERS } from '@/data/pubSearchFilters';
 import { geohash8 } from '@/data/geohash';
 import type { Pub } from '@/data/pubs';
 import { trackUiInteraction } from '@/data/uxTelemetry';
@@ -30,7 +30,7 @@ import { C, SCREEN_X, s, shadow } from '../../theme';
 import { Dial } from './Dial';
 import { distanceLabel, formatDistance, hoursNow } from './format';
 import { NvMap, type NvMapHandle } from './NvMap';
-import { openNvPub, setOpenOnly, useKompasState } from './state';
+import { openNvPub, setOpenOnly, toggleAmenityFilter, useKompasState } from './state';
 import { pinId, useKompas, type Kompas, type KompasTarget } from './useKompas';
 
 const L = () => t.nv.kompas;
@@ -48,9 +48,7 @@ const CATEGORIES: { key: string; icon: IconName; label: () => string; amenity?: 
 ];
 
 function toggleAmenity(key: AmenityKey) {
-  const { filters, setFilters } = useKompasState.getState();
-  const has = filters.amenityKeys.includes(key);
-  setFilters({ amenityKeys: has ? filters.amenityKeys.filter((k) => k !== key) : [...filters.amenityKeys, key] });
+  if (!toggleAmenityFilter(key)) toast({ kind: 'info', title: L().amenityLimit(MAX_AMENITY_FILTERS), icon: 'sliders-horizontal' });
 }
 
 function summaryLine(k: Kompas): string {
@@ -86,7 +84,9 @@ function goThere(target: KompasTarget, secret: boolean) {
   const name = secret ? t.nv.common.secretPub : target.name;
   const sub = target.distance != null ? L().guideSub(name, distanceLabel(target.distance)) : name;
   toast({ kind: 'info', title: L().guideTitle, sub, icon: 'navigation' });
-  void openPubInMaps({ lat: target.lat, lng: target.lng, name: target.name, googlePlaceId: target.pub?.googlePlaceId });
+  openPubInMaps({ lat: target.lat, lng: target.lng, name: target.name, googlePlaceId: target.pub?.googlePlaceId }).catch(() =>
+    toast({ kind: 'error', title: L().navigationFailed, icon: 'navigation' }),
+  );
 }
 
 /** Returns false when it only revealed a secret name and stayed on the map. */
