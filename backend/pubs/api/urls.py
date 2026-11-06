@@ -85,6 +85,7 @@ from .piva_views import (
 from .profil_views import AccountNightSummaryView, AccountXpEventsView
 from .pub_beers_views import PubBeerBoardView, PubBeersLastWeekView
 from .pub_event_views import PubEventView
+from .pub_reach_views import PubReachView
 from .tour_invite_views import MyTourInviteListView, MyTourInviteView, TourInvitesView
 from .tour_run_views import TourRunMemberView, TourRunPreviewView, TourRunView
 from .tour_search_views import TourSearchView
@@ -484,6 +485,7 @@ urlpatterns = [
     path("content-reports", ContentReportView.as_view(), name="content-reports"),
     path("feedback", FeedbackView.as_view(), name="feedback"),
     path("client-events", ClientEventsView.as_view(), name="client-events"),
+    path("pub-reach", PubReachView.as_view(), name="pub-reach"),
     path("leaderboards", LeaderboardsView.as_view(), name="leaderboards"),
     path("push-device", PushDeviceView.as_view(), name="push-device"),
     path("friends", FriendsView.as_view(), name="friends"),

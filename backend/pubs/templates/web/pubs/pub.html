@@ -4,7 +4,7 @@
 {% block og_image %}{% include "web/pubs/_og.html" %}{% endblock %}
 {% block content %}
 {% include "web/components/breadcrumbs.html" with crumbs=crumbs %}
-<div class="np-pub-head">
+<div class="np-pub-head" data-reach-pub="{{ pub.cache_key }}">
   <h1 class="np-pub-h1">{{ pub.name }}</h1>
   <p class="np-pub-head__line">
     {% if status %}<span class="np-pub-status{% if status.open %} is-open{% endif %}">{{ status.text|capfirst }}</span><span class="np-pub-head__dot" aria-hidden="true">·</span>{% endif %}
@@ -57,7 +57,7 @@
 
     <section class="np-card np-card--tight np-pub__where"><div class="np-list">
       <div class="np-row"><span class="np-row__lead">{% icon "map-pin" %}</span><span class="np-row__body"><span class="np-row__title">{{ place }}</span>{% if place_sub %}<span class="np-row__meta">{{ place_sub }}</span>{% endif %}</span></div>
-      <a class="np-row" href="{{ navigation_url }}" rel="noopener noreferrer"><span class="np-row__lead">{% icon "navigation" %}</span><span class="np-row__body"><span class="np-row__title">{% translate "Navigovat" %}</span><span class="np-row__meta">{% translate "Otevře mapy v telefonu" %}</span></span></a>
+      <a class="np-row" href="{{ navigation_url }}" rel="noopener noreferrer" data-reach="navigation"><span class="np-row__lead">{% icon "navigation" %}</span><span class="np-row__body"><span class="np-row__title">{% translate "Navigovat" %}</span><span class="np-row__meta">{% translate "Otevře mapy v telefonu" %}</span></span></a>
     </div></section>
   </aside>
 </div>

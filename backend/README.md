@@ -372,6 +372,12 @@ The Expo app sends a small event whitelist to:
 
 Authenticated events update `AccountUsageStats`. Product events are coarse and server-validated: dynamic pathnames, account/content ids, pub names, beer names, user text and GPS coordinates are not accepted. Walking distance is computed on-device; the backend stores only meter increments, not coordinates or routes. Event-level rows are retained for 90 days by default and pruned in bounded batches; aggregate account counters remain for the account lifetime.
 
+### Pub reach
+
+`POST /v1/pub-reach` (optional bearer token) takes the app's batch `{"events": [{"type", "pub", "at"}]}`, up to 500 events: `map_impression` (a pin on screen as its own pin, once per pub and app session), `detail_view` and `navigation`. `pub` is the geohash-8 cell; a malformed event is skipped, not the batch. `POST /web/reach` takes one beacon from a pub page on the web (`detail_view` or `navigation` plus the referrer's origin) and keeps only the kind of source; bot user agents are ignored and the web stores nothing about the visitor.
+
+`PubReachDaily` keeps the counts per pub, Prague day, channel, metric and web source for good. `PubReachVisitor` keeps a keyed hash of each app account per pub, day and metric for `PUB_REACH_VISITOR_RETENTION_DAYS` (90) so distinct people over any range inside it are exact; `prune_operational_data` removes older rows and account deletion removes the account's rows. Admin → Pub reach → "Dosah hospody za období" shows one pub's numbers for a range, app and web apart.
+
 Agent-friendly reports:
 
 ```bash
