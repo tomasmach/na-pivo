@@ -1375,6 +1375,18 @@ export const cs = {
     homeTransitTitle: 'Za 20 minut ti jede poslední přímý spoj domů',
     homeTransitBody: (line: string, time: string, stop: string) =>
       `${line ? `Linka ${line} odjíždí` : 'Odjíždí'} ${atTime(time)}${stop ? ` ze zastávky ${stop}` : ''}.`,
+    closingTimeChannel: 'Zavíračka',
+    closingTimeTitle: (pubName: string, time: string) => `${pubName || 'Tvoje hospoda'} zavírá ${atTime(time)}`,
+    closingTimeBody: (places: string[]) =>
+      places.length === 1
+        ? `Déle má otevřeno ${places[0]}.`
+        : `Déle mají otevřeno ${places.slice(0, -1).join(', ')} a ${places[places.length - 1]}.`,
+    closingTimeBodyHidden: (count: number) =>
+      count === 1
+        ? 'Kousek odsud má déle otevřeno ještě jedna hospoda.'
+        : `Kousek odsud mají déle otevřeno ještě ${count} hospody.`,
+    closingTimePlace: (pubName: string, distance: string) => `${pubName} (${distance})`,
+    closingTimeAction: (pubName: string, distance: string) => `${pubName || 'Hospoda'} · ${distance}`,
   },
 
   pubDetail: {

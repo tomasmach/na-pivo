@@ -73,6 +73,8 @@ export const profilEn: Strings['nv']['profil'] = {
     nextBeerSub: (minutes: number) => `${minutes} minutes after every beer`,
     lastTransit: 'Remind me of the last connection',
     lastTransitSub: 'Prague area only, needs a home point',
+    closingTime: 'Warn me before closing time',
+    closingTimeSub: 'An hour before your pub closes, I show the three nearest pubs open later',
     tourReminders: 'Remind me of tours',
     tourRemindersSub: "On tour day, I'll remind you when and where to meet",
     water: 'Remind me to drink water',
