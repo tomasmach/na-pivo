@@ -4,6 +4,7 @@
 ``{% icon "map-pin" %}``                         inline lucide icon (``class`` adds classes)
 ``{% asset "np.css" %}``                         versioned URL of a web file
 ``{{ area.name|place }}``                          a town as the page language names it
+``{{ stop.name|pub_name }}``                       a pub as every page names it
 """
 
 from __future__ import annotations
@@ -16,7 +17,7 @@ from django.utils.html import escape
 from django.utils.safestring import SafeString, mark_safe
 
 from pubs.web.assets import asset_url
-from pubs.web.places import place_name
+from pubs.web.places import place_name, pub_name
 from pubs.web.routes import web_reverse
 
 register = template.Library()
@@ -57,3 +58,6 @@ def asset(name: str) -> str:
 @register.filter
 def place(name: str) -> str:
     return place_name(name)
+
+
+register.filter("pub_name", pub_name)

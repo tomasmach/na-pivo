@@ -53,7 +53,7 @@ from pubs.models import (
 from pubs.price_map import PATHS as PRICE_PATHS
 from pubs.price_map import city_slug, headline_prices, render_city_og_image
 from pubs.web.pages import login_url, render_page, web_page
-from pubs.web.places import in_place, place_name
+from pubs.web.places import in_place, place_name, pub_name
 from pubs.web.routes import web_reverse
 from pubs.web.words import plural
 
@@ -715,7 +715,7 @@ def _price_facts(data: dict, area: dict | None, country: dict | None, city_urls:
         pub = cheapest[0]
         facts.append({
             "title": gettext("Nejlevněji"),
-            "meta": ", ".join(part for part in (pub["name"], place_name(pub["city"])) if part),
+            "meta": ", ".join(part for part in (pub_name(pub["name"]), place_name(pub["city"])) if part),
             "url": _pub_url(pub),
             "value": f"{pub['price_czk']} {unit}",
             "value_meta": "" if pub["volume_ml"] == 500 else gettext("za %(litres)s l") % {
@@ -842,7 +842,7 @@ def beer_prices(request: HttpRequest, city: str = "") -> HttpResponse:
             "beer_index_url": web_reverse("web-beer-index"),
             "about_url": web_reverse("web-about") + "#ceny",
             "cheapest": [
-                {**pub, "litres": _litres(pub["volume_ml"]), "url": _pub_url(pub)}
+                {**pub, "litres": _litres(pub["volume_ml"]), "url": _pub_url(pub), "name": pub_name(pub["name"])}
                 for pub in (area.get("cheapest", []) if area else data.get("cheapest", []))
             ],
             "elsewhere": _elsewhere(data, area, city_urls) if area else [],
@@ -940,7 +940,7 @@ def _public_reviews(product_key: str) -> tuple[int, list[dict]]:
     return rows.count(), [
         {
             "nickname": row.account.nickname,
-            "pub": row.pub_name,
+            "pub": pub_name(row.pub_name) if row.pub_name else "",
             "day": timezone.localtime(row.checked_in_at).date(),
             "rating": float(row.rating) if row.rating is not None else None,
             "note": row.note,
@@ -1050,6 +1050,7 @@ def beer_pages(request: HttpRequest, kind: str = BeerPage.Kind.LIST, key: str = 
     listed = [
         {
             **pub,
+            "name": pub_name(pub["name"]),
             "date": _short_date(date.fromisoformat(pub["confirmed"]), today),
             "litres": _litres(pub["volume_ml"]) if pub["volume_ml"] else None,
             # Sorted per half litre, so 41 Kč for 0,3 l is not the cheapest.
@@ -1100,7 +1101,7 @@ def beer_pages(request: HttpRequest, kind: str = BeerPage.Kind.LIST, key: str = 
             head_stats.append({
                 "value": f"{data['cheapest']['price_czk']}\u00a0{unit}",
                 "label": gettext("nejlevněji za 0,5 l"),
-                "sub": ", ".join(part for part in (data["cheapest"]["name"], place_name(data["cheapest"]["city"])) if part),
+                "sub": ", ".join(part for part in (pub_name(data["cheapest"]["name"]), place_name(data["cheapest"]["city"])) if part),
             })
         head_stats.append({"value": data["pubs"], "label": plural(
             data["pubs"], gettext("hospoda za 3 měsíce"), gettext("hospody za 3 měsíce"), gettext("hospod za 3 měsíce")

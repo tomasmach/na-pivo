@@ -24,6 +24,7 @@ from pubs.models import FriendBlock, PubPriceIndex, TourPublication
 from pubs.price_map import _SOURCES, WINDOW_DAYS
 from pubs.tours import fresh_people_count, readable_publications
 from pubs.web.pages import render_page, web_page
+from pubs.web.places import pub_name
 from pubs.web.pub_map import live_map
 from pubs.web.public_common import (
     PAGE_CACHE_SECONDS,
@@ -86,7 +87,7 @@ def _route_svg(stops: list[dict], width: int, height: int, pad: int) -> dict:
     off_y = (height - (max(ys) - min(ys)) * scale) / 2
     points = [
         {"x": round(off_x + (x - min(xs)) * scale), "y": round(off_y + (y - min(ys)) * scale), "n": index + 1,
-         "name": stops[index]["name"], "right": (off_x + (x - min(xs)) * scale) < width * 0.62}
+         "name": pub_name(stops[index]["name"]), "right": (off_x + (x - min(xs)) * scale) < width * 0.62}
         for index, (x, y) in enumerate(zip(xs, ys, strict=True))
     ]
     return {"w": width, "h": height, "points": points, "path": " ".join(f"{p['x']},{p['y']}" for p in points)}
@@ -108,8 +109,8 @@ def _card(publication: TourPublication, prices: dict[str, int]) -> dict:
         "owner_id": publication.plan.owner_id,
         "map": _route_svg(stops, 360, 150, 22),
         "map_big": _route_svg(stops, 640, 400, 80),
-        "live_map": live_map([{"lat": stop["lat"], "lng": stop["lon"], "label": stop["name"]} for stop in stops], kind="route"),
-        "names": " · ".join(stop["name"] for stop in stops[:3]) + (" …" if len(stops) > 3 else ""),
+        "live_map": live_map([{"lat": stop["lat"], "lng": stop["lon"], "label": pub_name(stop["name"])} for stop in stops], kind="route"),
+        "names": " · ".join(pub_name(stop["name"]) for stop in stops[:3]) + (" …" if len(stops) > 3 else ""),
     }
 
 
@@ -265,7 +266,7 @@ def _detail(publication: TourPublication) -> dict:
             walk_minutes += leg[1]
         rows.append({
             "n": index + 1,
-            "name": stop["name"],
+            "name": pub_name(stop["name"]),
             "area": stop.get("address") or "",
             "challenge": stop.get("challenge") or "",
             "price": prices.get(stop.get("cache_key") or ""),
@@ -356,7 +357,7 @@ def tour(request: HttpRequest, tour_id: str) -> HttpResponse:
             "map_phone": _route_svg(stops, 390, 240, 34),
             "live_map": live_map(
                 [
-                    {"lat": stop["lat"], "lng": stop["lon"], "label": stop["name"], "name": stop["name"], "url": row["url"]}
+                    {"lat": stop["lat"], "lng": stop["lon"], "label": row["name"], "name": row["name"], "url": row["url"]}
                     for stop, row in zip(stops, detail["rows"], strict=True)
                 ],
                 kind="route",

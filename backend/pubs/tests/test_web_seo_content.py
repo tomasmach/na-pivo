@@ -9,13 +9,14 @@ import pytest
 from django.core.management import call_command
 from django.utils import translation
 
+from pubs.models import PubDirectory
 from pubs.tests.test_beer_pages import _pub as _beer_pub
 from pubs.tests.test_beer_pages import _second_beer, _three_fresh_pubs, catalog  # noqa: F401
 from pubs.tests.test_price_map import BRNO, _catalog, _price
 from pubs.tests.test_web_pubs import ALWAYS, _menu
 from pubs.tests.test_web_pubs import _pub as _place
-from pubs.web.places import in_place, municipality, place_name
-from pubs.web.pubs_views import display_name, sitemap_paths
+from pubs.web.places import in_place, municipality, place_name, pub_name
+from pubs.web.pubs_views import sitemap_paths
 
 pytestmark = pytest.mark.django_db
 
@@ -43,10 +44,10 @@ def test_post_office_names_become_the_town_and_prague_speaks_english():
 
 
 def test_business_records_and_placeholders_stay_out_of_titles():
-    assert display_name("P5342 - Chrudim pivovar, ul.Obc.Ležáků") == "Chrudim pivovar"
-    assert display_name("PIVOVAR LOUTKÁŘ s.r.o.") == "PIVOVAR LOUTKÁŘ"
-    assert display_name("Nazev Upřesnim") == ""
-    assert display_name("U Zlatého tygra") == "U Zlatého tygra"
+    assert pub_name("P5342 - Chrudim pivovar, ul.Obc.Ležáků") == "Chrudim pivovar"
+    assert pub_name("PIVOVAR LOUTKÁŘ s.r.o.") == "PIVOVAR LOUTKÁŘ"
+    assert pub_name("Nazev Upřesnim") == "Hospoda bez jména"
+    assert pub_name("U Zlatého tygra") == "U Zlatého tygra"
 
 
 def test_a_pub_in_a_post_office_town_names_the_town(client):
@@ -187,3 +188,29 @@ def test_the_about_page_says_who_makes_the_app_in_both_languages(client):
     assert "Who makes it" in english.content.decode()
     assert 'href="/o-appce">O appce</a>' in client.get("/ceny").content.decode()
     assert "https://na-pivo.cz/o-appce" in client.get("/sitemap.xml").content.decode()
+
+
+def test_every_list_names_a_pub_without_its_register_code(client):
+    """One cleaner for every place a page names a pub: lists, the cheapest pubs, beer pages, nearby pubs."""
+
+    raw = "P5342 - Pivnice Smíchov, ul.Nádražní"
+    for price in range(40, 46):
+        _price("Praha", price)
+    _catalog(_price("Praha", 35), raw)
+    for name in ("U Kalicha", "Na Růžku"):
+        _beer_pub(name, [("Testovar 11°", 55, 500)], city="Praha")
+    coded = _beer_pub(raw, [("Testovar 11°", 52, 500)], city="Praha")
+    call_command("snapshot_beer_prices", stdout=StringIO())
+
+    pages = {
+        "city": client.get("/hospody/praha").content.decode(),
+        "prices": client.get("/ceny/praha").content.decode(),
+        "beer": client.get("/pivo/testovar-11").content.decode(),
+        "pub": client.get(f"/hospoda/u-kalicha-{PubDirectory.objects.get(name='U Kalicha').cache_key}").content.decode(),
+    }
+
+    for page, html in pages.items():
+        assert "Pivnice Smíchov" in html, page
+        assert "P5342" not in html.replace(f"p5342-pivnice-smichov-ulnadrazni-{coded}", ""), page
+    # The address keeps the stored name, so old links and the app still find the pub.
+    assert f'href="/hospoda/p5342-pivnice-smichov-ulnadrazni-{coded}"' in pages["beer"]

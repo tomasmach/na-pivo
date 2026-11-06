@@ -27,6 +27,7 @@ from pubs.models import (
 )
 from pubs.pub_events import PubEvent
 from pubs.web.pages import render_page, web_page
+from pubs.web.places import pub_name
 from pubs.web.public_common import (
     PAGE_CACHE_SECONDS,
     breadcrumbs,
@@ -203,7 +204,7 @@ def _short_day(day: date, today: date, lang: str) -> str:
 
 
 def _row(item: dict, lang: str) -> dict:
-    values = {"pub": item["name"], "beer": item.get("beer", ""), "title": item.get("title", "")}
+    values = {"pub": pub_name(item["name"]), "beer": item.get("beer", ""), "title": item.get("title", "")}
     kind = item["kind"]
     if kind == "tap":
         title = gettext("%(pub)s nově čepuje %(beer)s") % values
@@ -302,6 +303,7 @@ def news(request: HttpRequest) -> HttpResponse:
     new_pubs = [
         {
             **pub,
+            "name": pub_name(pub["name"]),
             "url": pub_url(pub["name"], pub["key"]),
             "meta": " · ".join(
                 part for part in (pub["district"] or pub["city"], _short_day(date.fromisoformat(pub["day"]), today, lang))

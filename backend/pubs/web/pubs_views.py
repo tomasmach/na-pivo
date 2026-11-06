@@ -32,7 +32,7 @@ from pubs.models import BeerPage, PubPriceSnapshot
 from pubs.price_map import city_slug
 from pubs.web import pubs_data
 from pubs.web.pages import render_page, web_page
-from pubs.web.places import in_place, municipality, place_name
+from pubs.web.places import has_pub_name, in_place, municipality, place_name, pub_name
 from pubs.web.pub_map import live_map, pub_map
 from pubs.web.pubs_og import render_pub_og
 from pubs.web.routes import web_reverse
@@ -143,6 +143,7 @@ def status_line(week: dict | None, now: datetime | None = None) -> dict | None:
 def _pub_row(pub: dict, now: datetime, city: str = "") -> dict:
     return {
         **pub,
+        "name": pub_name(pub["name"]),
         "url": web_reverse("web-pub", key=pub["key"]),
         "place": pub["address"] or place_name(pub["district"]) or city,
         "tap": ", ".join(pub["beers"][:3]),
@@ -626,7 +627,7 @@ def _og_payload(pub: dict, lang: str) -> dict:
         None,
     )
     return {
-        "name": pub["name"],
+        "name": pub_name(pub["name"]),
         "place": pub["district"] or pub["city"],
         "rating": pub["rating"],
         "price": pub["price"],
@@ -647,7 +648,7 @@ def _pub_structured(pub: dict, url: str, crumbs: list[tuple[str, str]]) -> dict:
     origin = settings.PUBLIC_WEB_ORIGIN
     place = {
         "@type": "BarOrPub",
-        "name": pub["name"],
+        "name": pub_name(pub["name"]),
         "url": f"{origin}{url}",
         "geo": {"@type": "GeoCoordinates", "latitude": round(pub["lat"], 5), "longitude": round(pub["lng"], 5)},
         "address": {
@@ -724,30 +725,14 @@ def _pub_stats(pub: dict, now: datetime) -> list[dict]:
     return stats[:3]
 
 
-# Catalogue names that are a business record, not what the sign says.
-_CODE_PREFIX = re.compile(r"^[A-Z]{0,3}\d{3,}\s*[-–:]\s*")
-_LEGAL_SUFFIX = re.compile(
-    r"(,\s*ul\..*|,?\s+(s\.\s?r\.\s?o\.|spol\.\s?s\s?r\.\s?o\.|a\.\s?s\.|v\.\s?o\.\s?s\.|z\.\s?s\.))$",
-    re.IGNORECASE,
-)
-_PLACEHOLDER_NAMES = {"nazev upresnim", "nazev", "bez nazvu", "neznamy", "nevim", "test"}
-
-
-def display_name(name: str) -> str:
-    """"P5342 - Chrudim pivovar, ul.Obc.Ležáků" is Chrudim pivovar; a placeholder is no name at all."""
-
-    clean = _LEGAL_SUFFIX.sub("", _CODE_PREFIX.sub("", name)).strip(" ,-–")
-    return "" if not clean or pubs_data.fold(clean) in _PLACEHOLDER_NAMES else clean
-
-
-def _pub_description(pub: dict, name: str, where: str, has_ratings: bool, today) -> str:
+def _pub_description(pub: dict, where: str, has_ratings: bool, today) -> str:
     """Only what the page shows: the menu, its date, the cheapest beer, the hours if known."""
 
-    values = {"name": name or gettext("Hospoda bez jména"), "place": where, "price": pub["price"]}
+    values = {"name": pub_name(pub["name"]), "place": where, "price": pub["price"]}
     if pub["menu"]:
         values["beers"] = counted(len(pub["menu"]), gettext("pivo"), gettext("piva"), gettext("piv"))
         text = (
-            gettext("Co čepují v hospodě %(name)s, %(place)s: %(beers)s") if name
+            gettext("Co čepují v hospodě %(name)s, %(place)s: %(beers)s") if has_pub_name(pub["name"])
             else gettext("Co čepují v hospodě bez jména, %(place)s: %(beers)s")
         ) % values
         if pub["price"]:
@@ -805,8 +790,8 @@ def pub_page(request: HttpRequest, key: str) -> HttpResponse:
         crumbs.append((place_name(pub["city"]), city_url))
         if pub["district"] and place_name(pub["district"]) != place_name(pub["city"]):
             crumbs.append((place_name(pub["district"]), district_url(pub["city_slug"], pub["district"])))
-    name = display_name(pub["name"])
-    crumbs.append((name or gettext("Hospoda bez jména"), url))
+    name = pub_name(pub["name"])
+    crumbs.append((name, url))
 
     city_place = place_name(pub["city"])
     district_place = place_name(pub["district"])
@@ -816,7 +801,7 @@ def pub_page(request: HttpRequest, key: str) -> HttpResponse:
     place_sub = ", ".join(part for part in dict.fromkeys((district_place, city)) if part and part != place)
     og = _og_payload(pub, lang)
     where = district_place or city_place
-    if name:
+    if has_pub_name(pub["name"]):
         title = gettext("%(name)s, %(place)s") % {"name": name, "place": where} if where else name
     else:
         title = ", ".join(part for part in (gettext("Hospoda"), pub["address"], where) if part)
@@ -826,7 +811,7 @@ def pub_page(request: HttpRequest, key: str) -> HttpResponse:
     ]
     nearby = [
         {
-            "title": row["name"],
+            "title": pub_name(row["name"]),
             "url": web_reverse("web-pub", key=row["key"]),
             "meta": " · ".join(part for part in (_distance_label(row["metres"]), ", ".join(row["beers"][:2])) if part),
             "value": _price_label(row["price"]),
@@ -839,7 +824,7 @@ def pub_page(request: HttpRequest, key: str) -> HttpResponse:
         "web/pubs/pub.html",
         {
             "pub": pub,
-            "name": name or gettext("Hospoda bez jména"),
+            "name": name,
             "status": status_line(pub["hours"], now),
             "place": place,
             "place_sub": place_sub,
@@ -854,12 +839,12 @@ def pub_page(request: HttpRequest, key: str) -> HttpResponse:
             "city_url": city_url,
             "city_label": _pubs_title(pub["city"]) if city_url else "",
             "map": pub_map(
-                [{"lat": pub["lat"], "lng": pub["lng"], "label": "", "url": "", "name": pub["name"]}],
+                [{"lat": pub["lat"], "lng": pub["lng"], "label": "", "url": "", "name": name}],
                 pub["neighbours"],
                 focus=True,
                 size=(862, 340),
             ),
-            "live_map": live_map([{"lat": pub["lat"], "lng": pub["lng"], "name": pub["name"]}], kind="focus"),
+            "live_map": live_map([{"lat": pub["lat"], "lng": pub["lng"], "name": name}], kind="focus"),
             "deep_link": f"napivo://h/{pub['cache_key']}?{urlencode({'n': pub['name']})}",
             "navigation_url": (
                 "https://www.google.com/maps/dir/?api=1&destination="
@@ -872,7 +857,7 @@ def pub_page(request: HttpRequest, key: str) -> HttpResponse:
         },
         title=title,
         description=_pub_description(
-            pub, name, where, bool(beer_ratings), timezone.localdate(now, pubs_data.PRAGUE)
+            pub, where, bool(beer_ratings), timezone.localdate(now, pubs_data.PRAGUE)
         ),
         section="pubs",
         with_map=True,

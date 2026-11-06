@@ -1,10 +1,12 @@
-"""Names of places as people say them: the town and not its post office, Prague in English."""
+"""Names of places and pubs as people say them: the town and not its post office, Prague in English, a pub without its register code."""
 
 from __future__ import annotations
 
 import re
+import unicodedata
 
 from django.utils import translation
+from django.utils.translation import gettext
 
 # Geocoders name the post office: "Louny 1" is in Louny. In Prague and Plzeň the number is the district.
 _POST_OFFICE = re.compile(r"^(\D*\S)\s+\d{1,2}$")
@@ -69,3 +71,31 @@ def in_place(name: str) -> str:
     if base in _NUMBERED_DISTRICTS and rest.isdigit():
         return f"{_IN[base]} {rest}"
     return _IN.get(name, "")
+
+
+# Catalogue names that are a business record, not what the sign says.
+_REGISTER_CODE = re.compile(r"^[A-Z]{0,3}\d{3,}\s*[-–:]\s*")
+_LEGAL_FORM = re.compile(
+    r"(,\s*ul\..*|,?\s+(s\.\s?r\.\s?o\.|spol\.\s?s\s?r\.\s?o\.|a\.\s?s\.|v\.\s?o\.\s?s\.|z\.\s?s\.))$",
+    re.IGNORECASE,
+)
+_PLACEHOLDERS = {"nazev upresnim", "nazev", "bez nazvu", "neznamy", "nevim", "test"}
+
+
+def _clean_pub_name(name: str) -> str:
+    clean = _LEGAL_FORM.sub("", _REGISTER_CODE.sub("", " ".join((name or "").split()))).strip(" ,-–")
+    folded = " ".join(re.findall(r"[a-z0-9]+", unicodedata.normalize("NFKD", clean).encode("ascii", "ignore").decode().casefold()))
+    return "" if folded in _PLACEHOLDERS else clean
+
+
+def has_pub_name(name: str) -> bool:
+    return bool(_clean_pub_name(name))
+
+
+def pub_name(name: str) -> str:
+    """What every page shows for a pub: "P5342 - Chrudim pivovar, ul.Obc.Ležáků" is Chrudim pivovar.
+
+    Only for showing; addresses, keys and links to the app keep the stored name.
+    """
+
+    return _clean_pub_name(name) or gettext("Hospoda bez jména")
