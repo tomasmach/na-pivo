@@ -1,9 +1,12 @@
 import React, { forwardRef, memo, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
+import { useIsFocused } from 'expo-router';
 import MapView, { Marker, Polyline, PROVIDER_GOOGLE, type MapStyleElement, type Region } from 'react-native-maps';
 
 import { clusterCamera, clusterPins, NO_CLUSTER_ZOOM, targetPin, type PinCluster } from '@/map/clusterPins';
 import { StaticMapMarker } from '@/map/StaticMapMarker';
+import { visiblePins } from '@/map/visiblePins';
+import { trackPinsSeen } from '@/data/pubReachClient';
 
 import { Icon } from '../../components/Icon';
 import { Person, T } from '../../components/ui';
@@ -60,10 +63,12 @@ type Props = {
   onRegion?: (region: Region) => void;
   showRoute?: boolean;
   bottomPadding?: number;
+  /** Height of the controls drawn over the top of the map. */
+  coveredTop?: number;
 };
 
 export const NvMap = forwardRef<NvMapHandle, Props>(function NvMap(
-  { pins, me, target, friends, cities, view, pinMode, selectedCity, onPub, onCity, onRegion, showRoute = true, bottomPadding = 0 },
+  { pins, me, target, friends, cities, view, pinMode, selectedCity, onPub, onCity, onRegion, showRoute = true, bottomPadding = 0, coveredTop = 0 },
   handle,
 ) {
   const ref = useRef<MapView>(null);
@@ -125,6 +130,13 @@ export const NvMap = forwardRef<NvMapHandle, Props>(function NvMap(
     const grouped = clusterPins(own ? pins.filter((p) => p !== own) : pins, viewport, size.width || 390);
     return { singles: own ? [...grouped.singles, own] : grouped.singles, clusters: grouped.clusters };
   }, [pins, targetKey, targetLat, targetLng, view, viewport, size.width]);
+
+  // Counts a pub as seen once the map stops on it as its own pin; a pub inside a cluster bubble is not shown.
+  const focused = useIsFocused();
+  useEffect(() => {
+    if (!ready || !focused || view === 'stopy' || !size.height) return;
+    trackPinsSeen(visiblePins(singles, viewport, size.height - bottomPadding, coveredTop).map((p) => p.key));
+  }, [bottomPadding, coveredTop, focused, ready, singles, size.height, view, viewport]);
 
   return (
     <MapView

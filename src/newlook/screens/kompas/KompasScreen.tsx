@@ -232,6 +232,7 @@ function MapMode({ k, name, onCompass }: { k: Kompas; name: NameReveal; onCompas
         onCity={setCityKey}
         onRegion={k.map.loadRegion}
         bottomPadding={tabSpace + 140}
+        coveredTop={insets.top + 104}
       />
       <View
         pointerEvents="none"
