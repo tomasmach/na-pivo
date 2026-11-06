@@ -120,6 +120,8 @@ export const kompasEn: Strings['nv']['kompas'] = {
   openFailed: "I couldn't open the pub. Try again.",
   missingPub: "Can't find it?",
   missingPubSub: 'Add the pub, everyone will see it',
+  addNamed: (name) => `Add "${name}"`,
+  addNamedSub: 'Everyone will see it',
 
   back: 'Back',
   favoriteAdd: 'Add to favourites',

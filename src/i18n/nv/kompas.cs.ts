@@ -130,6 +130,8 @@ export const kompasCs = {
   openFailed: 'Hospodu se nepovedlo otevřít. Zkus to znovu.',
   missingPub: 'Nenašel jsi ji?',
   missingPubSub: 'Přidej hospodu, uvidí ji všichni',
+  addNamed: (name: string) => `Přidat „${name}“`,
+  addNamedSub: 'Uvidí ji všichni',
 
   // — Hospoda —
   back: 'Zpět',

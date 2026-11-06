@@ -21,7 +21,7 @@ import { useSettingsStore } from '@/stores/settingsStore';
 import { formatPrice } from '@/utils/currency';
 
 import { Icon } from '../../components/Icon';
-import { Card, Person, Press, Row, Spinner, T, Tile } from '../../components/ui';
+import { Button, Card, Person, Press, Row, Spinner, T, Tile } from '../../components/ui';
 import { C, SCREEN_X, font, s } from '../../theme';
 import { distanceLabel, hoursNow } from './format';
 import { openNvPub, useKompasState } from './state';
@@ -55,6 +55,23 @@ function useLiveFriends(): LivePubSummary[] {
     return () => controller.abort();
   }, []);
   return live;
+}
+
+function MissingPub({ onPress }: { onPress: () => void }) {
+  return (
+    <Press onPress={onPress} style={[s.row, { gap: 12, padding: 16, borderRadius: 24, borderWidth: 1, borderColor: C.hairline }]}>
+      <Tile icon="map-pin-plus" />
+      <View style={[s.fill, { gap: 2 }]}>
+        <T s={16} w={700}>
+          {L().missingPub}
+        </T>
+        <T s={13} c={C.muted}>
+          {L().missingPubSub}
+        </T>
+      </View>
+      <Icon name="chevron-right" size={16} color={C.muted} />
+    </Press>
+  );
 }
 
 export function HledaniScreen() {
@@ -168,6 +185,8 @@ export function HledaniScreen() {
     s.kind === 'menu' ? { key: `${BEER_NAME_FILTER_PREFIX}${s.slug}`, label: s.name } : { key: s.brandSlug ?? s.slug, label: s.brandName ?? s.name };
   const beerLabel = beerSuggestion ? (beerSuggestion.brandName ?? beerSuggestion.name).replace(/ \d+°$/, '') : '';
   const nearbyRows = suggestions.nearby.slice(0, 3);
+  const noMatch = canSearch && !searching && !results.length && !beerSuggestion;
+  const addPub = (name?: string) => router.push(name ? { pathname: '/nv/pridat-hospodu', params: { name } } : '/nv/pridat-hospodu');
 
   return (
     <View style={{ flex: 1, backgroundColor: C.bg, paddingTop: insets.top + 8 }}>
@@ -201,6 +220,7 @@ export function HledaniScreen() {
         </Press>
       </View>
       <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ padding: SCREEN_X, gap: 16, paddingBottom: insets.bottom + 40 }}>
+        {canSearch ? null : <MissingPub onPress={() => addPub()} />}
         {!canSearch && live.length ? (
           <>
             <T s={19} w={700}>
@@ -333,23 +353,19 @@ export function HledaniScreen() {
             {L().openFailed}
           </T>
         ) : null}
-        {canSearch && !searching && !results.length && !beerSuggestion ? (
-          <T s={15} c={C.muted} style={{ paddingVertical: 8 }}>
-            {L().notFound(term)}
-          </T>
-        ) : null}
-        <Press onPress={() => router.push('/nv/pridat-hospodu')} style={[s.row, { gap: 12, padding: 16, borderRadius: 24, borderWidth: 1, borderColor: C.hairline }]}>
-          <Tile icon="map-pin-plus" />
-          <View style={[s.fill, { gap: 2 }]}>
-            <T s={16} w={700}>
-              {L().missingPub}
+        {noMatch ? (
+          <View style={{ gap: 14 }}>
+            <T s={15} c={C.muted} style={{ paddingTop: 8 }}>
+              {L().notFound(term)}
             </T>
-            <T s={13} c={C.muted}>
-              {L().missingPubSub}
+            <Button label={L().addNamed(term)} icon="map-pin-plus" onPress={() => addPub(term)} />
+            <T s={13} c={C.muted} style={{ textAlign: 'center' }}>
+              {L().addNamedSub}
             </T>
           </View>
-          <Icon name="chevron-right" size={16} color={C.muted} />
-        </Press>
+        ) : canSearch ? (
+          <MissingPub onPress={() => addPub()} />
+        ) : null}
       </ScrollView>
     </View>
   );

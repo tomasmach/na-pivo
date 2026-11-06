@@ -46,15 +46,15 @@ type Located = AddedPubLocation & { source: 'address' | 'gps' | 'pin' };
 
 export function PridatHospoduScreen() {
   const router = useRouter();
-  const { clientId: editedId } = useLocalSearchParams<{ clientId?: string }>();
+  const { clientId: editedId, name: typedName } = useLocalSearchParams<{ clientId?: string; name?: string }>();
   const position = useRecentPosition();
   const bumpCatalogRevision = usePubStore((st) => st.bumpCatalogRevision);
   const [manual, setManual] = useState(!!editedId);
   const [original, setOriginal] = useState<AddedPubSubmission | null>(null);
-  const [q, setQ] = useState('');
+  const [q, setQ] = useState(editedId ? '' : (typedName ?? ''));
   const [found, setFound] = useState<{ term: string; items: PubSearchResult[] | null } | null>(null);
   const [opening, setOpening] = useState<string | null>(null);
-  const [name, setName] = useState('');
+  const [name, setName] = useState(editedId ? '' : (typedName ?? ''));
   const [city, setCity] = useState('');
   const [address, setAddress] = useState('');
   const [located, setLocated] = useState<Located | null>(null);
