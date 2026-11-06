@@ -69,7 +69,7 @@ def test_every_home_asset_is_served(client):
 def test_home_social_image_has_preview_dimensions(client, settings):
     settings.PUBLIC_WEB_ORIGIN = "https://na-pivo.cz"
 
-    assert '<meta property="og:image" content="https://na-pivo.cz/og/home.png">' in client.get("/").content.decode()
+    assert re.search(r'<meta property="og:image" content="https://na-pivo.cz/og/home.png\?v=[0-9a-f]{10}">', client.get("/").content.decode())
     response = client.get("/og/home.png")
     image = Image.open(BytesIO(b"".join(response.streaming_content)))
 

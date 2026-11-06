@@ -9,9 +9,10 @@ from __future__ import annotations
 from collections import Counter
 from datetime import date, datetime, timedelta
 
+from django.conf import settings
 from django.core.cache import cache
 from django.http import HttpRequest, HttpResponse
-from django.utils import formats, timezone
+from django.utils import formats, timezone, translation
 from django.utils.text import slugify
 from django.utils.translation import gettext
 
@@ -25,13 +26,16 @@ from pubs.models import (
     PubContributionLog,
     UserAddedPub,
 )
+from pubs.price_map import PUBLIC_MIN_CZK
 from pubs.pub_events import PubEvent
+from pubs.web.dates import time_tag, with_times
 from pubs.web.pages import render_page, web_page
 from pubs.web.public_common import (
     PAGE_CACHE_SECONDS,
     breadcrumbs,
-    home_og_image,
     money,
+    og_png,
+    og_version,
     pub_url,
     public_cache,
     structured,
@@ -98,6 +102,7 @@ def _menu_changes(start: datetime, end: datetime) -> list[dict]:
             elif (
                 isinstance(beer.get("price_czk"), int)
                 and isinstance(current.get("price_czk"), int)
+                and min(beer["price_czk"], current["price_czk"]) >= PUBLIC_MIN_CZK
                 and beer["price_czk"] != current["price_czk"]
             ):
                 changes.append({
@@ -131,7 +136,8 @@ def _feed(week: int) -> dict:
             price, volume = prices.get((tap.cache_key, tap.product_id), (None, None))
             items.append({
                 "kind": "tap", "key": tap.cache_key, "name": tap.pub_name, "at": tap.observed_at,
-                "beer": tap.product.name, "price": price if (volume or 500) == 500 else None,
+                "beer": tap.product.name,
+                "price": price if (volume or 500) == 500 and (price or 0) >= PUBLIC_MIN_CZK else None,
             })
         items += _menu_changes(start, end)
         for pub in UserAddedPub.objects.filter(active=True, created_at__gte=start, created_at__lt=end).order_by(
@@ -185,6 +191,32 @@ def _new_pubs() -> list[dict]:
     return cache.get_or_set("web:news:new-pubs", build, PAGE_CACHE_SECONDS)
 
 
+def _share_card() -> dict:
+    """The share image of the unfiltered week: what changed in the last seven days."""
+
+    counts = Counter(item["kind"] for item in _feed(0)["items"])
+    taps, pubs, prices = counts["tap"], counts["pub"], counts["price"]
+    return {
+        "kicker": gettext("Za posledních 7 dní"),
+        "title": gettext("Co je nového v hospodách"),
+        "hero": "",
+        "hero_label": "",
+        "figures": [
+            (thousands(taps), gettext("nově na čepu")),
+            (thousands(pubs), plural(pubs, gettext("nová hospoda"), gettext("nové hospody"), gettext("nových hospod"))),
+            (thousands(prices), plural(prices, gettext("změna ceny"), gettext("změny cen"), gettext("změn cen"))),
+        ],
+        "address": settings.PUBLIC_WEB_ORIGIN.split("://", 1)[-1] + web_reverse("web-news"),
+    }
+
+
+@web_page
+def news_og(request: HttpRequest) -> HttpResponse:
+    with translation.override(getattr(request, "web_lang", "cs")):
+        payload = _share_card()
+    return og_png(request, payload)
+
+
 def _day_label(day: date, today: date, lang: str) -> str:
     if day == today:
         return gettext("Dnes")
@@ -221,7 +253,8 @@ def _row(item: dict, lang: str) -> dict:
     else:
         title = gettext("%(pub)s: %(title)s") % values
         label = gettext("Akce")
-        value = formats.date_format(date.fromisoformat(item["starts"]), "D j. n." if lang == "cs" else "D, N j")
+        starts = date.fromisoformat(item["starts"])
+        value = time_tag(starts, formats.date_format(starts, "D j. n." if lang == "cs" else "D, N j"))
     place = item.get("district") or item.get("city")
     return {
         "title": title,
@@ -278,7 +311,7 @@ def news(request: HttpRequest) -> HttpResponse:
     for item in shown:
         day = date.fromisoformat(item["day"])
         if not days or days[-1]["day"] != day:
-            days.append({"day": day, "label": _day_label(day, today, lang), "rows": []})
+            days.append({"day": day, "label": time_tag(day, _day_label(day, today, lang)), "rows": []})
         days[-1]["rows"].append(_row(item, lang))
 
     counts = Counter(item["kind"] for item in in_city)
@@ -294,18 +327,22 @@ def news(request: HttpRequest) -> HttpResponse:
     period = (
         gettext("Za posledních 7 dní")
         if week == 0
-        else gettext("Od %(from)s do %(to)s") % {
-            "from": _short_day(today - timedelta(days=7 * (week + 1)), today, lang),
-            "to": _short_day(today - timedelta(days=7 * week), today, lang),
-        }
+        else with_times(
+            gettext("Od %(from)s do %(to)s"),
+            **{
+                key: time_tag(day, _short_day(day, today, lang))
+                for key, day in (("from", today - timedelta(days=7 * (week + 1))), ("to", today - timedelta(days=7 * week)))
+            },
+        )
     )
     new_pubs = [
         {
             **pub,
             "url": pub_url(pub["name"], pub["key"]),
-            "meta": " · ".join(
-                part for part in (pub["district"] or pub["city"], _short_day(date.fromisoformat(pub["day"]), today, lang))
-                if part
+            "meta": with_times(
+                "%(place)s · %(day)s" if pub["district"] or pub["city"] else "%(day)s",
+                place=pub["district"] or pub["city"],
+                day=time_tag(date.fromisoformat(pub["day"]), _short_day(date.fromisoformat(pub["day"]), today, lang)),
             ),
         }
         for pub in _new_pubs()
@@ -331,7 +368,7 @@ def news(request: HttpRequest) -> HttpResponse:
         {
             "crumbs": crumbs,
             "h1": title,
-            "summary": f"{period}: {summary}",
+            "summary": with_times("%(period)s: %(summary)s", period=period, summary=summary),
             "kind_chips": kind_chips,
             "city_links": city_links,
             "city": city,
@@ -349,7 +386,8 @@ def news(request: HttpRequest) -> HttpResponse:
             "filtered": bool(kind or city),
             "all_url": base,
             "structured_data": structured(crumb_graph),
-            "og_image": home_og_image(),
+            "og_image": f"{settings.PUBLIC_WEB_ORIGIN}{web_reverse('news-og')}?v={og_version(_share_card())}",
+            "og_image_alt": gettext("Co je nového v hospodách"),
         },
         title=title,
         description=gettext(

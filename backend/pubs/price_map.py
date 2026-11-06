@@ -43,8 +43,9 @@ FRESH_DAYS = 90
 # A city or district with fewer priced pubs says more about one pub than the city.
 MIN_PUBS = 5
 CHEAPEST_PUBS = 10
-# A cheapest beer under this is a typo or a joke, not a pub's price.
-CHEAPEST_MIN_CZK = 20
+# A beer price under this is a typo or a joke, not a pub's price: no public page,
+# number or structured data uses it.
+PUBLIC_MIN_CZK = 20
 # Prices people entered in the app. Imported third-party menus stay in the app only.
 _SOURCES = (PubPriceIndex.Source.COMMUNITY, PubPriceIndex.Source.DRINK)
 PATHS = {"cs": "/ceny", "en": "/en/prices"}
@@ -194,7 +195,7 @@ def _cheapest(rows: list[PubPriceIndex], in_city: str = "") -> list[dict]:
 
     # 41 Kč for 0,4 l is dearer than 45 Kč for 0,5 l.
     candidates = sorted(
-        (row for row in rows if row.price_czk >= CHEAPEST_MIN_CZK),
+        rows,
         key=lambda row: (_half_litre_price(row), row.cache_key),
     )
     picked: list[dict] = []
@@ -239,6 +240,7 @@ def build_price_map(now: datetime | None = None) -> dict:
             active=True,
             observed_at__gte=since,
             source__in=_SOURCES,
+            price_czk__gte=PUBLIC_MIN_CZK,
         ).only("cache_key", "name", "lat", "lng", "city", "price_czk", "volume_ml", "observed_at")
     ))
     confirmed = _confirmed_since(rows, since)

@@ -464,7 +464,24 @@ def test_kraj_ranking_has_its_own_description_and_breadcrumb(client):
     # The whole of Czechia keeps its own text and crumb.
     national = client.get("/zebricky").content.decode()
     assert 'content="Která piva lidi v appce Na pivo hodnotí nejlíp.' in national
-    assert _breadcrumb_names(national)[-1][0] == "Piva"
+    # "Žebříčky" and "Piva" had the same address, so the crumbs end at "Žebříčky".
+    assert _breadcrumb_names(national)[-1][0] == "Žebříčky"
+
+
+def test_kraj_ranking_has_its_own_share_card(client):
+    _rank_in_prague()
+
+    html = client.get("/zebricky/praha").content.decode()
+    card = re.search(r'<meta property="og:image" content="([^"]+)"', html).group(1)
+    assert card.startswith(f"{ORIGIN}/zebricky/praha/og.png?v=")
+    national = re.search(r'<meta property="og:image" content="([^"]+)"', client.get("/zebricky").content.decode()).group(1)
+    assert national.startswith(f"{ORIGIN}/zebricky/og.png?v=") and national.split("?v=")[1] != card.split("?v=")[1]
+    image = client.get("/zebricky/praha/og.png")
+    assert image.status_code == 200 and image["Content-Type"] == "image/png" and image.content[:4] == b"\x89PNG"
+    english = client.get("/en/rankings/praha").content.decode()
+    assert f"{ORIGIN}/en/rankings/praha/og.png?v=" in english
+    assert client.get("/en/rankings/praha/og.png").status_code == 200
+    assert client.get("/zebricky/neexistuje/og.png").status_code == 404
 
 
 

@@ -15,6 +15,7 @@ from pubs.api.tests.test_piva import _auth, _products, _rate_many, _register
 from pubs.api.tests.test_tour_publications import directory  # noqa: F401  (autouse: the pubs tours use)
 from pubs.api.tests.test_tour_search import published
 from pubs.beer_ranking import refresh_beer_ranking
+from pubs.home_views import HOME_OG_PATH
 from pubs.models import FriendBlock, PubPriceSnapshot, TourPublication
 from pubs.price_map import save_price_snapshot
 from pubs.pub_events import PubEvent
@@ -165,7 +166,7 @@ def test_beer_index_without_prices_waits(client):
     html = _page(client, "/pivni-index")
     assert "Index se teprve počítá" in html
     image = client.get("/pivni-index/og.png")
-    assert image.status_code == 302 and image["Location"] == "/og/home.png"
+    assert image.status_code == 302 and image["Location"] == HOME_OG_PATH
 
 
 # --- tours ---------------------------------------------------------------------
