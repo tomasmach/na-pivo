@@ -243,6 +243,7 @@ export function Screen({
   contentStyle,
   scrollProps,
   padTop = 8,
+  modal = false,
 }: {
   children: React.ReactNode;
   tab?: boolean;
@@ -253,8 +254,11 @@ export function Screen({
   contentStyle?: StyleProp<ViewStyle>;
   scrollProps?: ScrollViewProps;
   padTop?: number;
+  /** Shown with `presentation: 'modal'`. On iOS that is a sheet that already starts below the status bar. */
+  modal?: boolean;
 }) {
   const insets = useSafeAreaInsets();
+  const headerTop = modal && Platform.OS === 'ios' ? 16 : insets.top + 8;
   const tabSpace = useTabBarSpace();
   const bottomBase = tab ? tabSpace : Math.max(insets.bottom, 16);
   const [footerH, setFooterH] = useState(52);
@@ -277,7 +281,7 @@ export function Screen({
   );
   return (
     <View style={{ flex: 1, backgroundColor: C.bg, paddingBottom: footerRoom }}>
-      <View style={{ paddingTop: insets.top + 8 }} onLayout={(e) => setHeaderH(e.nativeEvent.layout.height)}>
+      <View style={{ paddingTop: headerTop }} onLayout={(e) => setHeaderH(e.nativeEvent.layout.height)}>
         {header ? <View style={{ paddingHorizontal: SCREEN_X, paddingBottom: 4 }}>{header}</View> : null}
       </View>
       {scroll ? (
@@ -292,7 +296,7 @@ export function Screen({
           keyboardAvoidedExternally={!!footer}
           revealBelow={NEXT_FIELD_REVEAL}
           showsVerticalScrollIndicator={false}
-          contentContainerStyle={{ paddingBottom: bottomBase + footerSpace + 24 }}
+          contentContainerStyle={{ paddingBottom: footerRoom > 0 ? 24 : bottomBase + footerSpace + 24 }}
           keyboardShouldPersistTaps="handled"
         >
           {content}

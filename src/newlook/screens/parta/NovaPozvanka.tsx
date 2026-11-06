@@ -71,7 +71,7 @@ export function NovaPozvankaScreen() {
 
   if (id && !editing) {
     return (
-      <Screen header={<IconButton icon="x" size={40} iconSize={18} onPress={() => nvBack(router)} label={t.nv.parta.close} />}>
+      <Screen modal header={<IconButton icon="x" size={40} iconSize={18} onPress={() => nvBack(router)} label={t.nv.parta.close} />}>
         <T s={15} c={C.muted}>
           {t.nv.parta.loading}
         </T>
@@ -208,6 +208,7 @@ function PlanForm({ editing }: { editing: PartaPlan | null }) {
 
   return (
     <Screen
+      modal
       header={
         <View style={[s.row, { justifyContent: 'space-between' }]}>
           <D s={30}>{editing ? t.nv.parta.editTitle : t.nv.parta.newTitle}</D>
