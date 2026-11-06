@@ -11,7 +11,7 @@
     <p class="rs-ticket__eyebrow">Tour de pub<span class="rs-ticket__mark">{% icon "beer" "np-icon--s" %}</span></p>
     <h1 class="rs-ticket__title" id="tour-title">{{ tour.title }}</h1>
     {% if author %}<p class="rs-ticket__text">{% blocktranslate with nickname=author.nickname %}Veřejná tour od {{ nickname }}{% endblocktranslate %}</p>{% endif %}
-    {% if tour.scheduled_date %}<p class="rs-ticket__text">{% translate "Sraz" %}: {{ meeting_date|date:"DATE_FORMAT" }}{% if tour.scheduled_time %} · {{ tour.scheduled_time }}{% endif %} · {{ tour.timezone }}</p>{% endif %}
+    {% if tour.scheduled_date %}<p class="rs-ticket__text">{% translate "Sraz" %}: {{ meeting_date|timed }}{% if tour.scheduled_time %} · {{ tour.scheduled_time }}{% endif %} · {{ tour.timezone }}</p>{% endif %}
     <div class="rs-ticket__cut" aria-hidden="true"></div>
     <div class="rs-ticket__actions">
       <a class="np-btn np-btn--l rs-btn--ink np-on-phone" href="{{ deep_link }}">{% icon "smartphone" "np-icon--s" %}{% translate "Otevřít v Na pivo" %}</a>

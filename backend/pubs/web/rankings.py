@@ -8,7 +8,7 @@ from django.conf import settings
 from django.core.cache import cache
 from django.db.models import Sum
 from django.http import HttpRequest, HttpResponse
-from django.utils import formats, timezone
+from django.utils import formats, timezone, translation
 from django.utils.translation import gettext, ngettext, npgettext
 
 from pubs.beer_pages import page_path
@@ -20,6 +20,7 @@ from pubs.models import (
     PubPriceSnapshot,
     UserAddedPub,
 )
+from pubs.web.dates import time_tag, with_times
 from pubs.web.pages import render_page, web_page
 from pubs.web.public_common import (
     PAGE_CACHE_SECONDS,
@@ -27,6 +28,8 @@ from pubs.web.public_common import (
     breadcrumbs,
     decimal,
     home_og_image,
+    og_png,
+    og_version,
     public_cache,
     region_names,
     region_slug,
@@ -128,6 +131,38 @@ def _side_numbers() -> dict:
     return cache.get_or_set("web:rankings:side", build, PAGE_CACHE_SECONDS)
 
 
+def _share_card() -> dict | None:
+    """The national list's share image: the best beer big, the next two beside it."""
+
+    data = _ranking("", "")
+    rows = data["rows"][:3]
+    if not rows:
+        return None
+    return {
+        "kicker": _ratings_label(data["ratings"]),
+        "title": gettext("Nejlepší piva v Česku"),
+        "hero": decimal(rows[0]["avg"]),
+        "hero_label": rows[0]["name"],
+        "figures": [(decimal(row["avg"]), row["name"]) for row in rows[1:]],
+        "address": settings.PUBLIC_WEB_ORIGIN.split("://", 1)[-1] + web_reverse("web-rankings"),
+    }
+
+
+def _ratings_label(ratings: int) -> str:
+    if not ratings:
+        return ""
+    return ngettext(
+        "Z %(n)s hodnocení z appky Na pivo", "Z %(n)s hodnocení z appky Na pivo", ratings
+    ) % {"n": thousands(ratings)}
+
+
+@web_page
+def rankings_og(request: HttpRequest) -> HttpResponse:
+    with translation.override(getattr(request, "web_lang", "cs")):
+        payload = _share_card()
+    return og_png(request, payload)
+
+
 def _pubs_line(row: dict) -> str:
     if not row["pubs"]:
         return ""
@@ -209,7 +244,7 @@ def rankings(request: HttpRequest) -> HttpResponse:
             if local.date() == timezone.localdate()
             else formats.date_format(local, "j. n. Y" if request.web_lang == "cs" else "N j, Y")
         )
-        updated = gettext("přepočítáno %(when)s") % {"when": when}
+        updated = with_times(gettext("přepočítáno %(when)s"), when=time_tag(computed, when))
 
     crumbs, crumb_graph = breadcrumbs([("Na pivo", web_reverse("home")), (gettext("Žebříčky"), base), (gettext("Piva"), url())])
     graph = [crumb_graph]
@@ -234,9 +269,7 @@ def rankings(request: HttpRequest) -> HttpResponse:
         {
             "crumbs": crumbs,
             "h1": title,
-            "ratings_label": ngettext(
-                "Z %(n)s hodnocení z appky Na pivo", "Z %(n)s hodnocení z appky Na pivo", data["ratings"]
-            ) % {"n": thousands(data["ratings"])} if data["ratings"] else "",
+            "ratings_label": _ratings_label(data["ratings"]),
             "updated": updated,
             "style_chips": style_chips,
             "region_chips": region_chips,
@@ -257,7 +290,11 @@ def rankings(request: HttpRequest) -> HttpResponse:
                                      gettext("%(n)s hospod za poslední měsíc")) % {"n": side["new_pubs"]},
             "new_pubs": side["new_pubs"],
             "structured_data": structured(*graph),
-            "og_image": home_og_image(),
+            "og_image": (
+                f"{settings.PUBLIC_WEB_ORIGIN}{web_reverse('rankings-og')}?v={og_version(card)}"
+                if (card := _share_card()) else home_og_image()
+            ),
+            "og_image_alt": title if card else "",
         },
         title=title,
         description=gettext(

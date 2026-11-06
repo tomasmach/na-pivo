@@ -3,6 +3,7 @@
 ``{% web_url "web-pubs-city" city="praha" %}``  path in the language being rendered
 ``{% icon "map-pin" %}``                         inline lucide icon (``class`` adds classes)
 ``{% asset "np.css" %}``                         versioned URL of a web file
+``{{ day|timed }}``                                the date in ``<time datetime>`` (a format may follow)
 """
 
 from __future__ import annotations
@@ -11,10 +12,12 @@ from functools import cache
 from pathlib import Path
 
 from django import template
+from django.utils import formats
 from django.utils.html import escape
 from django.utils.safestring import SafeString, mark_safe
 
 from pubs.web.assets import asset_url
+from pubs.web.dates import time_tag
 from pubs.web.routes import web_reverse
 
 register = template.Library()
@@ -50,3 +53,8 @@ def icon(name: str, cls: str = "", label: str = "") -> SafeString:
 @register.simple_tag
 def asset(name: str) -> str:
     return asset_url(name)
+
+
+@register.filter
+def timed(day, fmt: str = "DATE_FORMAT") -> SafeString:
+    return time_tag(day, formats.date_format(day, fmt))

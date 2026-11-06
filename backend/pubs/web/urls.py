@@ -34,7 +34,7 @@ from pubs.web.beer_index import beer_index, beer_index_og
 from pubs.web.delete_account_views import delete_account, delete_account_confirm
 from pubs.web.diary_views import diary, log_beer, night, profile
 from pubs.web.invite_views import plan_invite, plan_invite_calendar, plan_invite_og
-from pubs.web.news import news
+from pubs.web.news import news, news_og
 from pubs.web.pages import component_gallery
 from pubs.web.pubs_views import (
     pub_og_image,
@@ -44,7 +44,7 @@ from pubs.web.pubs_views import (
     pubs_index,
     search_page,
 )
-from pubs.web.rankings import rankings
+from pubs.web.rankings import rankings, rankings_og
 from pubs.web.routes import bilingual
 from pubs.web.tours import tour, tour_og, tours
 
@@ -60,8 +60,10 @@ urlpatterns = [
     *bilingual("hledat", "en/search", search_page, "web-search"),
 
     *bilingual("zebricky", "en/rankings", rankings, "web-rankings"),
+    *bilingual("zebricky/og.png", "en/rankings/og.png", rankings_og, "rankings-og"),
 
     *bilingual("novinky", "en/news", news, "web-news"),
+    *bilingual("novinky/og.png", "en/news/og.png", news_og, "news-og"),
 
     *bilingual("trasy", "en/tours", tours, "web-tours"),
     *bilingual("trasy/<str:tour_id>", "en/tours/<str:tour_id>", tour, "web-tour"),

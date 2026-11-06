@@ -34,6 +34,7 @@ from pubs.home_views import (
     AUTHOR,
     DATA_LICENSE_PATH,
     HOME_OG_PATH,
+    INVITE_OG_PATH,
     PLAY_STORE_URL,
     WEBSITE_ID,
     app_store_url,
@@ -56,6 +57,7 @@ from pubs.models import (
 )
 from pubs.price_map import PATHS as PRICE_PATHS
 from pubs.price_map import city_slug, headline_prices, render_city_og_image
+from pubs.web.dates import time_tag, with_times
 from pubs.web.pages import login_url, render_page, web_page
 from pubs.web.routes import web_reverse
 
@@ -90,7 +92,7 @@ def _invite(
         "web/reskin/invite.html",
         {
             "og_url": f"{settings.PUBLIC_WEB_ORIGIN}{path}",
-            "og_image_url": f"{settings.PUBLIC_WEB_ORIGIN}/og/invite.png",
+            "og_image_url": f"{settings.PUBLIC_WEB_ORIGIN}{INVITE_OG_PATH}",
             "deep_link": deep_link,
             "headline": texts["headline"],
             "body": texts["body"],
@@ -210,8 +212,11 @@ def android_asset_statements(_request: HttpRequest) -> JsonResponse:
     return response
 
 
-def invite_asset(_request: HttpRequest, filename: str) -> FileResponse:
-    """Serve the tiny public invite asset set without relying on Caddy paths."""
+def invite_asset(request: HttpRequest, filename: str) -> FileResponse:
+    """Serve the tiny public invite asset set without relying on Caddy paths.
+
+    Only an address with ``?v=`` names one version of the file, so only that one is immutable.
+    """
 
     asset = _ASSETS.get(filename)
     if asset is None:
@@ -221,7 +226,7 @@ def invite_asset(_request: HttpRequest, filename: str) -> FileResponse:
     if not path.is_file():
         raise Http404
     response = FileResponse(path.open("rb"), content_type=content_type)
-    response.headers["Cache-Control"] = "public, max-age=604800, immutable"
+    response.headers["Cache-Control"] = "public, max-age=604800" + (", immutable" if request.GET.get("v") else "")
     response.headers["X-Content-Type-Options"] = "nosniff"
     return response
 
@@ -596,6 +601,8 @@ def _beer_structured_data(origin: str, lang: str, page: BeerPage | None, url: st
         product: dict = {
             "@type": "Product",
             "name": data["name"],
+            # The page's own summary: where it is on tap and what it usually costs.
+            "description": _beer_texts(page.kind, page, page.key)["description"],
             "brand": {"@type": "Brand", "name": data["brand_name"]},
             "url": url,
         }
@@ -689,10 +696,11 @@ def _snapshot_texts(snapshot: PubPriceSnapshot | None, area: dict | None) -> dic
     if not stats:
         return {}
     return {
-        "basis": gettext("Z nejlevnějších piv v %(pubs)s hospodách za poslední rok. Stav k %(date)s.") % {
-            "pubs": stats["pubs"],
-            "date": formats.date_format(snapshot.day, "DATE_FORMAT"),
-        },
+        "basis": with_times(
+            gettext("Z nejlevnějších piv v %(pubs)s hospodách za poslední rok. Stav k %(date)s."),
+            pubs=stats["pubs"],
+            date=time_tag(snapshot.day, formats.date_format(snapshot.day, "DATE_FORMAT")),
+        ),
     }
 
 

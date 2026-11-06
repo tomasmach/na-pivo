@@ -29,6 +29,7 @@ from pubs.i18n import current_locale
 from pubs.models import PubPriceSnapshot
 from pubs.price_map import city_slug
 from pubs.web import pubs_data
+from pubs.web.dates import time_tag, with_times
 from pubs.web.pages import render_page, web_page
 from pubs.web.pub_map import live_map, pub_map
 from pubs.web.public_common import og_image
@@ -639,12 +640,13 @@ def _menu_updated(updated: datetime | None, now: datetime) -> str:
     if not updated:
         return ""
     days = (timezone.localdate(now, pubs_data.PRAGUE) - timezone.localdate(updated, pubs_data.PRAGUE)).days
+    day = timezone.localdate(updated, pubs_data.PRAGUE)
     if days <= 0:
-        return gettext("ověřeno dnes")
+        return time_tag(day, gettext("ověřeno dnes"))
     if days == 1:
-        return gettext("ověřeno včera")
+        return time_tag(day, gettext("ověřeno včera"))
     today = timezone.localdate(now, pubs_data.PRAGUE)
-    return gettext("ověřeno %(date)s") % {"date": _short_date(timezone.localdate(updated, pubs_data.PRAGUE), today)}
+    return with_times(gettext("ověřeno %(date)s"), date=time_tag(day, _short_date(day, today)))
 
 
 def _pub_stats(pub: dict, now: datetime) -> list[dict]:

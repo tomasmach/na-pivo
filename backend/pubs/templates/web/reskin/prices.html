@@ -39,13 +39,13 @@
   {% translate "Města" as title %}{% translate "Nejvíc hospod" as default_sort %}{% translate "Najdi město" as search_label %}
   {% blocktranslate with count=cities|length asvar more_label %}Ukázat všechna města ({{ count }}){% endblocktranslate %}
   {% translate "Tohle město tu zatím nemám. Ukážu ho, až budu mít ceny aspoň z 5 tamních hospod." as empty_text %}
-  {% include "web/reskin/_area_list.html" with areas=cities list_id="cities" %}
+  {% translate "Město" as name_label %}{% include "web/reskin/_area_list.html" with areas=cities list_id="cities" %}
   {% endif %}
   {% if districts %}
   {% translate "Praha podle městských částí" as title %}{% translate "Podle čísla" as default_sort %}{% translate "Najdi městskou část" as search_label %}
   {% blocktranslate with count=districts|length asvar more_label %}Ukázat všechny městské části ({{ count }}){% endblocktranslate %}
   {% translate "Tuhle část tu zatím nemám. Ukážu ji, až budu mít ceny aspoň z 5 tamních hospod." as empty_text %}
-  {% include "web/reskin/_area_list.html" with areas=districts list_id="districts" %}
+  {% translate "Městská část" as name_label %}{% include "web/reskin/_area_list.html" with areas=districts list_id="districts" %}
   {% endif %}
 </div>
 {% endif %}
