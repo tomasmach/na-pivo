@@ -110,12 +110,12 @@ it('rings an hour before closing with buttons for the nearest pubs open longer',
   const [request] = scheduled();
   expect(request.trigger.date.getTime()).toBe(CLOSES_AT - 60 * 60_000);
   expect(request.content.title).toMatch(/^U Tygra zavírá ve? \d/);
-  expect(request.content.body).toBe('Déle mají otevřeno Lokál (180 m), Parlament (600 m) a Pivnice (800 m).');
+  expect(request.content.body).toBe('Déle mají otevřeno Lokál (180\u00a0m), Parlament (600\u00a0m) a Pivnice (800\u00a0m).');
   expect(request.content.data.pubs.map((pub) => pub.name)).toEqual(['Lokál', 'Parlament', 'Pivnice']);
   expect(mockSetNotificationCategoryAsync).toHaveBeenCalledWith(request.content.categoryIdentifier, [
-    { identifier: 'pub-0', buttonTitle: 'Lokál · 180 m', options: { opensAppToForeground: true } },
-    { identifier: 'pub-1', buttonTitle: 'Parlament · 600 m', options: { opensAppToForeground: true } },
-    { identifier: 'pub-2', buttonTitle: 'Pivnice · 800 m', options: { opensAppToForeground: true } },
+    { identifier: 'pub-0', buttonTitle: 'Lokál · 180\u00a0m', options: { opensAppToForeground: true } },
+    { identifier: 'pub-1', buttonTitle: 'Parlament · 600\u00a0m', options: { opensAppToForeground: true } },
+    { identifier: 'pub-2', buttonTitle: 'Pivnice · 800\u00a0m', options: { opensAppToForeground: true } },
   ]);
 });
 
@@ -140,9 +140,9 @@ it('keeps pub names out of the notification when the user hides them', async () 
   expect(request.content.title).not.toContain('U Tygra');
   expect(request.content.body).toBe('Kousek odsud mají déle otevřeno ještě 3 hospody.');
   expect(mockSetNotificationCategoryAsync.mock.calls[0][1]).toEqual([
-    expect.objectContaining({ buttonTitle: 'Hospoda · 180 m' }),
-    expect.objectContaining({ buttonTitle: 'Hospoda · 600 m' }),
-    expect.objectContaining({ buttonTitle: 'Hospoda · 800 m' }),
+    expect.objectContaining({ buttonTitle: 'Hospoda · 180\u00a0m' }),
+    expect.objectContaining({ buttonTitle: 'Hospoda · 600\u00a0m' }),
+    expect.objectContaining({ buttonTitle: 'Hospoda · 800\u00a0m' }),
   ]);
 });
 

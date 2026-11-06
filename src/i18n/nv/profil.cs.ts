@@ -74,7 +74,7 @@ export const profilCs = {
     lastTransit: 'Připomenout poslední spoj',
     lastTransitSub: 'Jen Praha a okolí, potřebuju domovský bod',
     closingTime: 'Upozornit na zavíračku',
-    closingTimeSub: 'Hodinu před zavřením ukážu tři nejbližší hospody, kde mají otevřeno déle',
+    closingTimeSub: 'Hodinu předem ukážu, kde mají otevřeno déle',
     tourReminders: 'Připomenout tour',
     tourRemindersSub: 'V den tour připomenu, kdy a kde je sraz',
     water: 'Připomenout vodu',

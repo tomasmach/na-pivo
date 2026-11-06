@@ -154,17 +154,20 @@ async function lookupPlan(session: TallySession): Promise<{ plan: ClosingPlan | 
   return { plan, retryAfterMs: REFRESH_AFTER_MS };
 }
 
+// A notification wraps anywhere; "442 m" must stay on one line.
+const distanceText = (meters: number) => distanceLabel(meters).replace(' ', '\u00a0');
+
 function contentFor(session: TallySession, plan: ClosingPlan) {
   const hideNames = useSettingsStore.getState().hidePubNames;
   const time = new Date(plan.closesAtMs).toLocaleTimeString(intlLocale, { hour: 'numeric', minute: '2-digit' });
-  const places = plan.alternatives.map((pub) => t.notifications.closingTimePlace(pub.name, distanceLabel(pub.distanceMeters)));
+  const places = plan.alternatives.map((pub) => t.notifications.closingTimePlace(pub.name, distanceText(pub.distanceMeters)));
   return {
     title: t.notifications.closingTimeTitle(hideNames ? '' : session.pubName, time),
     body: hideNames
       ? t.notifications.closingTimeBodyHidden(plan.alternatives.length)
       : t.notifications.closingTimeBody(places),
     actions: plan.alternatives.map((pub) =>
-      t.notifications.closingTimeAction(hideNames ? '' : pub.name, distanceLabel(pub.distanceMeters)),
+      t.notifications.closingTimeAction(hideNames ? '' : pub.name, distanceText(pub.distanceMeters)),
     ),
     pubs: plan.alternatives.map(({ key, name, lat, lng }): ClosingTimePub => ({ key, name, lat, lng })),
   };
