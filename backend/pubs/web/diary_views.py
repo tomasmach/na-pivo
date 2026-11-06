@@ -331,7 +331,9 @@ def diary(request: HttpRequest) -> HttpResponse:
                 {"value": _num(len(nights)), "label": plural(len(nights), gettext("večer"), gettext("večery"), gettext("večerů"))},
                 {"value": _num(d.distinct_pubs(nights)), "label": plural(d.distinct_pubs(nights), gettext("hospoda"), gettext("hospody"), gettext("hospod"))},
                 {"value": _money(sum(n.spent_czk for n in nights)), "label": gettext("utraceno")} if any(n.priced for n in nights) else None,
-                {"value": _num(len(friends_at_table)), "label": gettext("kamarádi u stolu")} if friends_at_table else None,
+                {"value": _num(len(friends_at_table)), "label": plural(
+                    len(friends_at_table), gettext("kamarád u stolu"), gettext("kamarádi u stolu"), gettext("kamarádů u stolu"),
+                )} if friends_at_table else None,
             )
             if s
         ],

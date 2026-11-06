@@ -86,6 +86,8 @@ urlpatterns = [
         name="invite-og-image",
     ),
     path("og/home.png", invite_asset, {"filename": "og-home.png"}, name="home-og-image"),
+    path("icon-512.png", invite_asset, {"filename": "icon-512.png"}, name="icon-512"),
+    path("manifest.webmanifest", invite_asset, {"filename": "manifest.webmanifest"}, name="web-manifest"),
     path("", include("pubs.web.urls")),
     # All v1 API routes live in the pubs app — the api agent will create pubs/api/urls.py
     path("v1/", include("pubs.api.urls")),

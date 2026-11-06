@@ -452,11 +452,9 @@ def city_pubs(slug: str) -> dict | None:
         for pub in pubs:
             brand_counts.update(pub["brands"])
             brand_names.update(pub.pop("brand_names"))
-        priced = [half_litre(pub["price"], pub["volume"]) for pub in pubs if pub["price"]]
         data = {
             **city,
             "list": pubs,
-            "typical_price": round(statistics.median(priced)) if len(priced) >= MIN_RATERS else None,
             "brands": [
                 {"key": key, "name": brand_names[key], "pubs": count}
                 for key, count in brand_counts.most_common(12)
@@ -780,6 +778,12 @@ def city_indexed(city: dict) -> bool:
     return city["pubs"] >= MIN_INDEXED_CITY_PUBS and city["slug"] in _indexed()["cities"]
 
 
+def district_indexed(city_slug: str, district: str, pubs: int) -> bool:
+    """The same rule for a district of a big city: enough pubs and at least one with content."""
+
+    return pubs >= MIN_INDEXED_CITY_PUBS and (city_slug, district) in _indexed()["districts"]
+
+
 def indexed_pubs() -> dict[str, datetime | None]:
     """Address key of every pub page with content, and when its menu, hours or price last changed."""
 
@@ -787,14 +791,14 @@ def indexed_pubs() -> dict[str, datetime | None]:
 
 
 def _indexed() -> dict:
-    data = cache.get("web:pubs:indexed")
+    data = cache.get("web:pubs:indexed:2")
     if data is None:
         with_data = set(PubCommunityData.objects.exclude(beers=[]).values_list("cache_key", flat=True)) | set(
             PubPriceIndex.objects.filter(active=True, source__in=_PRICE_SOURCES).values_list("cache_key", flat=True)
         )
         rows = _enrich([pub for pub in catalogue()["pubs"] if pub["k"] in with_data])
         # Two spellings of one name in a cell share an address. Like find_pub, the first one is the page.
-        pubs, cities, seen = {}, set(), set()
+        pubs, cities, districts, seen = {}, set(), set(), set()
         for row in rows:
             if row["key"] in seen:
                 continue
@@ -802,6 +806,7 @@ def _indexed() -> dict:
             if has_content(row):
                 pubs[row["key"]] = row["changed_at"]
                 cities.add(row["city_slug"])
-        data = {"pubs": pubs, "cities": cities}
-        cache.set("web:pubs:indexed", data, CATALOGUE_TTL)
+                districts.add((row["city_slug"], row["district"]))
+        data = {"pubs": pubs, "cities": cities, "districts": districts}
+        cache.set("web:pubs:indexed:2", data, CATALOGUE_TTL)
     return data

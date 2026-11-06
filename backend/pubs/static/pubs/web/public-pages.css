@@ -64,6 +64,8 @@ a.pp-rank__name:hover { text-decoration: underline; }
 .pp-rank__count-short .np-icon { width: 12px; height: 12px; }
 .pp-under { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 16px; margin-top: 24px; }
 .pp-note { display: inline-flex; align-items: center; gap: 8px; color: var(--np-muted); font-size: 14px; }
+.pp-note .np-link { padding-block: 3px; margin-block: -3px; }
+.pi-press .np-link { padding-block: 4px; }
 
 .pp-cta { display: grid; gap: 12px; padding: 28px 24px; border: 1px solid var(--np-line); border-radius: var(--np-radius-l); }
 .pp-cta__title { font: 800 36px/1 var(--np-display); }
@@ -133,18 +135,22 @@ a.pp-rank__name:hover { text-decoration: underline; }
 .pi-card-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 8px 16px; margin-bottom: 16px; }
 .pi-card-head .np-title { margin: 0; }
 .pi-cities .pi-card-head { padding: 0; }
-.pi-pairs { display: grid; margin: 0; padding: 0; list-style: none; }
-.pi-pairs li { display: flex; align-items: center; gap: 12px; min-height: 48px; }
-.pi-pairs li + li { box-shadow: 0 -1px 0 var(--np-hairline); }
-.pi-pairs li > span:first-child { flex: 1; display: grid; }
+/* The tables of the index keep the look of the lists they were: each row is laid out on its own. */
+table.pi-pairs, table.pi-map, table.pi-bars { width: 100%; border-collapse: collapse; }
+.pi-pairs > tbody, .pi-map > tbody, .pi-bars > tbody { display: contents; }
+.pi-pairs th, .pi-pairs td, .pi-map th, .pi-map td, .pi-bars th, .pi-bars td { padding: 0; font-weight: inherit; text-align: start; }
+.pi-pairs { display: grid; margin: 0; padding: 0; }
+.pi-pairs tr { display: flex; align-items: center; gap: 12px; min-height: 48px; }
+.pi-pairs tr + tr { box-shadow: 0 -1px 0 var(--np-hairline); }
+.pi-pairs th { flex: 1; display: grid; }
 .pi-pairs small { color: var(--np-muted); font-size: 12px; }
-.pi-pairs strong { min-width: 64px; text-align: right; font: 800 22px/1 var(--np-display); white-space: nowrap; }
+.pi-pairs .pi-pairs__value { min-width: 64px; text-align: right; font: 800 22px/1 var(--np-display); white-space: nowrap; }
 .pi-section { margin-bottom: 24px; }
 .pi-regions { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 40px; }
 .pi-map { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); grid-auto-rows: 104px; gap: 6px; }
 .pi-tile { display: flex; flex-direction: column; justify-content: space-between; padding: 12px; border-radius: 12px; background: var(--np-control); min-width: 0; }
-.pi-tile__name { overflow: hidden; color: inherit; font-size: 12px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; opacity: 0.8; }
-.pi-tile__value { font: 800 32px/1 var(--np-display); }
+.pi-map .pi-tile__name { overflow: hidden; color: inherit; font-size: 12px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; opacity: 0.8; }
+.pi-map .pi-tile__value { font: 800 32px/1 var(--np-display); }
 .pi-tile--none { background: var(--np-bg); color: var(--np-muted); box-shadow: inset 0 0 0 1px var(--np-hairline); }
 .pi-tile--0 { background: #1f1f1f; }
 .pi-tile--1 { background: #2e2e2e; }
@@ -170,15 +176,15 @@ a.pp-rank__name:hover { text-decoration: underline; }
 .pi-two { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-bottom: 24px; }
 .pi-two--wide { grid-template-columns: minmax(0, 1fr) 400px; }
 .pi-two--one { grid-template-columns: 1fr; }
-.pi-bars { display: grid; gap: 4px; margin: 0; padding: 0; list-style: none; }
-.pi-bars li { display: grid; grid-template-columns: minmax(120px, 180px) minmax(0, 1fr) 64px; align-items: center; gap: 16px; min-height: 52px; }
+.pi-bars { display: grid; gap: 4px; margin: 0; padding: 0; }
+.pi-bars tr { display: grid; grid-template-columns: minmax(120px, 180px) minmax(0, 1fr) 64px; align-items: center; gap: 16px; min-height: 52px; }
 .pi-bars__name { display: grid; min-width: 0; }
-.pi-bars__name strong { overflow: hidden; font-size: 14px; text-overflow: ellipsis; white-space: nowrap; }
+.pi-bars__name strong { overflow: hidden; font-size: 14px; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
 .pi-bars__name span { overflow: hidden; color: var(--np-muted); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
-.pi-bars__bar { width: 100%; height: 8px; }
+.pi-bars__bar { display: block; width: 100%; height: 8px; }
 .pi-bars__bar rect { fill: #4a4a4a; }
 .pi-bars__bar rect.is-top { fill: var(--np-white); }
-.pi-bars b { text-align: right; font: 800 22px/1 var(--np-display); white-space: nowrap; }
+.pi-bars .pi-bars__value { text-align: right; font: 800 22px/1 var(--np-display); white-space: nowrap; }
 .pi-history { display: grid; grid-auto-columns: minmax(0, 1fr); grid-auto-flow: column; gap: 10px; margin: 0; padding: 0; list-style: none; }
 .pi-history li { display: grid; grid-template-rows: auto 140px auto; justify-items: center; gap: 8px; }
 .pi-history__value { color: var(--np-text-2); font-size: 12px; }
@@ -216,11 +222,11 @@ a.pp-rank__name:hover { text-decoration: underline; }
   .pi-hero__value { font-size: 96px; }
   .pi-hero__text strong { font-size: 17px; }
   .pi-map { grid-template-columns: repeat(3, minmax(0, 1fr)); grid-auto-rows: 76px; }
-  .pi-map > .pi-tile { grid-area: auto; }
+  .pi-map .pi-tile { grid-area: auto; }
   .pi-tile { padding: 10px; }
-  .pi-tile__value { font-size: 26px; }
+  .pi-map .pi-tile__value { font-size: 26px; }
   .pi-legend__steps { grid-template-columns: repeat(3, 1fr); }
-  .pi-bars li { grid-template-columns: minmax(0, 1fr) 72px 56px; gap: 10px; }
+  .pi-bars tr { grid-template-columns: minmax(0, 1fr) 72px 56px; gap: 10px; }
   .pi-history { overflow-x: auto; grid-auto-columns: 64px; padding-bottom: 4px; }
   .pi-method { margin-top: 48px; }
   .pi-method__cols { grid-template-columns: 1fr; gap: 20px; }

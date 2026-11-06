@@ -49,7 +49,7 @@ def _csp(with_map: bool = False) -> str:
     return (
         "default-src 'none'; style-src 'self'; font-src 'self'; "
         f"img-src {images}; script-src 'self'; connect-src {connect}; "
-        "form-action 'self'; base-uri 'none'; frame-ancestors 'none'"
+        "manifest-src 'self'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'"
     )
 
 

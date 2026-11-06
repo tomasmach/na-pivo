@@ -16,7 +16,7 @@
         <span class="rs-price__sub">{% if area %}{% translate "medián všech tamních hospod" %}{% else %}{% translate "medián celé ČR" %}{% endif %}{% if stats.mostly_stale %} · {% translate "hlavně ceny starší 3 měsíců" %}{% endif %}</span>
       </span>
     </div>
-    {% if basis %}<p class="rs-note">{% icon "info" "np-icon--s" %}{{ basis }}</p>{% endif %}
+    {% if basis %}<p class="rs-note">{% icon "info" "np-icon--s" %}<span>{{ basis }}</span></p>{% endif %}
     {% endif %}
   </div>
   {% if facts %}
@@ -62,7 +62,7 @@
     {% for pub in cheapest %}<li class="rs-ranked__row{% if pub.url %} rs-row--link{% endif %}">
       <span class="rs-ranked__rank" aria-hidden="true">{{ forloop.counter }}</span>
       <span class="rs-ranked__who"><span class="rs-ranked__name">{% if pub.url %}<a class="rs-row__link" href="{{ pub.url }}">{{ pub.name }}</a>{% else %}{{ pub.name }}{% endif %}</span>{% if pub.city and pub.city != area.name %}<span class="rs-ranked__meta city">{{ pub.city|place }}</span>{% endif %}{% if pub.stale %}<span class="rs-ranked__meta">{% translate "cena starší 3 měsíců" %}</span>{% endif %}</span>
-      <span class="rs-ranked__price">{{ pub.price_czk }} {% translate "Kč" %}{% if pub.volume_ml != 500 %}<span class="rs-ranked__meta">{% blocktranslate with litres=pub.litres %}za {{ litres }} l{% endblocktranslate %}</span>{% endif %}</span>
+      <span class="rs-ranked__price">{{ pub.per_half_litre }} {% translate "Kč" %}{% if pub.volume_ml != 500 %}<span class="rs-ranked__meta">{% translate "za 0,5 l" %}</span><span class="rs-ranked__meta">{% blocktranslate with price=pub.price_czk litres=pub.litres %}na lístku {{ price }} Kč za {{ litres }} l{% endblocktranslate %}</span>{% endif %}</span>
       {% if pub.url %}<span class="rs-row__chevron">{% icon "chevron-right" "np-icon--s" %}</span>{% endif %}
     </li>{% endfor %}
   </ol>

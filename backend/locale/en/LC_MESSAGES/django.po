@@ -1508,7 +1508,7 @@ msgstr "Where %(beer)s is on tap"
 
 #, python-format
 msgid "%(beer)s: kde se čepuje a za kolik"
-msgstr "%(beer)s: where it's on tap and for how much"
+msgstr "%(beer)s on tap: pubs and prices"
 
 #, python-format
 msgid "Piva značky %(brand)s a kde se čepují"
@@ -4950,8 +4950,12 @@ msgid "hospod čepuje"
 msgstr "pubs pouring"
 
 #, python-format
-msgid "průměr %(beers)s z %(count)s hodnocení"
-msgstr "average of %(beers)s from %(count)s ratings"
+msgid "průměr %(n)s piva z %(count)s hodnocení"
+msgstr "average of %(n)s beer from %(count)s ratings"
+
+#, python-format
+msgid "průměr %(n)s piv z %(count)s hodnocení"
+msgstr "average of %(n)s beers from %(count)s ratings"
 
 msgid "hodnocení"
 msgstr "ratings"
@@ -5535,8 +5539,8 @@ msgctxt "heading"
 msgid "Kolik stojí pivo %(in_city)s"
 msgstr "What a beer costs %(in_city)s"
 
-msgid "Cena piva %(year)s po městech: kolik stojí pivo v hospodě"
-msgstr "Beer prices %(year)s by town: what a beer costs in a pub"
+msgid "Cena piva %(year)s po městech: kolik stojí v hospodě"
+msgstr "Beer prices %(year)s by town: what beer costs in pubs"
 
 msgid "Kde se čepuje %(brand)s: %(pubs)s, %(beers)s s vlastní stránkou. U každé hospody cena a datum posledního potvrzení."
 msgstr "Where %(brand)s is poured: %(pubs)s, %(beers)s with their own page. Each pub with its price and the date it was last confirmed."
@@ -5554,7 +5558,7 @@ msgid "hospody čepují"
 msgstr "pubs pouring"
 
 msgid "Pivní index Česka: cena piva po krajích a v čase"
-msgstr "Czech Beer Index: beer prices by region and over time"
+msgstr "Czech Beer Index: beer prices by region over time"
 
 msgid "Zavřenou hospodu nebo podnik, který hospodou není, nahlásíš v appce. Zmizí, až ho nahlásí %(n)s různých lidí."
 msgstr "Report a closed pub or a place that is not a pub in the app. It disappears once %(n)s different people report it."
@@ -5597,3 +5601,36 @@ msgstr "half of pubs between %(low)s and %(high)s CZK"
 
 msgid "hlavně ceny starší 3 měsíců"
 msgstr "mostly prices over 3 months old"
+
+#, python-format
+msgctxt "one"
+msgid "%(n)s hodnocení"
+msgstr "%(n)s rating"
+
+msgid "kamarád u stolu"
+msgstr "friend at the table"
+
+msgid "kamarádů u stolu"
+msgstr "friends at the table"
+
+msgid "Medián ceny nejlevnějšího piva"
+msgstr "Median price of the cheapest beer"
+
+msgid "Dolní a horní kvartil ceny"
+msgstr "Lower and upper price quartile"
+
+msgid "Počet hospod s cenou"
+msgstr "Number of pubs with a price"
+
+#, python-format
+msgid "na lístku %(price)s Kč za %(litres)s l"
+msgstr "%(price)s CZK for %(litres)s l on the menu"
+
+msgid "Proti Česku"
+msgstr "Against Czechia"
+
+msgid "Střední cena"
+msgstr "Median price"
+
+msgid "Změna za rok"
+msgstr "Change in a year"

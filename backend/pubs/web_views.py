@@ -48,6 +48,7 @@ from pubs.home_views import (
     organization,
     organization_ref,
     play_store_url,
+    price_variables,
 )
 from pubs.home_views import PATHS as HOME_PATHS
 from pubs.models import (
@@ -70,6 +71,8 @@ from pubs.web.words import plural
 
 # Lists longer than this get search and sorting, and start folded to this many rows.
 _FOLDED_ROWS = 12
+# A beer like Pilsner Urquell is on tap in hundreds of pubs; past this many its list goes on over pages.
+PUBS_PER_PAGE = 50
 # Live numbers beside a daily snapshot: fresh enough, and one visit costs a few queries at most.
 _LIVE_SECONDS = 600
 
@@ -77,6 +80,8 @@ _ASSET_ROOT = Path(__file__).resolve().parent / "static" / "pubs" / "invite"
 _ASSETS: dict[str, tuple[str, str]] = {
     "favicon.ico": ("favicon.ico", "image/x-icon"),
     "apple-touch-icon.png": ("apple-touch-icon.png", "image/png"),
+    "icon-512.png": ("favicon-512.png", "image/png"),
+    "manifest.webmanifest": ("manifest.webmanifest", "application/manifest+json"),
     "og-invite.png": ("og-invite.png", "image/png"),
     "og-home.png": ("og-home.png", "image/png"),
 }
@@ -484,6 +489,7 @@ def _prices_structured_data(
             "isAccessibleForFree": True,
             "license": f"{origin}{DATA_LICENSE_PATH}",
             "inLanguage": lang,
+            "variableMeasured": price_variables(),
         })
     return ld_json({"@graph": graph})
 
@@ -506,7 +512,7 @@ def _texts(snapshot: PubPriceSnapshot | None, country: dict | None, area: dict |
     return {
         "h1": gettext("Kolik stojí pivo v hospodě"),
         "page_title": (
-            gettext("Cena piva %(year)s po městech: kolik stojí pivo v hospodě") % {"year": snapshot.day.year}
+            gettext("Cena piva %(year)s po městech: kolik stojí v hospodě") % {"year": snapshot.day.year}
             if snapshot
             else gettext("Kolik stojí pivo v hospodě")
         ),
@@ -859,7 +865,11 @@ def beer_prices(request: HttpRequest, city: str = "") -> HttpResponse:
             "beer_index_url": web_reverse("web-beer-index"),
             "about_url": web_reverse("web-about") + "#ceny",
             "cheapest": [
-                {**pub, "litres": _litres(pub["volume_ml"]), "url": _pub_url(pub), "name": pub_name(pub["name"])}
+                {
+                    **pub, "litres": _litres(pub["volume_ml"]), "url": _pub_url(pub), "name": pub_name(pub["name"]),
+                    # The list is ordered by this, so it is the number each row shows.
+                    "per_half_litre": round(pub["price_czk"] * 500 / pub["volume_ml"]),
+                }
                 for pub in (area.get("cheapest", []) if area else data.get("cheapest", []))
             ],
             "elsewhere": _elsewhere(data, area, city_urls) if area else [],
@@ -1096,6 +1106,34 @@ def beer_pages(request: HttpRequest, kind: str = BeerPage.Kind.LIST, key: str = 
         }
         for index, pub in enumerate(data.get("listed", []))
     ]
+    brand_pubs = [
+        {
+            **pub,
+            "name": pub_name(pub["name"]),
+            "url": _pub_url(pub) or f"https://www.google.com/maps/search/?api=1&query={pub['lat']},{pub['lng']}",
+            "on_map": not pub.get("cache_key"),
+            "date": _short_date(date.fromisoformat(pub["confirmed"]), today),
+            "beer_names": ", ".join(pub["beers"]),
+        }
+        for pub in live.get("pubs", [])
+    ]
+    pub_rows = listed if kind == BeerPage.Kind.BEER else brand_pubs
+    last_page = max(1, -(-len(pub_rows) // PUBS_PER_PAGE))
+    try:
+        number = max(int(request.GET.get("page", "1")), 1)
+    except ValueError:
+        number = 1
+    if page and number > last_page:
+        return HttpResponsePermanentRedirect(path + (f"?page={last_page}" if last_page > 1 else ""))
+    start = (number - 1) * PUBS_PER_PAGE
+    shown = pub_rows[start:start + PUBS_PER_PAGE]
+    for index, row in enumerate(shown, start=start + 1):
+        row["anchor"] = f"h{index}"
+    pubs_page = {
+        "paged": last_page > 1,
+        "count_label": gettext("%(shown)s z %(total)s") % {"shown": _grouped(start + len(shown)), "total": _grouped(len(pub_rows))},
+        "more_url": f"{path}?page={number + 1}#h{start + len(shown) + 1}" if number < last_page else "",
+    }
 
     def with_rating(beer: dict) -> dict:
         return {
@@ -1157,9 +1195,10 @@ def beer_pages(request: HttpRequest, kind: str = BeerPage.Kind.LIST, key: str = 
         brand_rating = {
             "avg": formats.number_format(round(average, 1), 1),
             "stars": [index < round(average) for index in range(5)],
-            "meta": gettext("průměr %(beers)s z %(count)s hodnocení") % {
-                "beers": counted(len(rated), gettext("piva"), gettext("piv"), gettext("piv")), "count": count,
-            },
+            "meta": plural(
+                len(rated), gettext("průměr %(n)s\u00a0piva z %(count)s hodnocení"),
+                gettext("průměr %(n)s\u00a0piv z %(count)s hodnocení"), gettext("průměr %(n)s\u00a0piv z %(count)s hodnocení"),
+            ) % {"n": len(rated), "count": count},
         }
         head_stats.append({"value": count, "label": gettext("hodnocení")})
     siblings = []
@@ -1179,7 +1218,8 @@ def beer_pages(request: HttpRequest, kind: str = BeerPage.Kind.LIST, key: str = 
             "kind": kind,
             "beer": data,
             "name": data.get("name") or texts["h1"],
-            "listed": listed,
+            "listed": shown if kind == BeerPage.Kind.BEER else [],
+            "pubs_page": pubs_page,
             "beers": beers,
             "brands": brands,
             "brand_url": brand_url,
@@ -1192,17 +1232,7 @@ def beer_pages(request: HttpRequest, kind: str = BeerPage.Kind.LIST, key: str = 
             "review_total": live.get("review_total", 0),
             "head_stats": head_stats,
             "brand_rating": brand_rating,
-            "brand_pubs": [
-                {
-                    **pub,
-                    "name": pub_name(pub["name"]),
-                    "url": _pub_url(pub) or f"https://www.google.com/maps/search/?api=1&query={pub['lat']},{pub['lng']}",
-                    "on_map": not pub.get("cache_key"),
-                    "date": _short_date(date.fromisoformat(pub["confirmed"]), today),
-                    "beer_names": ", ".join(pub["beers"]),
-                }
-                for pub in live.get("pubs", [])
-            ],
+            "brand_pubs": shown if kind == BeerPage.Kind.BRAND else [],
             "brand_cities": [
                 {"city": place_name(city), "url": web_reverse("web-pubs-city", lang, city=city_slug(city)), "pubs": pubs, "pubs_label": plural(
                     pubs, gettext("hospoda"), gettext("hospody"), gettext("hospod")
@@ -1219,10 +1249,16 @@ def beer_pages(request: HttpRequest, kind: str = BeerPage.Kind.LIST, key: str = 
             "folded_rows": _FOLDED_ROWS,
             **_stores(campaign),
         },
-        title=texts["page_title"],
-        description=texts["description"],
+        # Every page of a long pub list is its own in search results, so each says which one it is.
+        title=gettext("%(title)s, strana %(page)s") % {"title": texts["page_title"], "page": number} if number > 1
+        else texts["page_title"],
+        description=(
+            (gettext("Strana %(page)s z %(pages)s.") % {"page": number, "pages": last_page} + " " if number > 1 else "")
+            + texts["description"]
+        ),
         section="beer",
         status=429 if wait else 404 if missing else 200,
+        canonical_params={"page": number} if number > 1 else None,
     )
     response["Referrer-Policy"] = "no-referrer"
     if wait:

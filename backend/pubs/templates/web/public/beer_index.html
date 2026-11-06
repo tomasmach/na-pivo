@@ -29,9 +29,12 @@
   {% if big_cities %}
   <section class="np-card pi-cities" aria-labelledby="pi-big">
     <div class="pp-side__head pi-card-head"><h2 class="np-title" id="pi-big">{% translate "Velká města" %}</h2><span class="np-small np-muted">{% translate "proti Česku" %}</span></div>
-    <ul class="pi-pairs">
-      {% for area in big_cities %}<li><span>{{ area.name|place }}</span><span class="np-muted np-small">{{ area.diff }} {% translate "Kč" %}</span><strong>{{ area.median }} {% translate "Kč" %}</strong></li>{% endfor %}
-    </ul>
+    <table class="pi-pairs" role="table" aria-labelledby="pi-big">
+      <thead class="np-sr-only" role="rowgroup"><tr role="row"><th scope="col" role="columnheader">{% translate "Město" %}</th><th scope="col" role="columnheader">{% translate "Proti Česku" %}</th><th scope="col" role="columnheader">{% translate "Střední cena" %}</th></tr></thead>
+      <tbody role="rowgroup">
+      {% for area in big_cities %}<tr role="row"><th scope="row" role="rowheader">{{ area.name|place }}</th><td class="np-muted np-small" role="cell">{{ area.diff }} {% translate "Kč" %}</td><td class="pi-pairs__value" role="cell">{{ area.median }} {% translate "Kč" %}</td></tr>{% endfor %}
+      </tbody>
+    </table>
   </section>
   {% endif %}
 </div>
@@ -39,14 +42,18 @@
 <section class="np-card pi-section" aria-labelledby="pi-regions">
   <div class="pi-card-head"><h2 class="np-title" id="pi-regions">{% translate "Pivo podle krajů" %}</h2><span class="np-small np-muted">{% blocktranslate %}střední cena nejlevnějšího piva, kraje s cenami aspoň z {{ min_pubs }} hospod{% endblocktranslate %}</span></div>
   <div class="pi-regions">
-    <div class="pi-map">
+    {# A table for what it is; the roles keep it one while the rows are laid out as a map. #}
+    <table class="pi-map" role="table" aria-labelledby="pi-regions">
+      <thead class="np-sr-only" role="rowgroup"><tr role="row"><th scope="col" role="columnheader">{% translate "Kraj" %}</th><th scope="col" role="columnheader">{% translate "Střední cena" %}</th></tr></thead>
+      <tbody role="rowgroup">
       {% for tile in tiles %}
-      <div class="pi-tile pi-at-{{ tile.col }}-{{ tile.row }}{% if tile.level is not None %} pi-tile--{{ tile.level }}{% else %} pi-tile--none{% endif %}">
-        <span class="pi-tile__name">{{ tile.short }}</span>
-        <span class="pi-tile__value">{% if tile.median %}{{ tile.median }} {% translate "Kč" %}{% else %}–{% endif %}</span>
-      </div>
+      <tr class="pi-tile pi-at-{{ tile.col }}-{{ tile.row }}{% if tile.level is not None %} pi-tile--{{ tile.level }}{% else %} pi-tile--none{% endif %}" role="row">
+        <th class="pi-tile__name" scope="row" role="rowheader"><span aria-hidden="true">{{ tile.short }}</span><span class="np-sr-only">{{ tile.name }}</span></th>
+        <td class="pi-tile__value" role="cell">{% if tile.median %}{{ tile.median }} {% translate "Kč" %}{% else %}<span aria-hidden="true">–</span><span class="np-sr-only">{% translate "málo cen" %}</span>{% endif %}</td>
+      </tr>
       {% endfor %}
-    </div>
+      </tbody>
+    </table>
     <div class="pi-facts">
       {% if expensive %}
       <div class="pi-fact"><span><strong>{% translate "Nejdražší kraj" %}</strong><span>{{ expensive.name }}</span></span><b>{{ expensive.median }} {% translate "Kč" %}</b></div>
@@ -68,11 +75,11 @@
 <div class="pi-two">
   <section class="np-card" aria-labelledby="pi-dear">
     <div class="pi-card-head"><h2 class="np-title" id="pi-dear">{% translate "Kde je pivo nejdražší" %}</h2><span class="np-small np-muted">{% translate "města" %}</span></div>
-    {% include "web/public/_bars.html" with rows=dear_cities %}
+    {% include "web/public/_bars.html" with rows=dear_cities labelled_by="pi-dear" %}
   </section>
   <section class="np-card" aria-labelledby="pi-cheap">
     <div class="pi-card-head"><h2 class="np-title" id="pi-cheap">{% translate "Kde je pivo nejlevnější" %}</h2><span class="np-small np-muted">{% translate "města" %}</span></div>
-    {% include "web/public/_bars.html" with rows=cheap_cities %}
+    {% include "web/public/_bars.html" with rows=cheap_cities labelled_by="pi-cheap" %}
   </section>
 </div>
 {% endif %}
@@ -93,15 +100,18 @@
   {% if beers %}
   <section class="np-card" aria-labelledby="pi-beers">
     <div class="pi-card-head"><h2 class="np-title" id="pi-beers">{% translate "Podle piva" %}</h2><span class="np-small np-muted">{% translate "střední cena za 0,5 l v Česku" %}</span></div>
-    {% include "web/public/_bars.html" with rows=beers beer=True %}
+    {% include "web/public/_bars.html" with rows=beers beer=True labelled_by="pi-beers" %}
   </section>
   {% endif %}
   {% if risers %}
   <section class="np-card" aria-labelledby="pi-risers">
     <div class="pi-card-head"><h2 class="np-title" id="pi-risers">{% translate "Kde podražilo nejvíc" %}</h2><span class="np-small np-muted">{% translate "za rok" %}</span></div>
-    <ul class="pi-pairs">
-      {% for row in risers %}<li><span>{{ row.name|place }}<small>{{ row.before }} → {{ row.now }} {% translate "Kč" %}</small></span><strong>{{ row.change_label }}</strong></li>{% endfor %}
-    </ul>
+    <table class="pi-pairs" role="table" aria-labelledby="pi-risers">
+      <thead class="np-sr-only" role="rowgroup"><tr role="row"><th scope="col" role="columnheader">{% translate "Město" %}</th><th scope="col" role="columnheader">{% translate "Změna za rok" %}</th></tr></thead>
+      <tbody role="rowgroup">
+      {% for row in risers %}<tr role="row"><th scope="row" role="rowheader">{{ row.name|place }}<small>{{ row.before }} → {{ row.now }} {% translate "Kč" %}</small></th><td class="pi-pairs__value" role="cell">{{ row.change_label }}</td></tr>{% endfor %}
+      </tbody>
+    </table>
   </section>
   {% endif %}
 </div>

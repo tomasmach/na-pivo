@@ -15,6 +15,7 @@ from urllib.parse import quote, urlsplit
 from django.conf import settings
 from django.http import HttpRequest, HttpResponse, HttpResponsePermanentRedirect
 from django.utils.safestring import SafeString, mark_safe
+from django.utils.translation import gettext
 
 _ASSETS = Path(__file__).resolve().parent / "static" / "pubs" / "invite"
 
@@ -41,6 +42,16 @@ WEBSITE_ID = "/#website"
 def organization_ref(origin: str) -> dict:
     # The name too, so a page without the full node still says who published it.
     return {"@type": "Organization", "@id": f"{origin}{ORGANIZATION_ID}", "name": "Na pivo"}
+
+
+def price_variables() -> list[dict]:
+    """What the price datasets measure: per pub the cheapest beer from 0,4 l, per area its spread and pub count."""
+
+    return [
+        {"@type": "PropertyValue", "name": gettext("Medián ceny nejlevnějšího piva"), "unitText": "CZK"},
+        {"@type": "PropertyValue", "name": gettext("Dolní a horní kvartil ceny"), "unitText": "CZK"},
+        {"@type": "PropertyValue", "name": gettext("Počet hospod s cenou")},
+    ]
 
 
 def breadcrumb_list(items: list[tuple[str, str]]) -> dict:

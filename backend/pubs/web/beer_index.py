@@ -23,6 +23,7 @@ from pubs.home_views import (
     HOME_OG_PATH,
     canonical_host,
     organization_ref,
+    price_variables,
 )
 from pubs.models import BeerPage, PubPriceIndex, PubPriceSnapshot
 from pubs.price_map import (
@@ -211,7 +212,7 @@ def beer_index(request: HttpRequest) -> HttpResponse:
 
         tiles = [
             {
-                "code": code, "short": names[code][0], "col": col, "row": row,
+                "code": code, "short": names[code][0], "name": names[code][1], "col": col, "row": row,
                 "median": data["regions"][code]["median"] if code in data["regions"] else None,
                 "level": bucket(data["regions"][code]["median"]) if code in data["regions"] else None,
             }
@@ -323,6 +324,7 @@ def beer_index(request: HttpRequest) -> HttpResponse:
             "inLanguage": lang,
             "copyrightHolder": AUTHOR,
             "license": f"{settings.PUBLIC_WEB_ORIGIN}{DATA_LICENSE_PATH}",
+            "variableMeasured": price_variables(),
         })
     origin = settings.PUBLIC_WEB_ORIGIN
     context["og_image"] = (

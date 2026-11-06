@@ -9,9 +9,11 @@
 .rs-btn--soft:hover { background: #0a0a0a33; color: var(--np-on-yellow); }
 .rs-more { display: inline-flex; align-items: center; gap: 8px; margin-top: 20px; }
 .rs-note { display: flex; align-items: center; gap: 8px; color: var(--np-muted); font-size: 14px; }
+.rs-note > .np-icon { flex: none; }
 .rs-sub { color: var(--np-text-2); font-size: 18px; }
 .rs-sub a:hover { text-decoration: underline; }
 .rs-method { max-width: 760px; margin-top: 40px; color: var(--np-muted); font-size: 14px; }
+.rs-method .np-link, .rs-strip__name a, .rs-pub__name a { padding-block: 4px; }
 .rs-back { margin-top: 20px; }
 .rs-section { margin-top: 40px; }
 .rs-section__title { margin-bottom: 16px; }
@@ -121,6 +123,8 @@
 .rs-areas.is-live .rs-tools { visibility: visible; }
 .rs-tools__search { flex: 1 1 220px; }
 .rs-fold { display: none; margin-top: 16px; }
+.rs-more-foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding-top: 8px; color: var(--np-muted); font-size: 13px; }
+.rs-more-foot .np-link { display: inline-flex; align-items: center; min-height: 44px; padding: 0 4px; }
 .rs-areas.is-live .rs-fold { display: inline-flex; }
 .rs-areas .rs-fold[hidden] { display: none; }
 .rs-empty { display: grid; justify-items: start; gap: 12px; padding: 16px 0; color: var(--np-text-2); }
@@ -303,6 +307,8 @@ a.rs-tile:hover { background: var(--np-control); }
   .rs-pub__who { grid-column: 1; }
   .rs-pub__when { grid-column: 1; grid-row: 2; }
   .rs-pub.has-head .rs-pub__when { grid-row: 3; }
+  /* A beer with a rating has it and its pubs under the name, one line each. */
+  .rs-pub__when:not(:empty) ~ .rs-pub__when { grid-row: 3; }
   .rs-pub__when:empty { display: none; }
   .rs-pub__cost { grid-column: 2; grid-row: 1 / span 2; }
   .rs-pub.has-head .rs-pub__cost { grid-row: 2 / span 2; }

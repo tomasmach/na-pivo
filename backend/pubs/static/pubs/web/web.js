@@ -82,7 +82,9 @@
       var first = nextRows.firstElementChild;
       rows.append.apply(rows, Array.from(nextRows.children));
       foot.replaceChildren.apply(foot, Array.from(nextFoot.childNodes));
-      if (first) first.focus({ preventScroll: true });
+      // A pub list row is a link or holds one; the focus goes where the keyboard can carry on.
+      var focusable = first && (first.matches("a") ? first : first.querySelector("a"));
+      if (focusable) focusable.focus({ preventScroll: true });
     } catch (e) {
       location.href = link.href;
     }
