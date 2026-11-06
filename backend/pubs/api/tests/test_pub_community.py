@@ -256,6 +256,28 @@ def test_submit_beers_only(client):
 
 
 @pytest.mark.django_db
+@pytest.mark.parametrize("volume_ml", [100, 300, 470, 568, 2000, None])
+def test_menu_beer_takes_any_realistic_volume(client, volume_ml):
+    """A menu says 0,47 l or 0,568 l; released apps keep sending 300–1000."""
+    token = _register(client)
+    beers = [{"name": "Pilsner Urquell", "price_czk": 69, "volume_ml": volume_ml}]
+    resp = client.post("/v1/pub-community", data=_payload(beers=beers), format="json", **_auth(token))
+
+    assert resp.status_code == status.HTTP_200_OK, resp.json()
+    assert PubCommunityData.objects.get().beers == beers
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("volume_ml", [0, 99, 2001])
+def test_menu_beer_rejects_a_nonsense_volume(client, volume_ml):
+    token = _register(client)
+    beers = [{"name": "Pilsner Urquell", "price_czk": 69, "volume_ml": volume_ml}]
+    resp = client.post("/v1/pub-community", data=_payload(beers=beers), format="json", **_auth(token))
+
+    assert resp.status_code == status.HTTP_400_BAD_REQUEST
+
+
+@pytest.mark.django_db
 def test_submit_empty_beer_menu_deactivates_price_index(client):
     token = _register(client)
     first = client.post(
@@ -438,7 +460,7 @@ def test_submit_validation_errors(client):
     )
     bad_volume = client.post(
         "/v1/pub-community",
-        data=_payload(beers=[{"name": "X", "price_czk": 50, "volume_ml": 250}]),
+        data=_payload(beers=[{"name": "X", "price_czk": 50, "volume_ml": 2500}]),
         format="json",
         **_auth(token),
     )

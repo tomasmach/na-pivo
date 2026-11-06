@@ -29,9 +29,6 @@ export function pubCountLabel(count: number): string {
 
 /** English volume: 500 → "0.5 l", 330 → "0.33 l", 1000 → "1 l" (decimal point). */
 export function formatVolume(ml: number): string {
-  const litres = ml / 1000;
-  const text = Number.isInteger(litres)
-    ? String(litres)
-    : litres.toFixed(litres * 100 % 10 === 0 ? 1 : 2).replace(/0+$/, '').replace(/\.$/, '');
+  const text = String(Number((ml / 1000).toFixed(3)));
   return `${text} l`;
 }

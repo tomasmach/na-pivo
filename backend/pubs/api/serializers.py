@@ -50,9 +50,10 @@ from rest_framework import serializers
 from pubs import accounts
 from pubs.accounts import AccountError
 from pubs.beer_catalog import (
-    ALLOWED_BEER_VOLUMES_ML,
     BEER_PRICE_MAX_CZK,
     BEER_PRICE_MIN_CZK,
+    BEER_VOLUME_MAX_ML,
+    BEER_VOLUME_MIN_ML,
     dedupe_beer_menu,
     normalize_beer_payload,
     normalize_beer_text,
@@ -2150,9 +2151,6 @@ class FriendInviteSerializer(serializers.ModelSerializer):
 
 # The 7 weekday keys the structured community hours dict must contain, in order.
 _COMMUNITY_DAY_KEYS = ("mo", "tu", "we", "th", "fr", "sa", "su")
-# Allowed beer glass volumes (ml). None is also allowed (unknown). Sourced from
-# the domain layer so the menu-scan canonicalizer and this write contract agree.
-_ALLOWED_VOLUMES_ML = ALLOWED_BEER_VOLUMES_ML
 _MAX_INTERVALS_PER_DAY = 3
 _MAX_BEERS = 12
 
@@ -2181,16 +2179,12 @@ class CommunityBeerSerializer(serializers.Serializer):
         min_value=BEER_PRICE_MIN_CZK,
         max_value=BEER_PRICE_MAX_CZK,
     )
-    volume_ml = serializers.IntegerField(required=False, allow_null=True)
-
-    def validate_volume_ml(self, value: int | None) -> int | None:
-        if value is None:
-            return None
-        if value not in _ALLOWED_VOLUMES_ML:
-            raise serializers.ValidationError(
-                f"volume_ml must be one of {sorted(_ALLOWED_VOLUMES_ML)}."
-            )
-        return value
+    volume_ml = serializers.IntegerField(
+        required=False,
+        allow_null=True,
+        min_value=BEER_VOLUME_MIN_ML,
+        max_value=BEER_VOLUME_MAX_ML,
+    )
 
     def to_representation(self, instance: dict) -> dict:
         # Always emit the canonical shape with all three keys present.
@@ -2221,14 +2215,12 @@ class CommunityBeerChangeSerializer(serializers.Serializer):
         min_value=BEER_PRICE_MIN_CZK,
         max_value=BEER_PRICE_MAX_CZK,
     )
-    new_volume_ml = serializers.IntegerField(required=False, allow_null=True)
-
-    def validate_new_volume_ml(self, value: int | None) -> int | None:
-        if value is not None and value not in _ALLOWED_VOLUMES_ML:
-            raise serializers.ValidationError(
-                f"new_volume_ml must be one of {sorted(_ALLOWED_VOLUMES_ML)}."
-            )
-        return value
+    new_volume_ml = serializers.IntegerField(
+        required=False,
+        allow_null=True,
+        min_value=BEER_VOLUME_MIN_ML,
+        max_value=BEER_VOLUME_MAX_ML,
+    )
 
     def validate(self, attrs: dict) -> dict:
         if attrs["action"] == "update" and attrs.get("price_czk") is None:

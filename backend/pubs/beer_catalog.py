@@ -14,15 +14,16 @@ from pubs.models import BeerBrand, BeerProduct, PubBeerBrand, PubBeerProduct
 _TOKEN_RE = re.compile(r"[a-z]+|[0-9]+")
 
 # --- Community-beer domain bounds (single source of truth) ---
-# The serving volumes a community beer may carry and the inclusive CZK price
-# range. Defined here in the domain layer so BOTH the API write contract
-# (CommunityBeerSerializer) and the menu-scan canonicalizer reference the same
-# values — a scanned beer that survives canonicalization is then guaranteed to
-# pass the write serializer, which is the whole point of canonicalizing.
+# The standard glass sizes, plus the inclusive volume and CZK price ranges a
+# community menu beer may carry. Both the write contract (CommunityBeerSerializer)
+# and the menu-scan canonicalizer use the ranges, so a scanned beer always passes
+# the write serializer. A drink logged from the counter reaches the public menu
+# only in a standard size.
 ALLOWED_BEER_VOLUMES_ML: frozenset[int] = frozenset({300, 330, 400, 500, 1000})
+BEER_VOLUME_MIN_ML = 100
+BEER_VOLUME_MAX_ML = 2000
 BEER_PRICE_MIN_CZK = 1
 BEER_PRICE_MAX_CZK = 1000
-
 
 @dataclass(frozen=True)
 class BeerMatch:

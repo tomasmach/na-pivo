@@ -10,6 +10,7 @@ from __future__ import annotations
 import statistics
 from collections import defaultdict
 from datetime import date, datetime, timedelta
+from decimal import Decimal
 from pathlib import Path
 from urllib.parse import quote
 
@@ -66,6 +67,11 @@ _ASSETS: dict[str, tuple[str, str]] = {
     "og-invite.png": ("og-invite.png", "image/png"),
     "og-home.png": ("og-home.png", "image/png"),
 }
+
+
+def _litres(volume_ml: int) -> str:
+    """0,5 / 0,33 / 0,47 / 1: every digit a menu gives, no trailing zeros."""
+    return formats.number_format(Decimal(volume_ml) / 1000)
 
 
 def _stores(campaign: str) -> dict[str, str]:
@@ -708,7 +714,7 @@ def _price_facts(data: dict, area: dict | None, country: dict | None, city_urls:
             "meta": ", ".join(part for part in (pub["name"], pub["city"]) if part),
             "value": f"{pub['price_czk']} {unit}",
             "value_meta": "" if pub["volume_ml"] == 500 else gettext("za %(litres)s l") % {
-                "litres": formats.number_format(pub["volume_ml"] / 1000, 1)
+                "litres": _litres(pub["volume_ml"])
             },
         })
     if stats and stats["p25"] != stats["p75"]:
@@ -820,7 +826,7 @@ def beer_prices(request: HttpRequest, city: str = "") -> HttpResponse:
             "axis": axis,
             "folded_rows": _FOLDED_ROWS,
             "cheapest": [
-                {**pub, "litres": formats.number_format(pub["volume_ml"] / 1000, 1)}
+                {**pub, "litres": _litres(pub["volume_ml"])}
                 for pub in (area.get("cheapest", []) if area else data.get("cheapest", []))
             ],
             "elsewhere": _elsewhere(data, area, city_urls) if area else [],
@@ -1025,7 +1031,7 @@ def beer_pages(request: HttpRequest, kind: str = BeerPage.Kind.LIST, key: str = 
         {
             **pub,
             "date": _short_date(date.fromisoformat(pub["confirmed"]), today),
-            "litres": formats.number_format(pub["volume_ml"] / 1000, 1) if pub["volume_ml"] else None,
+            "litres": _litres(pub["volume_ml"]) if pub["volume_ml"] else None,
             # Sorted per half litre, so 41 Kč for 0,3 l is not the cheapest.
             "per_half_litre": round(pub["price_czk"] * 500 / (pub["volume_ml"] or 500)) if pub["price_czk"] else "",
             "map_url": f"https://www.google.com/maps/search/?api=1&query={pub['lat']},{pub['lng']}",

@@ -264,12 +264,24 @@ describe('beers on tap in "Doplnit info"', () => {
 
     act(() => inputs(renderer)[1].props.onChangeText('69'));
     act(() => pressText(renderer, k.volumeOther));
-    act(() => inputs(renderer)[2].props.onChangeText('750'));
-    expect(texts(renderer)).toContain(k.invalidVolume('300, 330, 400, 500, 1000'));
-    act(() => inputs(renderer)[2].props.onChangeText('330'));
+    act(() => inputs(renderer)[2].props.onChangeText('470'));
+    expect(texts(renderer)).toContain(k.invalidVolume('0,1 l', '2 l'));
+    act(() => inputs(renderer)[2].props.onChangeText('0,47'));
     act(() => pressText(renderer, k.done));
     act(() => pressText(renderer, k.save));
 
-    expect(savedBeers()).toEqual([{ name: 'Pilsner Urquell', volumeMl: 330, priceCzk: 69 }]);
+    expect(savedBeers()).toEqual([{ name: 'Pilsner Urquell', volumeMl: 470, priceCzk: 69 }]);
+  });
+
+  it('takes a custom volume in litres or millilitres', async () => {
+    const renderer = await renderBeers();
+    act(() => pressText(renderer, 'Pilsner Urquell'));
+    act(() => pressText(renderer, k.volumeOther));
+    act(() => pressText(renderer, 'ml'));
+    act(() => inputs(renderer)[2].props.onChangeText('568'));
+    act(() => pressText(renderer, k.done));
+    act(() => pressText(renderer, k.save));
+
+    expect(savedBeers()).toEqual([{ name: 'Pilsner Urquell', volumeMl: 568, priceCzk: 69 }]);
   });
 });
