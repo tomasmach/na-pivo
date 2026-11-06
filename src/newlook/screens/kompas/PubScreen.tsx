@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { ScrollView, View } from 'react-native';
 import MapView, { Marker, PROVIDER_GOOGLE } from 'react-native-maps';
 import Animated from 'react-native-reanimated';
@@ -9,6 +9,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { haversineMeters } from '@/compass/distance';
 import { geohash8 } from '@/data/geohash';
 import { buildPubShareUrl } from '@/data/pubShareLink';
+import { trackPubReach } from '@/data/pubReachClient';
 import { trackUiInteraction } from '@/data/uxTelemetry';
 import { formatVolume, t } from '@/i18n';
 import type { WeeklyHours } from '@/data/communityHours';
@@ -167,6 +168,10 @@ export function PubScreen() {
   const position = useRecentPosition();
   const currency = useSettingsStore((st) => st.priceCurrency);
   const favoriteKey = usePubFavoritesStore((st) => (pub ? findFavoriteKey(st.favorites, geohash8(pub.lat, pub.lng), pub) : undefined));
+  const reachKey = pub ? geohash8(pub.lat, pub.lng) : null;
+  useEffect(() => {
+    if (reachKey) trackPubReach('detail_view', reachKey);
+  }, [reachKey]);
 
   if (!pub) {
     return (
