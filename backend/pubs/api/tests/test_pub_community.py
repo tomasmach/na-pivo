@@ -5,6 +5,7 @@ precedence in the pub-hours read path (POST /v1/pub-hours).
 
 from __future__ import annotations
 
+import uuid
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
@@ -265,6 +266,54 @@ def test_menu_beer_takes_any_realistic_volume(client, volume_ml):
 
     assert resp.status_code == status.HTTP_200_OK, resp.json()
     assert PubCommunityData.objects.get().beers == beers
+
+
+@pytest.mark.django_db
+def test_menu_write_keeps_one_row_per_beer_and_volume(client):
+    token = _register(client)
+    beers = [
+        {"name": "Stodolní 11", "price_czk": 40, "volume_ml": 500},
+        {"name": "Stodolní 11°", "price_czk": 42, "volume_ml": 500},
+        {"name": "Stodolní 11°", "price_czk": 30, "volume_ml": 300},
+    ]
+    resp = client.post("/v1/pub-community", data=_payload(beers=beers), format="json", **_auth(token))
+
+    assert resp.status_code == status.HTTP_200_OK, resp.json()
+    assert [(b["name"], b["volume_ml"]) for b in PubCommunityData.objects.get().beers] == [
+        ("Stodolní 11", 500),
+        ("Stodolní 11°", 300),
+    ]
+
+
+@pytest.mark.django_db
+def test_released_app_menu_edit_keeps_odd_sizes(client):
+    """App 2.3 saves the whole menu and leaves out sizes it cannot show."""
+    token = _register(client)
+    menu = [
+        {"name": "Pilsner Urquell", "price_czk": 69, "volume_ml": 470},
+        {"name": "Pilsner Urquell", "price_czk": 79, "volume_ml": 568},
+        {"name": "Kozel 11", "price_czk": 45, "volume_ml": 500},
+    ]
+    client.post("/v1/pub-community", data=_payload(beers=menu), format="json", **_auth(token))
+
+    released_app_edit = [
+        {"name": "Pilsner Urquell", "price_czk": 79},
+        {"name": "Pilsner Urquell", "price_czk": 69},
+        {"name": "Kozel 11", "price_czk": 49, "volume_ml": 500},
+    ]
+    resp = client.post(
+        "/v1/pub-community",
+        data=_payload(client_id=str(uuid.uuid4()), beers=released_app_edit),
+        format="json",
+        **_auth(token),
+    )
+
+    assert resp.status_code == status.HTTP_200_OK, resp.json()
+    assert [(b["price_czk"], b["volume_ml"]) for b in PubCommunityData.objects.get().beers] == [
+        (79, 568),
+        (69, 470),
+        (49, 500),
+    ]
 
 
 @pytest.mark.django_db

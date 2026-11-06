@@ -54,7 +54,6 @@ from pubs.beer_catalog import (
     BEER_PRICE_MIN_CZK,
     BEER_VOLUME_MAX_ML,
     BEER_VOLUME_MIN_ML,
-    dedupe_beer_menu,
     normalize_beer_payload,
     normalize_beer_text,
 )
@@ -2361,12 +2360,9 @@ class PubCommunityRequestSerializer(PubInputSerializer):
         # Canonicalise every entry to all three keys so the stored JSON (and the
         # /v1/pub-hours read path) has a stable shape regardless of which
         # optional fields the client sent.
+        # The view dedupes rows once a released app's left-out sizes are back.
         match_cache = self.context.get("beer_match_cache")
-        # Two spellings of one beer at one volume ("Primátor 11" and
-        # "Primátor 11°") are one menu row; the first one wins.
-        return dedupe_beer_menu(
-            [normalize_beer_payload(beer, match_cache=match_cache) for beer in value]
-        )
+        return [normalize_beer_payload(beer, match_cache=match_cache) for beer in value]
 
     def validate(self, attrs: dict) -> dict:
         has_hours = attrs.get("hours") is not None
