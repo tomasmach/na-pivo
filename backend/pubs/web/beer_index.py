@@ -313,7 +313,7 @@ def beer_index(request: HttpRequest) -> HttpResponse:
         request,
         "web/public/beer_index.html",
         context,
-        title=gettext("Pivní index Na pivo: cena piva po krajích a v čase"),
+        title=gettext("Pivní index Česka: cena piva po krajích a v čase"),
         description=description,
         section="prices",
     )

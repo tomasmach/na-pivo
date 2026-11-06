@@ -803,6 +803,8 @@ def beer_prices(request: HttpRequest, city: str = "") -> HttpResponse:
         ],
         country,
     )
+    from pubs.web.pubs_views import indexed_district_url
+
     texts = _texts(snapshot, country, area)
     crumbs = [{"label": "Na pivo", "url": web_reverse("home")}, {"label": gettext("Ceny piva"), "url": PRICE_PATHS[lang]}]
     if area:
@@ -835,7 +837,9 @@ def beer_prices(request: HttpRequest, city: str = "") -> HttpResponse:
             "missing": missing,
             "facts": _price_facts(data, area, country, city_urls) if stats else [],
             "cities": [{**row, "name": place_name(row["name"])} for row in cities],
-            "districts": [{**row, "name": place_name(row["name"])} for row in districts],
+            "districts": [
+                {**row, "name": place_name(row["name"]), "url": indexed_district_url(row["name"])} for row in districts
+            ],
             "axis": axis,
             "folded_rows": _FOLDED_ROWS,
             "area_name": place_name(area["name"]) if area else "",

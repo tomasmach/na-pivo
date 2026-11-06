@@ -11,19 +11,19 @@
 
 <section class="pp-explain" aria-labelledby="about-who">
   <h2 class="np-h2" id="about-who">{% translate "Kdo za tím je" %}</h2>
-  <p>{% translate "Jmenuju se Tomáš Mach a Na pivo dělám sám, appku i tenhle web. Začalo to jako kompas na nejbližší hospodu. Dnes si v appce zapisuješ piva, vedeš si deník a vidíš, kde sedí parta." %}</p>
+  <p>{% translate "Jmenuju se Tomáš Mach a Na pivo dělám sám, appku i tenhle web." %}</p>
   <p><a class="np-link" href="{{ author_url }}" rel="me noopener">{% translate "Instagram @jsem_mach" %} ›</a></p>
 </section>
 
 <section class="pi-method" id="ceny" aria-labelledby="about-data">
   <h2 class="np-h2" id="about-data">{% translate "Odkud jsou data a ceny" %}</h2>
   <div class="pi-method__cols">
-    <div><h3>{% translate "Hospody" %}</h3><p>{% translate "Seznam hospod skládám z veřejných zdrojů a z hospod, které do appky přidali lidi. Zavřenou hospodu nebo duplicitu může kdokoli nahlásit v appce a po dost hlasech zmizí." %}</p></div>
+    <div><h3>{% translate "Hospody" %}</h3><p>{% translate "Seznam hospod skládám z veřejných zdrojů a z hospod, které do appky přidali lidi." %} {{ report_text }}</p></div>
     <div><h3>{% translate "Lístky a otevírací doba" %}</h3><p>{% translate "Zapisují je lidi, kteří v hospodě zrovna sedí. U lístku ukazuju, kdy ho někdo naposledy ověřil." %}</p></div>
     <div><h3>{% translate "Ceny" %}</h3><p>{% translate "Z každé hospody beru nejlevnější pivo od 0,4 l, které někdo zapsal za poslední rok. Město ukážu, až mám ceny aspoň z 5 tamních hospod. Přepočítávám je každý den." %}</p></div>
     <div><h3>{% translate "Hodnocení" %}</h3><p>{% translate "Průměr piva v hospodě ukážu, až ho ohodnotí aspoň 3 lidi. Jeden nadšenec ani jeden naštvaný host číslo neudělá." %}</p></div>
   </div>
-  <div class="pp-pager"><a class="np-link" href="{% web_url "beer-prices" %}">{% translate "Ceny piva po městech" %} ›</a><a class="np-link" href="{% web_url "web-beer-index" %}">{% translate "Pivní index Na pivo" %} ›</a></div>
+  <div class="pp-pager"><a class="np-link" href="{% web_url "beer-prices" %}">{% translate "Ceny piva po městech" %} ›</a><a class="np-link" href="{% web_url "web-beer-index" %}">{% translate "Pivní index Česka" %} ›</a></div>
 </section>
 
 <section class="pi-cta">
@@ -41,6 +41,5 @@
   <h2 class="np-h2" id="about-contact">{% translate "Napiš mi" %}</h2>
   <p>{% translate "Vidíš u hospody špatnou cenu, chybí ti tu nějaká hospoda nebo chceš čísla do článku? Napiš mi, čtu to sám." %}</p>
   <p><a class="np-link" href="mailto:tomades1@gmail.com">tomades1@gmail.com</a></p>
-  <p class="np-small"><a class="np-link" href="{{ page.privacy_url }}">{% translate "Ochrana soukromí" %}</a> · <a class="np-link" href="{{ page.terms_url }}">{% translate "Podmínky" %}</a></p>
 </section>
 {% endblock %}

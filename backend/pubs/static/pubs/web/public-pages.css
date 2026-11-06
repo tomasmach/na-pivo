@@ -210,6 +210,8 @@ a.pp-rank__name:hover { text-decoration: underline; }
 }
 @media (max-width: 960px) {
   .pi-top, .pi-press, .pi-two, .pi-two--wide { grid-template-columns: 1fr; gap: 24px; }
+  .pi-cta .pp-cta__actions { width: 100%; }
+  .pi-cta .pp-cta__actions .np-btn { flex: 1 1 100%; }
   .pi-top { margin: 12px 0 24px; }
   .pi-hero__value { font-size: 96px; }
   .pi-hero__text strong { font-size: 17px; }

@@ -58,10 +58,11 @@
     {% if area %}<a class="np-link np-small" href="{% web_url "web-pubs-city" city=city %}">{% blocktranslate with city=area_name %}Všechny hospody: {{ city }}{% endblocktranslate %} ›</a>{% endif %}
   </div>
   <ol class="rs-ranked" role="list">
-    {% for pub in cheapest %}<li class="rs-ranked__row">
+    {% for pub in cheapest %}<li class="rs-ranked__row{% if pub.url %} rs-row--link{% endif %}">
       <span class="rs-ranked__rank" aria-hidden="true">{{ forloop.counter }}</span>
-      <span class="rs-ranked__who"><span class="rs-ranked__name">{% if pub.url %}<a href="{{ pub.url }}">{{ pub.name }}</a>{% else %}{{ pub.name }}{% endif %}</span>{% if pub.city and pub.city != area.name %}<span class="rs-ranked__meta city">{{ pub.city|place }}</span>{% endif %}{% if pub.stale %}<span class="rs-ranked__meta">{% translate "cena starší 3 měsíců" %}</span>{% endif %}</span>
+      <span class="rs-ranked__who"><span class="rs-ranked__name">{% if pub.url %}<a class="rs-row__link" href="{{ pub.url }}">{{ pub.name }}</a>{% else %}{{ pub.name }}{% endif %}</span>{% if pub.city and pub.city != area.name %}<span class="rs-ranked__meta city">{{ pub.city|place }}</span>{% endif %}{% if pub.stale %}<span class="rs-ranked__meta">{% translate "cena starší 3 měsíců" %}</span>{% endif %}</span>
       <span class="rs-ranked__price">{{ pub.price_czk }} {% translate "Kč" %}{% if pub.volume_ml != 500 %}<span class="rs-ranked__meta">{% blocktranslate with litres=pub.litres %}za {{ litres }} l{% endblocktranslate %}</span>{% endif %}</span>
+      {% if pub.url %}<span class="rs-row__chevron">{% icon "chevron-right" "np-icon--s" %}</span>{% endif %}
     </li>{% endfor %}
   </ol>
 </section>
@@ -83,7 +84,7 @@
 {% endif %}
 
 {% if not throttled %}<p class="rs-method">{% translate "Z každé hospody beru nejlevnější pivo od 0,4 l, které někdo zapsal v Na pivo za poslední rok, a město nebo městskou část ukážu, až mám ceny aspoň z 5 tamních hospod." %} <a class="np-link" href="{{ about_url }}">{% translate "Odkud ceny jsou" %} ›</a></p>
-{% if not area %}<p class="rs-method">{% translate "Jak se cena piva mění v čase a jak jsou na tom kraje, ukazuje" %} <a class="np-link" href="{{ beer_index_url }}">{% translate "Pivní index Na pivo" %} ›</a></p>{% endif %}{% endif %}
+{% if not area %}<p class="rs-method">{% translate "Jak se cena piva mění v čase a jak jsou na tom kraje, ukazuje" %} <a class="np-link" href="{{ beer_index_url }}">{% translate "Pivní index Česka" %} ›</a></p>{% endif %}{% endif %}
 {% if area %}<a class="np-btn rs-back" href="{{ prices_url }}">{% translate "Ceny v dalších městech" %}</a>{% endif %}
 
 <section class="rs-cta" aria-labelledby="cta-title">

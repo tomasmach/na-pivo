@@ -39,7 +39,7 @@
     {% if nearby %}<section class="np-pubs-block np-pub__nearby">
       <div class="np-pubs-block__head"><h2>{% translate "Hospody poblíž" %}</h2>{% if city_url %}<a class="np-link" href="{{ city_url }}">{{ city_label }} ›</a>{% endif %}</div>
       <div class="np-card np-card--tight"><div class="np-list">{% for row in nearby %}
-        {% include "web/components/row.html" with href=row.url title=row.title meta=row.meta value=row.value status="" icon="" %}{% endfor %}
+        <a href="{{ row.url }}" class="np-row"><span class="np-row__body"><span class="np-row__title">{{ row.title }}</span>{% if row.meta %}<span class="np-row__meta">{{ row.meta }}</span>{% endif %}</span>{% if row.value %}<span class="np-pub-price">{{ row.value }}</span>{% endif %}<span class="np-row__chevron">{% icon "chevron-right" "np-icon--s" %}</span></a>{% endfor %}
       </div></div>
     </section>{% endif %}
   </div>

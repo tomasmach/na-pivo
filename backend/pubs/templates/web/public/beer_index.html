@@ -23,7 +23,7 @@
       </span>
     </div>
     <p class="pp-note">{% icon "info" "np-icon--s" %}{{ pubs_label }}</p>
-    <p class="pp-note">{% translate "Kolik stojí pivo ve tvém městě a kde ho čepují nejlevněji:" %} <a class="np-link" href="{% web_url "beer-prices" %}">{% translate "Ceny piva po městech" %} ›</a></p>
+    <p class="np-small np-muted">{% translate "Kolik stojí pivo ve tvém městě a kde ho čepují nejlevněji:" %} <a class="np-link" href="{% web_url "beer-prices" %}">{% translate "Ceny piva po městech" %} ›</a></p>
   </header>
   {% if big_cities %}
   <section class="np-card pi-cities" aria-labelledby="pi-big">
@@ -121,7 +121,7 @@
   <div class="pi-press__quote">
     <h2 class="np-h2" id="pi-press">{% translate "Píšeš o cenách piva?" %}</h2>
     <p class="np-muted">{% translate "Jednotlivá čísla klidně cituj, jen uveď zdroj. Tady je hotová věta:" %}</p>
-    <blockquote>{{ quote }}<cite>{% translate "Zdroj: Pivní index Na pivo" %}, {{ page.canonical_url }}</cite></blockquote>
+    <blockquote>{{ quote }}<cite>{% translate "Zdroj: Pivní index Česka, Na pivo" %}, {{ page.canonical_url }}</cite></blockquote>
   </div>
   <div class="pi-press__files">
     <h3 class="np-title">{% translate "Ke stažení" %}</h3>

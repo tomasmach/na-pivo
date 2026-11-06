@@ -59,7 +59,7 @@ def test_a_pub_in_a_post_office_town_names_the_town(client):
     assert title == "U Mostu, Louny | Na pivo"
     assert "Louny 1" not in html
     # Nothing on the page knows the menu or the hours, so the description does not promise them.
-    assert description == "U Mostu, Louny. Co tu čepují, zatím nevím. Lístek může doplnit každý, kdo tu sedí. Cesta na mapě."
+    assert description == "U Mostu, Louny. Co tu čepují, zatím nevím. Lístek může doplnit každý, kdo tu sedí."
 
 
 def test_a_pub_page_links_its_beers_its_neighbours_and_the_prices_of_its_city(client):
@@ -85,7 +85,9 @@ def test_a_pub_page_links_its_beers_its_neighbours_and_the_prices_of_its_city(cl
     assert 'href="/ceny/praha"' in html and "Kolik stojí pivo v Praze" in html
     title, description = _head(html)
     assert description.startswith("Co čepují v hospodě U Zlatého tygra, Praha: 2 piva od 49 Kč, lístek z ")
-    assert description.endswith("Otevírací doba a cesta na mapě.")
+    # The date's own full stop ends the sentence; no second one.
+    assert re.search(r"lístek z \d+\. \d+\. Najdeš tu i otevírací dobu\.$", description), description
+    assert ".." not in description
     assert '<a href="/en/beer/testovar-11" class="np-row">' in english
     assert "U Zlatého tygra, Prague | Na pivo" in english and 'href="/en/prices/praha"' in english
 
@@ -110,6 +112,8 @@ def test_prague_districts_get_their_own_pages(client):
     # Two pubs make a page for people, not for search.
     assert one.status_code == 200 and "noindex" in one["X-Robots-Tag"]
     assert "Pubs in Prague 7" in client.get("/en/pubs/praha-7").content.decode()
+    # Every row is in Praha 7, so the line under the name is the street or nothing.
+    assert '<span class="np-pubrow__place">Praha 7</span>' not in html
     redirect = client.get("/hospody/praha?district=praha-7&open=1")
     assert redirect.status_code == 301 and redirect["Location"] == "/hospody/praha-7?open=1"
     # Brno-město is the county of the whole city, not a district.
@@ -129,6 +133,8 @@ def test_a_small_town_describes_itself_with_its_own_pubs(client):
     assert title == "Hospody: Žitenice | Na pivo"
     assert description == "Žitenice: 3 hospody. Lístek mám u 1 z nich. Jsou tu Na Vyhlídce, Pod Kaštanem a U Ládi."
     assert "právě teď" not in description
+    english = _head(client.get("/en/pubs/zitenice").content.decode())[1]
+    assert english.endswith("Pubs here: Na Vyhlídce, Pod Kaštanem and U Ládi.")
 
 
 def test_price_pages_link_their_pubs_and_say_prague_in_english(client):
@@ -141,7 +147,7 @@ def test_price_pages_link_their_pubs_and_say_prague_in_english(client):
     english = client.get("/en/prices/praha").content.decode()
     country = client.get("/ceny").content.decode()
 
-    assert re.search(r'<a href="/hospoda/pod-lampou-\w{8}">Pod Lampou</a>', html)
+    assert re.search(r'<a class="rs-row__link" href="/hospoda/pod-lampou-\w{8}">Pod Lampou</a>', html)
     assert '<h1 class="np-h1" id="page-title">Kolik stojí pivo v Praze</h1>' in html
     assert re.search(r"<title>Beer prices in Prague \d{4}: median \d+ CZK \| Na pivo</title>", english)
     assert '<h1 class="np-h1" id="page-title">What a beer costs in Prague</h1>' in english
@@ -156,7 +162,7 @@ def test_the_beer_index_aims_at_the_trend_and_links_the_city_prices(client):
 
     html = client.get("/pivni-index").content.decode()
 
-    assert "<title>Pivní index Na pivo: cena piva po krajích a v čase | Na pivo</title>" in html
+    assert "<title>Pivní index Česka: cena piva po krajích a v čase | Na pivo</title>" in html
     assert 'href="/ceny"' in html and 'href="/o-appce#ceny"' in html
 
 
@@ -170,7 +176,7 @@ def test_beer_pages_count_pubs_and_beers_in_czech(client):
     brand = client.get("/pivo/znacka/testovar").content.decode()
 
     assert re.search(r">3</span>\s*<span [^>]+>hospody za 3 měsíce<", beer)
-    assert re.search(r'<a href="/hospoda/u-lipy-\w{8}">U Lípy</a>', beer)
+    assert re.search(r'<a class="rs-row__link" href="/hospoda/u-lipy-\w{8}">U Lípy</a>', beer)
     flat = re.sub(r"<[^>]+>", " ", brand)
     assert re.search(r"2\s+piva s vlastní stránkou", flat)
     assert "1 hospod" not in flat and re.search(r"\b1\s+hospoda\b", flat)
@@ -184,6 +190,9 @@ def test_the_about_page_says_who_makes_the_app_in_both_languages(client):
     html = czech.content.decode()
     assert czech.status_code == english.status_code == 200
     assert "Tomáš Mach" in html and "mailto:tomades1@gmail.com" in html and 'id="ceny"' in html
+    # The app reports closed pubs and places that are not pubs, and the same bar hides them.
+    assert "Zmizí, až ho nahlásí 3\u00a0různí lidé." in html or "Zmizí, až ho nahlásí 3 různí lidé." in html
+    assert "duplicit" not in html
     assert "apps.apple.com" in html and "play.google.com" in html
     assert "Who makes it" in english.content.decode()
     assert 'href="/o-appce">O appce</a>' in client.get("/ceny").content.decode()
@@ -214,3 +223,18 @@ def test_every_list_names_a_pub_without_its_register_code(client):
         assert "P5342" not in html.replace(f"p5342-pivnice-smichov-ulnadrazni-{coded}", ""), page
     # The address keeps the stored name, so old links and the app still find the pub.
     assert f'href="/hospoda/p5342-pivnice-smichov-ulnadrazni-{coded}"' in pages["beer"]
+
+
+def test_districts_with_a_page_are_linked_from_prices_and_from_their_pubs(client):
+    for index in range(5):
+        row = _price("Praha 4", 45 + index, (50.0600 + index * 0.0005, 14.4400))
+        _catalog(row, f"Pankrácká {index}")
+    _price("Praha 9", 50, (50.1200, 14.5000))
+    call_command("snapshot_beer_prices", stdout=StringIO())
+
+    prices = client.get("/ceny/praha").content.decode()
+    pub = PubDirectory.objects.get(name="Pankrácká 0")
+    detail = client.get(f"/hospoda/pankracka-0-{pub.cache_key}").content.decode()
+
+    assert '<a href="/hospody/praha-4">Praha 4</a>' in prices
+    assert 'href="/hospody/praha-4">Hospody v Praze 4 ›</a>' in detail

@@ -283,7 +283,7 @@ def test_beer_page_shows_pubs_prices_and_dates_without_anyone_who_wrote_them(cli
     html = response.content.decode()
     assert "<title>Testovar 11°: kde se čepuje a za kolik | Na pivo</title>" in html
     assert '<h1 class="np-h1 rs-h1--long" id="page-title">Kde se čepuje Testovar 11°</h1>' in html
-    assert re.search(r'<a href="/hospoda/u-lipy-\w{8}">U Lípy<', html)
+    assert re.search(r'<a class="rs-row__link" href="/hospoda/u-lipy-\w{8}">U Lípy<', html)
     assert "pípy se tu střídají" in html and "cena chybí" in html and "za 0,3 l" in html
     # The pub not confirmed for four months comes last, under its own heading.
     old = html.index("Zápisy starší než 3 měsíce")

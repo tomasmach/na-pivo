@@ -237,6 +237,13 @@ def district_url(city: str, district: str) -> str:
     return web_reverse("web-pubs-city", city=city) + f"?district={slugify(district)}"
 
 
+def indexed_district_url(district: str) -> str:
+    """The district's own page when search engines may list it, else nothing."""
+
+    found = _district(slugify(district)) if district else None
+    return web_reverse("web-pubs-city", city=found["slug"]) if found and found["pubs"] >= MIN_LISTED else ""
+
+
 def district_sitemap_paths() -> list[str]:
     return [
         web_reverse("web-pubs-city", "cs", city=district["slug"])
@@ -406,6 +413,12 @@ def _menu(label: str, current: bool, items: list[dict]) -> dict:
     return {"label": label, "current": current, "items": items}
 
 
+def _one_full_stop(text: str) -> str:
+    """"lístek z 6. 11.." and "U Pepy a spol.." end a sentence with the date's or the name's own full stop."""
+
+    return re.sub(r"\.\.(?=\s|$)", ".", text)
+
+
 def _city_description(name: str, rows: list[dict], typical_price: int | None) -> str:
     """What the search result says: only numbers and names that stay true until the next visit."""
 
@@ -423,7 +436,7 @@ def _city_description(name: str, rows: list[dict], typical_price: int | None) ->
                              gettext("Jsou tu %(names)s.")) % {"names": _names(names)}
     else:
         text += " " + gettext("Třeba %(names)s.") % {"names": _names(names)}
-    return text
+    return _one_full_stop(text)
 
 
 @web_page
@@ -455,7 +468,8 @@ def pubs_city(request: HttpRequest, city: str) -> HttpResponse:
     }
     rows = [_pub_row(pub, now, place_name(data["name"])) for pub in data["list"]]
     if district:
-        rows = [row for row in rows if row["district"] == district["name"]]
+        # Every pub here is in the district, so the line under the name says the street or nothing.
+        rows = [{**row, "place": row["address"]} for row in rows if row["district"] == district["name"]]
     known_hours = [row for row in rows if row["status"]]
     open_now = [row for row in known_hours if row["status"]["open"]]
     visible = _apply(rows, chosen)
@@ -748,8 +762,9 @@ def _pub_description(pub: dict, where: str, has_ratings: bool, today) -> str:
         text = gettext("%(name)s, %(place)s. Co tu čepují, zatím nevím. Lístek může doplnit každý, kdo tu sedí.") % values
     if has_ratings:
         text += " " + gettext("Hodnocení piv od lidí z Na pivo.")
-    text += " " + (gettext("Otevírací doba a cesta na mapě.") if pub["hours"] else gettext("Cesta na mapě."))
-    return text
+    if pub["hours"]:
+        text += " " + gettext("Najdeš tu i otevírací dobu.")
+    return _one_full_stop(text)
 
 
 def _distance_label(metres: int) -> str:
@@ -819,6 +834,7 @@ def pub_page(request: HttpRequest, key: str) -> HttpResponse:
         for row in pub.get("nearby", [])
     ]
     has_prices_page = bool(pub["city_slug"]) and pub["city_slug"] in prices_page_slugs()
+    nearby_url = indexed_district_url(pub["district"])
     response = render_page(
         request,
         "web/pubs/pub.html",
@@ -836,8 +852,8 @@ def pub_page(request: HttpRequest, key: str) -> HttpResponse:
             "nearby": nearby,
             "prices_url": web_reverse("beer-prices-city", city=pub["city_slug"]) if has_prices_page else "",
             "prices_label": prices_label(pub["city"]) if has_prices_page else "",
-            "city_url": city_url,
-            "city_label": _pubs_title(pub["city"]) if city_url else "",
+            "city_url": nearby_url or city_url,
+            "city_label": _pubs_title(pub["district"] if nearby_url else pub["city"]) if city_url else "",
             "map": pub_map(
                 [{"lat": pub["lat"], "lng": pub["lng"], "label": "", "url": "", "name": name}],
                 pub["neighbours"],

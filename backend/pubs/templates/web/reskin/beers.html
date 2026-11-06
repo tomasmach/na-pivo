@@ -55,11 +55,12 @@
       </div>
       {% endif %}
       <ol class="rs-pubs" role="list" data-rows>
-        {% for pub in listed %}<li class="rs-pub{% if not pub.fresh %} is-old{% endif %}{% if pub.first_old %} has-head{% endif %}" data-find="{{ pub.name }} {{ pub.city }}" data-median="{{ pub.per_half_litre }}"{% if not pub.fresh %} data-old{% endif %}>
+        {% for pub in listed %}<li class="rs-pub{% if not pub.fresh %} is-old{% endif %}{% if pub.first_old %} has-head{% endif %}{% if not pub.on_map %} rs-row--link{% endif %}" data-find="{{ pub.name }} {{ pub.city }}" data-median="{{ pub.per_half_litre }}"{% if not pub.fresh %} data-old{% endif %}>
           {% if pub.first_old %}<span class="rs-pub__old" data-old-head>{% translate "Zápisy starší než 3 měsíce" %}</span>{% endif %}
-          <span class="rs-pub__who"><span class="rs-pub__name name"><a href="{{ pub.url }}">{{ pub.name }}{% if pub.on_map %}<span class="np-sr-only">, {% translate "na mapě" %}</span>{% endif %}</a></span>{% if pub.city %}<span class="rs-pub__meta">{{ pub.city|place }}</span>{% endif %}{% if pub.rotates %}<span class="rs-pub__meta rs-pub__note">{% translate "pípy se tu střídají" %}</span>{% endif %}</span>
+          <span class="rs-pub__who"><span class="rs-pub__name name"><a{% if not pub.on_map %} class="rs-row__link"{% endif %} href="{{ pub.url }}">{{ pub.name }}{% if pub.on_map %}<span class="np-sr-only">, {% translate "na mapě" %}</span>{% endif %}</a></span>{% if pub.city %}<span class="rs-pub__meta">{{ pub.city|place }}</span>{% endif %}{% if pub.rotates %}<span class="rs-pub__meta rs-pub__note">{% translate "pípy se tu střídají" %}</span>{% endif %}</span>
           <span class="rs-pub__when"><span aria-hidden="true">{% translate "potvrzeno" %} </span><span class="np-sr-only">{% translate "naposledy potvrzeno" %} </span><time datetime="{{ pub.confirmed }}">{{ pub.date }}</time>{% if not pub.fresh %}<span class="np-sr-only">, {% translate "starší než 3 měsíce" %}</span>{% endif %}</span>
           <span class="rs-pub__cost">{% if pub.price_czk %}<span class="rs-pub__price">{{ pub.price_czk }} {% translate "Kč" %}</span>{% if pub.litres and pub.volume_ml != 500 %}<span class="rs-pub__meta">{% blocktranslate with litres=pub.litres %}za {{ litres }} l{% endblocktranslate %}</span>{% endif %}{% else %}<span class="rs-pub__meta">{% translate "cena chybí" %}</span>{% endif %}</span>
+          {% if not pub.on_map %}<span class="rs-row__chevron">{% icon "chevron-right" "np-icon--s" %}</span>{% endif %}
         </li>{% endfor %}
       </ol>
       <div class="rs-empty" data-empty role="status" hidden>

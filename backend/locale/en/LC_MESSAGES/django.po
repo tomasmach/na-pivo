@@ -5406,17 +5406,11 @@ msgstr "Na pivo is a beer diary for your pocket: a compass to the nearest pub, a
 msgid "Kdo za tím je"
 msgstr "Who makes it"
 
-msgid "Jmenuju se Tomáš Mach a Na pivo dělám sám, appku i tenhle web. Začalo to jako kompas na nejbližší hospodu. Dnes si v appce zapisuješ piva, vedeš si deník a vidíš, kde sedí parta."
-msgstr "I'm Tomáš Mach and I make Na pivo on my own, the app and this website. It started as a compass to the nearest pub. Today you log your beers in the app, keep a diary and see where your crew is sitting."
-
 msgid "Instagram @jsem_mach"
 msgstr "Instagram @jsem_mach"
 
 msgid "Odkud jsou data a ceny"
 msgstr "Where the data and prices come from"
-
-msgid "Seznam hospod skládám z veřejných zdrojů a z hospod, které do appky přidali lidi. Zavřenou hospodu nebo duplicitu může kdokoli nahlásit v appce a po dost hlasech zmizí."
-msgstr "I put the list of pubs together from public sources and from pubs people added in the app. Anyone can report a closed pub or a duplicate in the app, and with enough votes it disappears."
 
 msgid "Lístky a otevírací doba"
 msgstr "Menus and opening hours"
@@ -5463,9 +5457,6 @@ msgstr "About Na pivo and who makes it"
 msgid "Na pivo dělá jeden člověk, Tomáš Mach. Odkud jsou hospody, lístky a ceny, jak je počítám a jak mi napsat."
 msgstr "One person makes Na pivo: Tomáš Mach. Where the pubs, menus and prices come from, how I count them and how to reach me."
 
-msgid "Pivní index Na pivo: cena piva po krajích a v čase"
-msgstr "Na pivo Beer Index: beer prices by region and over time"
-
 msgid "Hospody: %(city)s"
 msgstr "Pubs in %(city)s"
 
@@ -5479,10 +5470,10 @@ msgid "Lístek mám u %(count)s z nich."
 msgstr "I have the menu of %(count)s of them."
 
 msgid "Je tu %(names)s."
-msgstr "There is %(names)s."
+msgstr "The pub here: %(names)s."
 
 msgid "Jsou tu %(names)s."
-msgstr "There are %(names)s."
+msgstr "Pubs here: %(names)s."
 
 msgid "Třeba %(names)s."
 msgstr "Among them %(names)s."
@@ -5514,12 +5505,6 @@ msgstr "%(name)s, %(place)s. I don't know yet what they pour. Anyone sitting her
 msgid "Hodnocení piv od lidí z Na pivo."
 msgstr "Beer ratings from people on Na pivo."
 
-msgid "Otevírací doba a cesta na mapě."
-msgstr "Opening hours and the way there on a map."
-
-msgid "Cesta na mapě."
-msgstr "The way there on a map."
-
 msgctxt "heading"
 msgid "Kolik stojí pivo %(in_city)s"
 msgstr "What a beer costs %(in_city)s"
@@ -5541,3 +5526,27 @@ msgstr "pub pouring"
 
 msgid "hospody čepují"
 msgstr "pubs pouring"
+
+msgid "Pivní index Česka: cena piva po krajích a v čase"
+msgstr "Czech Beer Index: beer prices by region and over time"
+
+msgid "Zavřenou hospodu nebo podnik, který hospodou není, nahlásíš v appce. Zmizí, až ho nahlásí %(n)s různých lidí."
+msgstr "Report a closed pub or a place that is not a pub in the app. It disappears once %(n)s different people report it."
+
+msgid "Zdroj: Pivní index Česka, Na pivo"
+msgstr "Source: Czech Beer Index, Na pivo"
+
+msgid "Jmenuju se Tomáš Mach a Na pivo dělám sám, appku i tenhle web."
+msgstr "I'm Tomáš Mach and I make Na pivo on my own, the app and this website."
+
+msgid "Najdeš tu i otevírací dobu."
+msgstr "Opening hours are on the page too."
+
+msgid "Zavřenou hospodu nebo podnik, který hospodou není, nahlásíš v appce. Zmizí, až ho nahlásí %(n)s různí lidé."
+msgstr "Report a closed pub or a place that is not a pub in the app. It disappears once %(n)s different people report it."
+
+msgid "Zavřenou hospodu nebo podnik, který hospodou není, nahlásíš v appce. Zmizí, až ho nahlásí %(n)s člověk."
+msgstr "Report a closed pub or a place that is not a pub in the app. It disappears once %(n)s person reports it."
+
+msgid "Seznam hospod skládám z veřejných zdrojů a z hospod, které do appky přidali lidi."
+msgstr "I put the list of pubs together from public sources and from pubs people added in the app."
