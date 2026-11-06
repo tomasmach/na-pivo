@@ -126,6 +126,27 @@ def normalize_beer_text(value: str) -> str:
     return " ".join(_TOKEN_RE.findall(ascii_text.casefold()))
 
 
+# How a menu says a beer comes from a tank: "Plzeň tankové", "Pilsner Urquell tank", "Kozel z tanku".
+_TANK_WORDS = frozenset(
+    ("tank", "tanku", "tankem", "tankove", "tankova", "tankovy", "tankovou", "tankovka", "tankovky")
+)
+
+
+def without_tank_words(name: str) -> str:
+    """The normalized name without the words saying it is poured from a tank.
+
+    A tank beer is the same beer; only these words go, so "nefiltrovaný" or
+    another degree still names another beer.
+    """
+    tokens = normalize_beer_text(name).split()
+    kept = [
+        token for index, token in enumerate(tokens)
+        if token not in _TANK_WORDS
+        and not (token == "z" and index + 1 < len(tokens) and tokens[index + 1] in _TANK_WORDS)
+    ]
+    return " ".join(kept)
+
+
 def beer_menu_identity(beer: dict) -> tuple[str, int | None]:
     """One pub-menu row per beer and volume, however the name was typed.
 

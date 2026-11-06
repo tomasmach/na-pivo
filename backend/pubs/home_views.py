@@ -48,7 +48,7 @@ def breadcrumb_list(items: list[tuple[str, str]]) -> dict:
 
 
 def organization(origin: str) -> dict:
-    """Who publishes the site and the app. The Instagram is the founder's own, so it stays on him."""
+    """Who publishes the site and the app."""
 
     return {
         "@type": "Organization",
@@ -57,8 +57,10 @@ def organization(origin: str) -> dict:
         "url": f"{origin}/",
         "logo": {"@type": "ImageObject", "url": f"{origin}/apple-touch-icon.png", "width": 180, "height": 180},
         "founder": {**AUTHOR, "sameAs": [AUTHOR["url"]]},
-        "sameAs": [APP_STORE_URL, PLAY_STORE_URL],
+        "sameAs": [APP_STORE_URL, PLAY_STORE_URL, AUTHOR["url"]],
     }
+
+
 # Keeps "</script>" inside a value from ending the block early.
 _LD_ESCAPES = {ord("<"): "\\u003c", ord(">"): "\\u003e", ord("&"): "\\u0026"}
 
