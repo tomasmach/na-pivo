@@ -6,7 +6,7 @@ from datetime import timedelta
 
 from django.core.cache import cache
 from django.db.models import Sum
-from django.http import HttpRequest, HttpResponse
+from django.http import Http404, HttpRequest, HttpResponse, HttpResponsePermanentRedirect
 from django.utils import formats, timezone
 from django.utils.translation import gettext, ngettext, npgettext
 
@@ -165,13 +165,24 @@ def _pubs_line(row: dict) -> str:
     ) % {"pub": row["pub_name"], "n": thousands(others)}
 
 
+def _path(region: str) -> str:
+    return web_reverse("web-rankings-region", kraj=region_slug(region)) if region else web_reverse("web-rankings")
+
+
 @web_page
-def rankings(request: HttpRequest) -> HttpResponse:
+def rankings(request: HttpRequest, kraj: str = "") -> HttpResponse:
+    if not kraj and "kraj" in request.GET:
+        # The kraj used to sit in the query string; its page has its own address now.
+        query = request.GET.copy()
+        old = REGION_BY_SLUG.get(query.pop("kraj")[-1], "")
+        return HttpResponsePermanentRedirect(_path(old) + (f"?{query.urlencode()}" if query else ""))
+    region = REGION_BY_SLUG.get(kraj, "")
+    if kraj and not region:
+        raise Http404
     wait = throttle_wait(request, "web_pages")
     if wait:
         return too_many(request, wait, "rankings")
 
-    region = REGION_BY_SLUG.get(request.GET.get("kraj", ""), "")
     style = request.GET.get("styl", "")
     style = style if style in STYLES else ""
     try:
@@ -183,10 +194,11 @@ def rankings(request: HttpRequest) -> HttpResponse:
     styles = _style_labels()
     base = web_reverse("web-rankings")
 
-    def url(**params) -> str:
-        values = {"kraj": region_slug(region) if region else "", "styl": style, **params}
+    def url(kraj: str | None = None, **params) -> str:
+        path = _path(region if kraj is None else REGION_BY_SLUG.get(kraj, ""))
+        values = {"styl": style, **params}
         query = "&".join(f"{key}={value}" for key, value in values.items() if value)
-        return f"{base}?{query}" if query else base
+        return f"{path}?{query}" if query else path
 
     style_chips = [{"label": gettext("Všechna piva"), "url": url(styl=""), "current": not style}] + [
         {"label": label, "url": url(styl=key), "current": style == key} for key, label in styles.items()
@@ -281,11 +293,20 @@ def rankings(request: HttpRequest) -> HttpResponse:
             "Která piva lidi v appce Na pivo hodnotí nejlíp. Do žebříčku se dostane pivo s aspoň %(n)s hodnoceními, každý mu dává jednu známku."
         ) % {"n": MIN_RATINGS},
         section="rankings",
-        # Filtered and longer lists are the same page for search engines.
-        indexable=not request.GET,
+        # A kraj is a page of its own once it has beers; a style or a longer list is the same page.
+        indexable=not request.GET and (bool(rows) or not region),
+        follow=True,
     )
     return public_cache(response)
 
 
 def sitemap_paths() -> list[str]:
-    return [web_reverse("web-rankings", "cs")]
+    ranked = (
+        BeerRegionRanking.objects.filter(rank__isnull=False, rating_count__gte=MIN_RATINGS)
+        .values_list("region", flat=True)
+        .distinct()
+    )
+    regions = set(ranked) & set(REGION_BY_SLUG.values())
+    return [web_reverse("web-rankings", "cs")] + [
+        web_reverse("web-rankings-region", "cs", kraj=region_slug(code)) for code in sorted(regions)
+    ]

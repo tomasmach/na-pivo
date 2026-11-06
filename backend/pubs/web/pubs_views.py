@@ -16,7 +16,6 @@ from django.http import (
     HttpRequest,
     HttpResponse,
     HttpResponsePermanentRedirect,
-    HttpResponseRedirect,
 )
 from django.utils import formats, timezone
 from django.utils.text import slugify
@@ -354,12 +353,15 @@ def pubs_city(request: HttpRequest, city: str) -> HttpResponse:
     known_hours = [row for row in rows if row["status"]]
     open_now = [row for row in known_hours if row["status"]["open"]]
     visible = _apply(rows, chosen)
+    last_page = max(1, -(-len(visible) // PAGE_SIZE))
     try:
-        page = min(max(int(request.GET.get("page", "1")), 1), MAX_PAGES)
+        page = min(max(int(request.GET.get("page", "1")), 1), last_page)
     except ValueError:
         page = 1
-    shown = visible[: page * PAGE_SIZE]
-    for index, row in enumerate(shown, start=1):
+    # Each page lists only its own pubs, so a crawler reaches every pub; "Načíst další" appends the next page.
+    start = (page - 1) * PAGE_SIZE
+    shown = visible[start:start + PAGE_SIZE]
+    for index, row in enumerate(shown, start=start + 1):
         row["anchor"] = f"h{index}"
 
     def chip(label: str, key: str) -> dict:
@@ -457,12 +459,8 @@ def pubs_city(request: HttpRequest, city: str) -> HttpResponse:
             "menu_beer": menu_beer,
             "menu_sort": menu_sort,
             "rows": shown,
-            "count_label": gettext("%(shown)s z %(total)s") % {"shown": num(len(shown)), "total": num(len(visible))},
-            "more_url": (
-                _query(params, page=str(page + 1)) + f"#h{len(shown) + 1}"
-                if len(visible) > len(shown) and page < MAX_PAGES
-                else ""
-            ),
+            "count_label": gettext("%(shown)s z %(total)s") % {"shown": num(start + len(shown)), "total": num(len(visible))},
+            "more_url": _query(params, page=str(page + 1)) + f"#h{start + len(shown) + 1}" if page < last_page else "",
             "filtered": bool(params),
             "map": pub_map(map_points, [(pub["lat"], pub["lng"]) for pub in data["list"]]),
             "live_map": live_map(map_points),
@@ -478,6 +476,10 @@ def pubs_city(request: HttpRequest, city: str) -> HttpResponse:
         title=title,
         description=f"{lead} {gettext('Podívej se, kde mají otevřeno a co čepují.')}",
         section="pubs",
+        indexable=pubs_data.city_indexed(data),
+        follow=True,
+        # A filtered list stays the city's page; an unfiltered next page is a page of its own.
+        canonical_params={"page": page} if page > 1 and not params else None,
         with_map=True,
     )
     return _public(response)
@@ -690,6 +692,8 @@ def pub_page(request: HttpRequest, key: str) -> HttpResponse:
         title=title,
         description=description,
         section="pubs",
+        indexable=pubs_data.has_content(pub),
+        follow=True,
         with_map=True,
     )
     return _public(response)
@@ -727,7 +731,10 @@ def pub_share_redirect(request: HttpRequest, key: str) -> HttpResponse | None:
     target = pubs_data.pub_key_for_hint(cache_key, request.GET.get("n", "")[:120])
     if target is None:
         return None
-    return HttpResponseRedirect(web_reverse("web-pub", current_locale(), key=target))
+    response = HttpResponsePermanentRedirect(web_reverse("web-pub", current_locale(), key=target))
+    # A renamed pub gets a new address, so browsers must ask again now and then.
+    response["Cache-Control"] = "public, max-age=86400"
+    return response
 
 
 # ---------- /hledat ----------
@@ -857,6 +864,7 @@ def search_page(request: HttpRequest) -> HttpResponse:
 
 def sitemap_paths() -> list[str]:
     paths = [web_reverse("web-pubs", "cs")]
-    paths += [web_reverse("web-pubs-city", "cs", city=city["slug"]) for city in pubs_data.cities_by_size() if city["pubs"] >= 3]
-    paths += [web_reverse("web-pub", "cs", key=key) for key in pubs_data.sitemap_pub_keys()]
+    paths += [
+        web_reverse("web-pubs-city", "cs", city=city["slug"]) for city in pubs_data.cities_by_size() if pubs_data.city_indexed(city)
+    ]
     return paths

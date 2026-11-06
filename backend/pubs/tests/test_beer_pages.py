@@ -25,6 +25,7 @@ from pubs.models import (
     PubDirectory,
     PubHours,
 )
+from pubs.tests.sitemaps import sitemap_xml
 from pubs.web.pages import _csp
 
 PRAGUE = (50.08, 14.42)
@@ -385,7 +386,7 @@ def test_sitemap_lists_every_beer_page_in_both_languages(client, settings):
     _second_beer()
     call_command("snapshot_beer_prices", stdout=StringIO())
 
-    xml = client.get("/sitemap.xml").content.decode()
+    xml = sitemap_xml(client)
 
     for url in (
         "https://na-pivo.cz/pivo",

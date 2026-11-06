@@ -14,7 +14,7 @@ renders the page inside it, so views and templates only call ``gettext`` and
 from __future__ import annotations
 
 from functools import wraps
-from urllib.parse import quote, urlsplit
+from urllib.parse import quote, urlencode, urlsplit
 
 from django.conf import settings
 from django.core.cache import cache
@@ -22,6 +22,7 @@ from django.http import HttpRequest, HttpResponse, HttpResponseRedirect
 from django.shortcuts import render
 from django.template.response import SimpleTemplateResponse
 from django.utils import translation
+from django.utils.cache import get_conditional_response, set_response_etag
 from django.utils.translation import gettext
 from django.views.defaults import page_not_found
 from django.views.defaults import server_error as django_server_error
@@ -71,9 +72,28 @@ def web_page(view):
         if request.web_account is not None:
             # The header shows who is signed in, so no shared cache may keep the page.
             response.headers["Cache-Control"] = "private, no-store"
-        return response
+        return _conditional(request, response)
 
     return canonical_host(wrapper)
+
+
+def _conditional(request: HttpRequest, response: HttpResponse) -> HttpResponse:
+    """A 304 for a crawler that already has this exact public page.
+
+    No Last-Modified: most pages show the clock ("open until 22:00"), so only the body says whether it changed.
+    """
+
+    cache_control = response.headers.get("Cache-Control", "")
+    if (
+        request.method not in ("GET", "HEAD")
+        or response.status_code != 200
+        or response.streaming
+        or "private" in cache_control
+        or "no-store" in cache_control
+    ):
+        return response
+    set_response_etag(response)
+    return get_conditional_response(request, etag=response.headers["ETag"], response=response)
 
 
 def login_url(request: HttpRequest) -> str:
@@ -186,12 +206,17 @@ def render_page(
     section: str = "",
     status: int = 200,
     indexable: bool = True,
+    follow: bool = False,
+    canonical_params: dict | None = None,
     with_map: bool = False,
 ) -> HttpResponse:
     """Render a page of the public or signed-in shell.
 
     ``section`` marks the active item in the header or panel (``"pubs"``,
-    ``"diary"``…). ``indexable=False`` keeps the page out of search engines.
+    ``"diary"``…). ``indexable=False`` keeps the page out of search engines;
+    with ``follow=True`` they still follow its links (a public page that is
+    thin or a filtered view of another one). ``canonical_params`` stay in the
+    canonical and hreflang addresses, which otherwise drop the query string.
     ``with_map=True`` lets the page load the street map of ``web/components/map.html``.
     """
 
@@ -199,17 +224,21 @@ def render_page(
     alternates = _alternates(request)
     origin = settings.PUBLIC_WEB_ORIGIN
     legal = _LEGAL_ROOT if lang == "cs" else f"{_LEGAL_ROOT}/en"
+    kept = f"?{urlencode(canonical_params)}" if canonical_params else ""
+    indexable = indexable and status == 200
     page = {
         "lang": lang,
         "other_lang": "en" if lang == "cs" else "cs",
         "switch_url": alternates["en" if lang == "cs" else "cs"],
-        "canonical_url": f"{origin}{alternates[lang].split('?')[0]}",
-        "alternate_urls": {code: f"{origin}{url.split('?')[0]}" for code, url in alternates.items()},
+        "canonical_url": f"{origin}{alternates[lang].split('?')[0]}{kept}",
+        "alternate_urls": {code: f"{origin}{url.split('?')[0]}{kept}" for code, url in alternates.items()},
         "og_locale": _OG_LOCALES[lang],
         "title": title,
         "description": description,
         "section": section,
-        "indexable": indexable and status == 200,
+        "indexable": indexable,
+        # Pages that are only out of the index still get a share preview.
+        "shareable": indexable or (follow and status == 200),
         "account": _account_card(getattr(request, "web_account", None)),
         "app_store_url": app_store_url("web"),
         "play_store_url": play_store_url("web"),
@@ -220,8 +249,8 @@ def render_page(
         "footer": (lambda: _footer(lang)) if status < 500 else None,
     }
     response = render(request, template, {"page": page, **(context or {})}, status=status)
-    if not page["indexable"]:
-        response.headers["X-Robots-Tag"] = "noindex, nofollow"
+    if not indexable:
+        response.headers["X-Robots-Tag"] = "noindex, follow" if follow and status == 200 else "noindex, nofollow"
     if with_map:
         response.headers["Content-Security-Policy"] = _csp(with_map=True)
     return response

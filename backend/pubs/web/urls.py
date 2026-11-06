@@ -54,6 +54,7 @@ urlpatterns = [
     *bilingual("hledat", "en/search", search_page, "web-search"),
 
     *bilingual("zebricky", "en/rankings", rankings, "web-rankings"),
+    *bilingual("zebricky/<slug:kraj>", "en/rankings/<slug:kraj>", rankings, "web-rankings-region"),
 
     *bilingual("novinky", "en/news", news, "web-news"),
 

@@ -9,7 +9,8 @@ follow the same naming, so the tag reaches them too.
 
 from __future__ import annotations
 
-from django.urls import NoReverseMatch, URLPattern, path, reverse
+from django.http import HttpRequest, HttpResponsePermanentRedirect
+from django.urls import NoReverseMatch, Resolver404, URLPattern, path, resolve, reverse
 
 from pubs.i18n import current_locale
 
@@ -40,3 +41,32 @@ def web_reverse(name: str, lang: str | None = None, **kwargs) -> str:
         except NoReverseMatch:
             pass
     return reverse(name, kwargs=kwargs or None)
+
+
+
+def _resolves(path: str) -> bool:
+    try:
+        resolve(path)
+    except Resolver404:
+        return False
+    return True
+
+
+def trailing_slash_middleware(get_response):
+    """A web address asked for with a slash at the end leads to the page without one, query string kept.
+
+    Only when the address with the slash is not a page itself, so the API and admin keep their slashes,
+    and only for GET and HEAD, so a form post is never turned into a GET.
+    """
+
+    def middleware(request: HttpRequest):
+        path = request.path_info
+        if path != "/" and path.endswith("/") and request.method in ("GET", "HEAD") and not path.startswith("/v1/"):
+            target = path.rstrip("/")
+            if target and not target.startswith("//") and _resolves(target) and not _resolves(path):
+                query = request.META.get("QUERY_STRING", "")
+                location = request.path[: len(request.path) - len(path)] + target
+                return HttpResponsePermanentRedirect(f"{location}?{query}" if query else location)
+        return get_response(request)
+
+    return middleware

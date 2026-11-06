@@ -266,7 +266,7 @@ def _prices(keys) -> dict[str, dict]:
     for chunk in _chunks(keys):
         for row in PubPriceIndex.objects.filter(
             cache_key__in=chunk, active=True, observed_at__gte=since, source__in=_PRICE_SOURCES
-        ).values("cache_key", "name", "price_czk", "volume_ml"):
+        ).values("cache_key", "name", "price_czk", "volume_ml", "observed_at"):
             rows[row["cache_key"]] = row
     return rows
 
@@ -403,6 +403,12 @@ def _enrich(pubs: list[dict]) -> list[dict]:
             "rating": rating[0] if rating else None,
             "raters": rating[1] if rating else 0,
             "ratings": rating[2] if rating else 0,
+            "changed_at": max(
+                (at for at in (
+                    menu and menu["beers_updated_at"], menu and menu["hours_updated_at"], price and price["observed_at"],
+                ) if at),
+                default=None,
+            ),
         })
     return out
 
@@ -695,11 +701,36 @@ def search_counts() -> dict:
     return data
 
 
-def sitemap_pub_keys(limit: int = 5000) -> list[str]:
-    """Pubs with something to read (a menu or a price), for the sitemap."""
+# Below this a town's page lists too few pubs to stand on its own in search results.
+MIN_INDEXED_CITY_PUBS = 3
 
-    with_data = set(PubCommunityData.objects.exclude(beers=[]).values_list("cache_key", flat=True)) | set(
-        PubPriceIndex.objects.filter(active=True, source__in=_PRICE_SOURCES).values_list("cache_key", flat=True)
-    )
-    return [pub_key(pub["n"], pub["k"]) for pub in catalogue()["pubs"] if pub["k"] in with_data][:limit]
 
+def has_content(pub: dict) -> bool:
+    """Whether a pub page has something to read: a menu or a price. Decides the sitemap and noindex alike."""
+
+    return bool(pub["beers"]) or pub["price"] is not None
+
+
+def city_indexed(city: dict) -> bool:
+    return city["pubs"] >= MIN_INDEXED_CITY_PUBS
+
+
+def indexed_pubs() -> dict[str, datetime | None]:
+    """Address key of every pub page with content, and when its menu, hours or price last changed."""
+
+    data = cache.get("web:pubs:indexed")
+    if data is None:
+        with_data = set(PubCommunityData.objects.exclude(beers=[]).values_list("cache_key", flat=True)) | set(
+            PubPriceIndex.objects.filter(active=True, source__in=_PRICE_SOURCES).values_list("cache_key", flat=True)
+        )
+        rows = _enrich([pub for pub in catalogue()["pubs"] if pub["k"] in with_data])
+        # Two spellings of one name in a cell share an address. Like find_pub, the first one is the page.
+        data, seen = {}, set()
+        for row in rows:
+            if row["key"] in seen:
+                continue
+            seen.add(row["key"])
+            if has_content(row):
+                data[row["key"]] = row["changed_at"]
+        cache.set("web:pubs:indexed", data, CATALOGUE_TTL)
+    return data
