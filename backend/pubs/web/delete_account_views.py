@@ -26,10 +26,6 @@ from pubs.web.routes import web_reverse
 from pubs.web.session import end_session
 
 
-def sitemap_paths() -> list[str]:
-    return [web_reverse("web-delete-account", "cs")]
-
-
 def _settings_link(request: HttpRequest) -> str:
     target = web_reverse("web-settings")
     if request.web_account is not None:

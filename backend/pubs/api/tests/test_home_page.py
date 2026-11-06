@@ -182,7 +182,7 @@ def test_sitemap_lists_both_languages_of_every_page(client, settings):
     pages = ("/", "/en", "/ceny", "/en/prices", "/hospody", "/en/pubs", "/zebricky", "/en/rankings")
     # No tour is published yet, so /trasy is not listed.
     pages += ("/novinky", "/en/news", "/pivni-index", "/en/beer-index")
-    assert set(urls) == {f"https://na-pivo.cz{path}" for path in pages + ("/smazat-ucet", "/en/delete-account")}
+    assert set(urls) == {f"https://na-pivo.cz{path}" for path in pages}
     alternates = {
         link.get("hreflang"): link.get("href")
         for link in urls["https://na-pivo.cz/en/prices"].findall("x:link", ns)

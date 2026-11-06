@@ -729,12 +729,18 @@ def has_content(pub: dict) -> bool:
 
 
 def city_indexed(city: dict) -> bool:
-    return city["pubs"] >= MIN_INDEXED_CITY_PUBS
+    """A town page is indexed with enough pubs and at least one with content, decides the sitemap and noindex alike."""
+
+    return city["pubs"] >= MIN_INDEXED_CITY_PUBS and city["slug"] in _indexed()["cities"]
 
 
 def indexed_pubs() -> dict[str, datetime | None]:
     """Address key of every pub page with content, and when its menu, hours or price last changed."""
 
+    return _indexed()["pubs"]
+
+
+def _indexed() -> dict:
     data = cache.get("web:pubs:indexed")
     if data is None:
         with_data = set(PubCommunityData.objects.exclude(beers=[]).values_list("cache_key", flat=True)) | set(
@@ -742,12 +748,14 @@ def indexed_pubs() -> dict[str, datetime | None]:
         )
         rows = _enrich([pub for pub in catalogue()["pubs"] if pub["k"] in with_data])
         # Two spellings of one name in a cell share an address. Like find_pub, the first one is the page.
-        data, seen = {}, set()
+        pubs, cities, seen = {}, set(), set()
         for row in rows:
             if row["key"] in seen:
                 continue
             seen.add(row["key"])
             if has_content(row):
-                data[row["key"]] = row["changed_at"]
+                pubs[row["key"]] = row["changed_at"]
+                cities.add(row["city_slug"])
+        data = {"pubs": pubs, "cities": cities}
         cache.set("web:pubs:indexed", data, CATALOGUE_TTL)
     return data

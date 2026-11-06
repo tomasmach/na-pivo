@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import timedelta
 
 from django.core.cache import cache
-from django.db.models import Sum
+from django.db.models import Count, Sum
 from django.http import Http404, HttpRequest, HttpResponse
 from django.utils import formats, timezone
 from django.utils.translation import gettext, ngettext, npgettext
@@ -40,6 +40,8 @@ from pubs.web.words import plural
 
 # A beer joins the public ranking once this many people rated it.
 MIN_RATINGS = 50
+# A kraj's page is worth finding once it ranks a few beers, like a town with three pubs or a beer in three.
+MIN_INDEXED_REGION_BEERS = 3
 FIRST_ROWS = 10
 MORE_ROWS = 30
 MAX_ROWS = 100
@@ -316,7 +318,7 @@ def rankings(request: HttpRequest, kraj: str = "") -> HttpResponse:
         ) % {"n": MIN_RATINGS},
         section="rankings",
         # A kraj is a page of its own once it has beers; a style or a longer list is the same page.
-        indexable=not request.GET and (bool(rows) or not region),
+        indexable=not request.GET and (not region or len(data["rows"]) >= MIN_INDEXED_REGION_BEERS),
         follow=True,
     )
     return public_cache(response)
@@ -325,8 +327,10 @@ def rankings(request: HttpRequest, kraj: str = "") -> HttpResponse:
 def sitemap_paths() -> list[str]:
     ranked = (
         BeerRegionRanking.objects.filter(rank__isnull=False, rating_count__gte=MIN_RATINGS)
+        .values("region")
+        .annotate(beers=Count("id"))
+        .filter(beers__gte=MIN_INDEXED_REGION_BEERS)
         .values_list("region", flat=True)
-        .distinct()
     )
     regions = set(ranked) & set(REGION_BY_SLUG.values())
     return [web_reverse("web-rankings", "cs")] + [

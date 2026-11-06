@@ -13,7 +13,7 @@ from rest_framework.test import APIClient
 
 from pubs.api.tests.test_piva import _checkin, _products, _register
 from pubs.beer_ranking import refresh_beer_ranking
-from pubs.models import PubCommunityData, PubDirectory, PubHours
+from pubs.models import ApiRateLimitBucket, PubCommunityData, PubDirectory, PubHours
 from pubs.price_map import save_price_snapshot
 from pubs.tests.sitemaps import sitemap_xml
 from pubs.tests.test_price_map import BRNO, PRAGUE, _price
@@ -157,8 +157,8 @@ def test_two_spellings_of_one_pub_are_one_sitemap_entry(client):
 
 def test_town_with_fewer_than_three_pubs_is_noindex_follow_and_out_of_the_sitemap(client):
     _pub("U Lípy", lat=49.38, lng=15.62, city="Pistovice")
-    for index in range(3):
-        _pub(f"Brněnka {index}", lat=49.19 + index / 1000, lng=16.61, city="Brno-střed")
+    brno = [_pub(f"Brněnka {index}", lat=49.19 + index / 1000, lng=16.61, city="Brno-střed") for index in range(3)]
+    _menu(brno[0])
 
     assert client.get("/hospody/pistovice")["X-Robots-Tag"] == "noindex, follow"
     assert client.get("/en/pubs/pistovice")["X-Robots-Tag"] == "noindex, follow"
@@ -171,8 +171,9 @@ def test_town_with_fewer_than_three_pubs_is_noindex_follow_and_out_of_the_sitema
 
 
 def test_every_page_of_a_city_is_its_own_canonical_with_only_its_pubs(client):
-    for index in range(45):
+    for index in range(44):
         _pub(f"Hospoda {index:02d}", lat=50.08 + index / 1000, lng=14.42, city="Praha")
+    _menu(_pub("Zlatý tygr", lat=50.2, lng=14.5, city="Praha"))
 
     second = client.get("/hospody/praha?page=2").content.decode()
     assert second.count('class="np-pubrow"') == 20 and 'id="h21"' in second and 'id="h1"' not in second
@@ -191,13 +192,15 @@ def test_every_page_of_a_city_is_its_own_canonical_with_only_its_pubs(client):
 # ---------- rankings, news, tours ----------
 
 
-def _rank_in_prague() -> None:
+def _rank_in_prague(beers: int = 3) -> None:
     api = APIClient()
     pub = _pub("U Tygra")
-    [product] = _products(1)
-    for index in range(50):
-        token, _ = _register(api, f"r{index}{uuid.uuid4().hex[:8]}")
-        _checkin(api, token, product, rating="4", pub_cache_key=pub.cache_key, pub_name=pub.name)
+    for product in _products(beers):
+        for index in range(50):
+            # Each rater is a new account; the per-network sign-up limit is not what this tests.
+            ApiRateLimitBucket.objects.all().delete()
+            token, _ = _register(api, f"r{index}{uuid.uuid4().hex[:8]}")
+            _checkin(api, token, product, rating="4", pub_cache_key=pub.cache_key, pub_name=pub.name)
     refresh_beer_ranking(force=True)
 
 
@@ -307,7 +310,7 @@ def test_town_of_a_pub_drops_the_post_office_number_but_not_the_district(raw, to
 
 
 def test_post_office_town_is_one_city_page_and_its_address_moves_there(client):
-    _pub("U Lva", lat=50.356, lng=13.797, city="Louny")
+    _menu(_pub("U Lva", lat=50.356, lng=13.797, city="Louny"))
     _pub("Na Mostě", lat=50.357, lng=13.798, city="Louny")
     _pub("Pod Poštou", lat=50.358, lng=13.799, city="Louny 1")
     _pub("U Kříže", lat=50.10, lng=14.44, city="Praha 7")
@@ -442,7 +445,7 @@ def _breadcrumb_names(html: str) -> list[str]:
 
 
 def test_kraj_ranking_has_its_own_description_and_breadcrumb(client):
-    _rank_in_prague()
+    _rank_in_prague(beers=1)
     [product] = _products(1)
 
     czech = client.get("/zebricky/praha").content.decode()
@@ -462,3 +465,31 @@ def test_kraj_ranking_has_its_own_description_and_breadcrumb(client):
     national = client.get("/zebricky").content.decode()
     assert 'content="Která piva lidi v appce Na pivo hodnotí nejlíp.' in national
     assert _breadcrumb_names(national)[-1][0] == "Piva"
+
+
+
+# ---------- content thresholds ----------
+
+
+def test_kraj_with_fewer_than_three_ranked_beers_stays_out_of_the_index(client):
+    _rank_in_prague(beers=2)
+
+    page = client.get("/zebricky/praha")
+    assert page.status_code == 200 and page["X-Robots-Tag"] == "noindex, follow"
+    assert client.get("/en/rankings/praha")["X-Robots-Tag"] == "noindex, follow"
+    locs = _locs(sitemap_xml(client))
+    assert f"{ORIGIN}/zebricky" in locs and f"{ORIGIN}/zebricky/praha" not in locs
+
+
+def test_town_needs_a_pub_with_content_besides_three_pubs(client):
+    for index in range(3):
+        _pub(f"Žitenická {index}", lat=50.55 + index / 1000, lng=14.15, city="Žitenice")
+    zaky = [_pub(f"Žacká {index}", lat=49.88 + index / 1000, lng=15.40, city="Žáky") for index in range(3)]
+    _menu(zaky[2])
+
+    assert client.get("/hospody/zitenice")["X-Robots-Tag"] == "noindex, follow"
+    assert client.get("/en/pubs/zitenice")["X-Robots-Tag"] == "noindex, follow"
+    assert "X-Robots-Tag" not in client.get("/hospody/zaky")
+    locs = _locs(sitemap_xml(client))
+    assert f"{ORIGIN}/hospody/zaky" in locs and f"{ORIGIN}/en/pubs/zaky" in locs
+    assert not any("zitenice" in loc for loc in locs)
