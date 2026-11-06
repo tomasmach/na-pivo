@@ -38,10 +38,12 @@ from pubs.web.news import news
 from pubs.web.pages import component_gallery
 from pubs.web.pubs_views import pub_og_image, pub_page, pubs_city, pubs_index, search_page
 from pubs.web.rankings import rankings
+from pubs.web.reach_views import web_reach
 from pubs.web.routes import bilingual
 from pubs.web.tours import tour, tour_og, tours
 
 urlpatterns = [
+    path("web/reach", web_reach, name="reach-beacon"),
     path("web/<str:filename>", web_asset, name="web-asset"),
 
     *bilingual("hospody", "en/pubs", pubs_index, "web-pubs"),

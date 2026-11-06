@@ -1,0 +1,60 @@
+{% extends "admin/base_site.html" %}
+{% block breadcrumbs %}
+<div class="breadcrumbs"><a href="{% url "admin:index" %}">Admin</a> › <a href="{% url "admin:pubs_pubreachdaily_changelist" %}">Pub reach</a> › Dosah hospod</div>
+{% endblock %}
+{% block content %}
+<form method="get" action="{{ report_url }}" style="margin-bottom: 16px">
+  <label>Hospoda (název nebo cache key) <input type="text" name="pub" value="{{ query }}" size="32"></label>
+  <label>od <input type="date" name="from" value="{{ start|date:"Y-m-d" }}"></label>
+  <label>do <input type="date" name="to" value="{{ end|date:"Y-m-d" }}"></label>
+  <input type="submit" value="Zobrazit">
+  {% for range in ranges %}<a href="?pub={{ query|urlencode }}&amp;from={{ range.from|date:"Y-m-d" }}&amp;to={{ range.to|date:"Y-m-d" }}" style="margin-left: 8px">posledních {{ range.days }} dní</a>{% endfor %}
+</form>
+<p>Období {{ start|date:"j. n. Y" }} až {{ end|date:"j. n. Y" }} včetně, dny podle pražského času.</p>
+
+{% if no_match %}<p>Žádná hospoda neodpovídá „{{ query }}“.</p>{% endif %}
+
+{% if matches %}
+<h2>Víc hospod odpovídá, vyber jednu</h2>
+<table><thead><tr><th>Hospoda</th><th>Cache key</th></tr></thead><tbody>
+{% for key, name in matches %}<tr><td><a href="?pub={{ key }}&amp;from={{ start|date:"Y-m-d" }}&amp;to={{ end|date:"Y-m-d" }}">{{ name|default:"(bez názvu)" }}</a></td><td>{{ key }}</td></tr>{% endfor %}
+</tbody></table>
+{% endif %}
+
+{% if report %}
+<h2>{{ chosen.name|default:chosen.cache_key }} <small>({{ chosen.cache_key }})</small></h2>
+
+<h3>Appka</h3>
+<table><thead><tr><th></th><th>Počet</th><th>Unikátní uživatelé</th></tr></thead><tbody>
+{% for row in report.app %}<tr><td>{{ row.label }}</td><td>{{ row.count }}</td><td>{{ row.visitors }}</td></tr>{% endfor %}
+<tr><td><strong>Kdokoli z toho</strong></td><td></td><td><strong>{{ report.app_visitors_any }}</strong></td></tr>
+</tbody></table>
+<p>Pin se počítá nejvýš jednou za uživatele a otevření appky. Unikátní uživatelé jsou počítaní za celé období, kdo přišel víckrát, je tu jednou.
+{% if not report.visitors_complete %}<strong>Unikáty znám jen od {{ visitor_history_start|date:"j. n. Y" }}, za dřívější dny chybí.</strong>{% endif %}</p>
+
+<h3>Web</h3>
+<table><thead><tr><th></th><th>Počet</th></tr></thead><tbody>
+{% for row in report.web %}<tr><td>{{ row.label }}</td><td>{{ row.count }}</td></tr>{% endfor %}
+</tbody></table>
+<p>Web neukládá nic o návštěvníkovi, takže počítá návštěvy, ne lidi. Boty se nepočítají.</p>
+{% if report.web_sources %}
+<table><thead><tr><th>Odkud přišli</th><th>Zobrazení stránky</th><th>Klik na navigaci</th></tr></thead><tbody>
+{% for row in report.web_sources %}<tr><td>{{ row.source }}</td><td>{{ row.views }}</td><td>{{ row.navigation }}</td></tr>{% endfor %}
+</tbody></table>
+{% endif %}
+
+<h3>Po dnech</h3>
+{% if report.days %}
+<table><thead><tr><th>Den</th><th>Appka: pin</th><th>Appka: detail</th><th>Appka: navigace</th><th>Appka: lidé s pinem</th><th>Web: stránka</th><th>Web: navigace</th></tr></thead><tbody>
+{% for row in report.days %}<tr><td>{{ row.day|date:"D j. n. Y" }}</td><td>{{ row.app_map_impression|default:0 }}</td><td>{{ row.app_detail_view|default:0 }}</td><td>{{ row.app_navigation|default:0 }}</td><td>{{ row.app_map_impression_visitors|default:0 }}</td><td>{{ row.web_detail_view|default:0 }}</td><td>{{ row.web_navigation|default:0 }}</td></tr>{% endfor %}
+</tbody></table>
+{% else %}<p>V tomhle období nic.</p>{% endif %}
+{% endif %}
+
+{% if top %}
+<h2>Hospody s největším dosahem v období</h2>
+<table><thead><tr><th>Hospoda</th><th>Appka: pin</th><th>Appka: detail</th><th>Appka: navigace</th><th>Web: stránka</th><th>Web: navigace</th></tr></thead><tbody>
+{% for row in top %}<tr><td><a href="?pub={{ row.cache_key }}&amp;from={{ start|date:"Y-m-d" }}&amp;to={{ end|date:"Y-m-d" }}">{{ row.name|default:row.cache_key }}</a></td><td>{{ row.app_map_impression|default:0 }}</td><td>{{ row.app_detail_view|default:0 }}</td><td>{{ row.app_navigation|default:0 }}</td><td>{{ row.web_detail_view|default:0 }}</td><td>{{ row.web_navigation|default:0 }}</td></tr>{% endfor %}
+</tbody></table>
+{% elif not query %}<p>V tomhle období zatím žádná data.</p>{% endif %}
+{% endblock %}

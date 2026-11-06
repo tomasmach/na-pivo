@@ -1,9 +1,12 @@
 import hashlib
+from datetime import date, timedelta
 
 from django.contrib import admin
+from django.template.response import TemplateResponse
+from django.urls import path, reverse
 from django.utils import timezone
 
-from . import community_event_admin, pub_event_admin  # noqa: F401
+from . import community_event_admin, pub_event_admin, pub_reach  # noqa: F401
 from .enrichment import geohash8
 from .models import (
     Account,
@@ -30,6 +33,7 @@ from .models import (
     PubMergeAudit,
     PubNameCorrection,
     PubRating,
+    PubReachDaily,
     PubReport,
     PubSearchCache,
     PubVisit,
@@ -799,3 +803,59 @@ class TourPublicationAdmin(admin.ModelAdmin):
     @admin.action(description="Reset people counts")
     def reset_people_counts(self, request, queryset) -> None:  # noqa: ARG002
         queryset.update(people_count=0, people_count_at=None, count_since=timezone.now())
+
+
+@admin.register(PubReachDaily)
+class PubReachDailyAdmin(_ImmutableAdmin, admin.ModelAdmin):
+    list_display = ("day", "cache_key", "channel", "metric", "source", "count", "visitors")
+    list_filter = ("channel", "metric", "source", "day")
+    search_fields = ("cache_key",)
+    ordering = ("-day", "cache_key")
+    change_list_template = "admin/pubs/pubreachdaily/change_list.html"
+
+    def get_urls(self):
+        report = path("report/", self.admin_site.admin_view(self.report_view), name="pubs_pubreachdaily_report")
+        return [report, *super().get_urls()]
+
+    def report_view(self, request):
+        """One pub's map pins, page views and navigation taps over a chosen range, app and web apart."""
+
+        today = pub_reach.reach_day(timezone.now())
+        try:
+            days = max(1, min(int(request.GET.get("days") or 30), 3660))
+        except ValueError:
+            days = 30
+        end = _parse_day(request.GET.get("to")) or today
+        start = _parse_day(request.GET.get("from")) or end - timedelta(days=days - 1)
+        if start > end:
+            start, end = end, start
+        query = (request.GET.get("pub") or "").strip()
+        matches = pub_reach.find_pubs(query) if query else []
+        chosen = matches[0] if len(matches) == 1 else None
+        context = {
+            **self.admin_site.each_context(request),
+            "opts": self.model._meta,
+            "title": "Dosah hospod",
+            "query": query,
+            "start": start,
+            "end": end,
+            "today": today,
+            "ranges": [
+                {"days": n, "from": today - timedelta(days=n - 1), "to": today} for n in (7, 30, 90)
+            ],
+            "matches": matches if len(matches) > 1 else [],
+            "no_match": bool(query) and not matches,
+            "chosen": {"cache_key": chosen[0], "name": chosen[1]} if chosen else None,
+            "report": pub_reach.pub_report(chosen[0], start, end, today) if chosen else None,
+            "top": [] if query else pub_reach.top_pubs(start, end),
+            "visitor_history_start": pub_reach.visitor_history_start(today),
+            "report_url": reverse("admin:pubs_pubreachdaily_report"),
+        }
+        return TemplateResponse(request, "admin/pubs/pub_reach_report.html", context)
+
+
+def _parse_day(value: str | None) -> date | None:
+    try:
+        return date.fromisoformat(value) if value else None
+    except ValueError:
+        return None

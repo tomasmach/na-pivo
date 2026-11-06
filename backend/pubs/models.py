@@ -5736,3 +5736,72 @@ class XpEvent(models.Model):
 
     def __str__(self) -> str:
         return f"XpEvent({self.reason} +{self.amount})"
+
+
+class PubReach(models.TextChoices):
+    """What a pub reach counter counts and where it happened."""
+
+    MAP_IMPRESSION = "map_impression", "Map pin seen"
+    DETAIL_VIEW = "detail_view", "Detail or web page opened"
+    NAVIGATION = "navigation", "Navigation tapped"
+
+
+class PubReachDaily(models.Model):
+    """How often a pub was seen, opened or navigated to on one Prague day.
+
+    Kept for good, it is the number a pub sees in the pilot. ``source`` says where
+    a web visit came from (``google``, ``direct``, ...) and is empty in the app.
+    ``visitors`` counts distinct app accounts that day; the web counts no people.
+    """
+
+    class Channel(models.TextChoices):
+        APP = "app", "App"
+        WEB = "web", "Web"
+
+    cache_key = models.CharField(max_length=12)
+    day = models.DateField(db_index=True)
+    channel = models.CharField(max_length=8, choices=Channel.choices)
+    metric = models.CharField(max_length=20, choices=PubReach.choices)
+    source = models.CharField(max_length=16, blank=True, default="")
+    count = models.PositiveIntegerField(default=0)
+    visitors = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        verbose_name = "Pub reach (day)"
+        verbose_name_plural = "Pub reach (days)"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["cache_key", "day", "channel", "metric", "source"],
+                name="pub_reach_daily_unique",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return f"PubReachDaily({self.cache_key} {self.day} {self.channel}/{self.metric} {self.count})"
+
+
+class PubReachVisitor(models.Model):
+    """One app account that saw, opened or navigated to a pub on one day.
+
+    Distinct visitors over any range are COUNT(DISTINCT visitor) over these rows,
+    so they are right for a month without double counting someone who came back.
+    ``visitor`` is a keyed hash of the account, never the account itself; account
+    deletion removes its rows. Rows older than ``PUB_REACH_VISITOR_RETENTION_DAYS``
+    are pruned, the daily counts stay.
+    """
+
+    cache_key = models.CharField(max_length=12)
+    day = models.DateField(db_index=True)
+    metric = models.CharField(max_length=20, choices=PubReach.choices)
+    visitor = models.BigIntegerField(db_index=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["cache_key", "day", "metric", "visitor"],
+                name="pub_reach_visitor_unique",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return f"PubReachVisitor({self.cache_key} {self.day} {self.metric})"

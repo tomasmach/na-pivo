@@ -55,7 +55,7 @@ from django.utils.translation import gettext
 from PIL import Image, ImageOps, UnidentifiedImageError
 from PIL.Image import DecompressionBombError
 
-from pubs import community_trust, emailer, oauth
+from pubs import community_trust, emailer, oauth, pub_reach
 from pubs.beer_catalog import BeerCatalogMatchCache, sync_pub_beer_indexes_for_menu
 from pubs.beer_photo_deletions import (
     enqueue_account_avatar_file_deletion,
@@ -3784,6 +3784,7 @@ def _hard_delete_locked(account: Account) -> None:
     UserAddedPub.objects.filter(account=account).delete()
     PubContributionLog.objects.filter(account=account).delete()
     ClientEvent.objects.filter(account=account).delete()
+    pub_reach.forget_account(account.pk)
     # The beer-index account FK is SET_NULL, so without this the purged
     # author's rows would linger anonymously; survivor-owned rows stay.
     PubBeerBrand.objects.filter(account=account).delete()

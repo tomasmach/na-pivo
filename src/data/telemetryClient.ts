@@ -268,7 +268,7 @@ function shouldSend(input: ClientTelemetryInput): boolean {
   return true;
 }
 
-function telemetryHeaders(): Record<string, string> {
+export function telemetryHeaders(): Record<string, string> {
   const appVersion = getAppVersionLabel();
   const platform = Platform.OS;
   const osVersion = String(Platform.Version);

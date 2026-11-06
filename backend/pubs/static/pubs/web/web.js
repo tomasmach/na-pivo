@@ -38,6 +38,29 @@
     if (open) open.focus();
   });
 
+  // A pub page counts its view and navigation taps; only the pub, the action and the referrer's origin go out.
+  var reachPub = document.querySelector("[data-reach-pub]");
+  if (reachPub && !navigator.webdriver) {
+    var referrer = "";
+    try { referrer = document.referrer ? new URL(document.referrer).origin : ""; } catch (e) { referrer = ""; }
+    var reach = function (type) {
+      var body = JSON.stringify({ pub: reachPub.getAttribute("data-reach-pub"), type: type, ref: referrer });
+      try {
+        if (navigator.sendBeacon && navigator.sendBeacon("/web/reach", new Blob([body], { type: "application/json" }))) return;
+        fetch("/web/reach", { method: "POST", body: body, keepalive: true, headers: { "Content-Type": "application/json" } }).catch(function () {});
+      } catch (e) {
+        // Counting must never break the page.
+      }
+    };
+    var viewed = function () { reach("detail_view"); };
+    // A page the browser prerenders counts once somebody actually opens it.
+    if (document.prerendering) document.addEventListener("prerenderingchange", viewed, { once: true });
+    else viewed();
+    document.querySelectorAll('[data-reach="navigation"]').forEach(function (link) {
+      link.addEventListener("click", function () { reach("navigation"); });
+    });
+  }
+
   // The return page of Google and Apple sign-in posts itself on.
   var form = document.querySelector("form[data-autosubmit]");
   if (form) form.submit();
