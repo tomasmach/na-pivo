@@ -906,13 +906,20 @@ export function ZmenitMistoSheet() {
               icon={OUTSIDE_ICON[context]}
               active={place?.kind === 'outside' && place.context === context}
               height={48}
-              style={{ flex: 1, justifyContent: 'center' }}
+              style={{ flexGrow: 1, justifyContent: 'center' }}
               onPress={() => {
                 useNvPlaceStore.getState().setOutside(context);
                 nvBack(router);
               }}
             />
           ))}
+          <Chip
+            label={copy.placeAddPub}
+            icon="map-pin-plus"
+            height={48}
+            style={{ flexGrow: 1, justifyContent: 'center' }}
+            onPress={() => router.replace('/nv/pridat-hospodu')}
+          />
         </View>
       )}
       <View>
