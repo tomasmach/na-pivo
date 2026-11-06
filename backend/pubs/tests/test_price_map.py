@@ -5,6 +5,7 @@ import re
 import uuid
 from datetime import timedelta
 from io import BytesIO, StringIO
+from unittest.mock import ANY
 
 import pytest
 from django.core.management import call_command
@@ -189,7 +190,7 @@ def test_prices_older_than_three_months_count_but_are_flagged(client):
     assert (kolin["pubs"], kolin["mostly_stale"]) == (5, True)
     assert data["country"]["mostly_stale"] is True
     assert data["cheapest"][0] == {
-        "name": "U Berounky", "city": "Beroun", "price_czk": 33, "volume_ml": 500, "stale": True,
+        "cache_key": ANY, "name": "U Berounky", "city": "Beroun", "price_czk": 33, "volume_ml": 500, "stale": True,
     }
 
     call_command("snapshot_beer_prices", stdout=StringIO())
@@ -275,7 +276,8 @@ def test_a_merged_duplicate_keeps_its_price_under_the_merged_name():
     )
 
     assert build_price_map()["cheapest"] == [
-        {"name": "U Salzmannů", "city": "Plzeň", "price_czk": 35, "volume_ml": 500, "stale": False},
+        {"cache_key": canonical.cache_key, "name": "U Salzmannů", "city": "Plzeň", "price_czk": 35, "volume_ml": 500,
+         "stale": False},
     ]
 
 
@@ -293,8 +295,8 @@ def test_cheapest_pubs_are_named_only_from_the_catalogue_per_half_litre():
     _price("Praha", 25)
 
     assert build_price_map()["cheapest"] == [
-        {"name": "U Lacina", "city": "Praha 7", "price_czk": 36, "volume_ml": 500, "stale": False},
-        {"name": "Pod Špilberkem", "city": "Brno", "price_czk": 30, "volume_ml": 400, "stale": False},
+        {"cache_key": ANY, "name": "U Lacina", "city": "Praha 7", "price_czk": 36, "volume_ml": 500, "stale": False},
+        {"cache_key": ANY, "name": "Pod Špilberkem", "city": "Brno", "price_czk": 30, "volume_ml": 400, "stale": False},
     ]
     assert build_price_map()["country"] is None
 
@@ -391,7 +393,7 @@ def test_price_page_tells_search_engines_the_year_the_median_and_the_dataset(cli
 
     html = client.get("/ceny").content.decode()
 
-    assert f"<title>Cena piva {today.year}: kolik stojí pivo v hospodě | Na pivo</title>" in html
+    assert f"<title>Cena piva {today.year} po městech: kolik stojí pivo v hospodě | Na pivo</title>" in html
     assert 'content="Medián ceny piva v českých hospodách je 47 Kč.' in html
     data = _structured_data(html)
     assert [crumb["item"] for crumb in data["BreadcrumbList"]["itemListElement"]] == [
@@ -403,7 +405,7 @@ def test_price_page_tells_search_engines_the_year_the_median_and_the_dataset(cli
     assert data["Dataset"]["license"] == "https://na-pivo.cz/llms.txt"
 
     english = client.get("/en/prices").content.decode()
-    assert f"<title>Beer prices {today.year}: what a beer costs in Czech pubs | Na pivo</title>" in english
+    assert f"<title>Beer prices {today.year} by town: what a beer costs in a pub | Na pivo</title>" in english
     assert "The median beer price in Czech pubs is 47 CZK." in english
     assert _structured_data(english)["Dataset"]["description"].startswith("From each pub I take")
     assert _structured_data(english)["BreadcrumbList"]["itemListElement"][0]["item"] == "https://na-pivo.cz/en"
@@ -547,7 +549,7 @@ def test_city_page_shows_the_city_beside_the_country_and_its_cheapest_pubs(clien
     assert response.status_code == 200
     assert response["Content-Security-Policy"] == _csp()
     html = response.content.decode()
-    assert '<h1 class="np-h1" id="page-title">Kolik stojí pivo: Brno</h1>' in html
+    assert '<h1 class="np-h1" id="page-title">Kolik stojí pivo v Brně</h1>' in html
     assert f"<title>Cena piva Brno {today.year}: medián 42 Kč | Na pivo</title>" in html
     assert 'content="Brno: medián ceny piva v hospodě je 42 Kč a polovina hospod má nejlevnější pivo mezi 41 a 44 Kč.' in html
     assert "v 7 hospodách" in html
@@ -597,7 +599,7 @@ def test_country_page_links_every_city_and_the_sitemap_lists_them(client, settin
     _city_snapshot()
 
     assert '<a href="/ceny/brno">Brno</a>' in client.get("/ceny").content.decode()
-    assert '<a href="/en/prices/praha">Praha</a>' in client.get("/en/prices").content.decode()
+    assert '<a href="/en/prices/praha">Prague</a>' in client.get("/en/prices").content.decode()
     sitemap = client.get("/sitemap.xml").content.decode()
     assert "<loc>https://na-pivo.cz/ceny/brno</loc>" in sitemap
     assert "<loc>https://na-pivo.cz/en/prices/praha</loc>" in sitemap

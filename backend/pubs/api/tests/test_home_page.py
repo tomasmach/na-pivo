@@ -179,7 +179,7 @@ def test_sitemap_lists_both_languages_of_every_page(client, settings):
     urls = {url.findtext("s:loc", namespaces=ns): url for url in root.findall("s:url", ns)}
     pages = ("/", "/en", "/ceny", "/en/prices", "/hospody", "/en/pubs", "/zebricky", "/en/rankings")
     pages += ("/novinky", "/en/news", "/pivni-index", "/en/beer-index", "/trasy", "/en/tours")
-    assert set(urls) == {f"https://na-pivo.cz{path}" for path in pages + ("/smazat-ucet", "/en/delete-account")}
+    assert set(urls) == {f"https://na-pivo.cz{path}" for path in pages + ("/smazat-ucet", "/en/delete-account", "/o-appce", "/en/about")}
     alternates = {
         link.get("hreflang"): link.get("href")
         for link in urls["https://na-pivo.cz/en/prices"].findall("x:link", ns)

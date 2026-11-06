@@ -45,6 +45,7 @@ from pubs.price_map import (
     prague_district,
     share_card,
 )
+from pubs.web.words import plural
 
 # A beer gets its page once this many pubs confirmed it within FRESH_DAYS.
 MIN_PUBS = 3
@@ -249,6 +250,7 @@ def build_beer_pages(now: datetime | None = None) -> dict:
         price, volume = _serving(on_tap[(cache_key, product_key)])
         city = place["city"] or menu.city or ""
         by_product[product_key][pub_key] = {
+            "cache_key": pub_key,
             "name": place["name"],
             "city": prague_district(city) or city_name(city),
             # The pub's own place, which the app's map already shows everyone.
@@ -345,8 +347,9 @@ def render_og_image(page: BeerPage, lang: str, ranking: dict | None = None) -> b
                 eyebrow=gettext("Potvrzeno za poslední 3 měsíce"),
                 title=gettext("Kde se čepuje které pivo"),
                 number=str(len(data["beers"])),
-                number_label=gettext("piv s vlastní stránkou"),
-                figures=[(str(data["pubs"]), gettext("hospod"))],
+                number_label=plural(len(data["beers"]), gettext("pivo s vlastní stránkou"),
+                                    gettext("piva s vlastní stránkou"), gettext("piv s vlastní stránkou")),
+                figures=[(str(data["pubs"]), plural(data["pubs"], gettext("hospoda"), gettext("hospody"), gettext("hospod")))],
                 address=address,
             )
         if page.kind == BeerPage.Kind.BRAND:
@@ -354,11 +357,14 @@ def render_og_image(page: BeerPage, lang: str, ranking: dict | None = None) -> b
                 eyebrow=gettext("Značka"),
                 title=data["name"],
                 number=str(data["pubs"]),
-                number_label=gettext("hospod je čepuje"),
-                figures=[(str(len(data["beers"])), gettext("piv na stránce"))],
+                number_label=plural(data["pubs"], gettext("hospoda je čepuje"), gettext("hospody je čepují"),
+                                    gettext("hospod je čepuje")),
+                figures=[(str(len(data["beers"])), plural(len(data["beers"]), gettext("pivo na stránce"),
+                                                          gettext("piva na stránce"), gettext("piv na stránce")))],
                 address=address,
             )
         figures = []
+        served = plural(data["pubs"], gettext("hospoda ho čepuje"), gettext("hospody ho čepují"), gettext("hospod ho čepuje"))
         rated = ranking is not None and ranking["avg"] is not None
         if rated:
             number = formats.number_format(round(ranking["avg"], 1), 1)
@@ -368,9 +374,9 @@ def render_og_image(page: BeerPage, lang: str, ranking: dict | None = None) -> b
         elif data["median"] is not None:
             number, number_label = f"{data['median']}\u00a0{unit}", gettext("obvykle za 0,5 l")
         else:
-            number, number_label = str(data["pubs"]), gettext("hospod ho čepuje")
+            number, number_label = str(data["pubs"]), served
         if rated or data["median"] is not None:
-            figures.append((str(data["pubs"]), gettext("hospod ho čepuje")))
+            figures.append((str(data["pubs"]), served))
         if data["cheapest"]:
             figures.append((f"{data['cheapest']['price_czk']}\u00a0{unit}", gettext("nejlevněji za 0,5 l")))
         if rated and ranking["rank"]:

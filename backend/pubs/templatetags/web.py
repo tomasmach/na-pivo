@@ -3,6 +3,7 @@
 ``{% web_url "web-pubs-city" city="praha" %}``  path in the language being rendered
 ``{% icon "map-pin" %}``                         inline lucide icon (``class`` adds classes)
 ``{% asset "np.css" %}``                         versioned URL of a web file
+``{{ area.name|place }}``                          a town as the page language names it
 """
 
 from __future__ import annotations
@@ -15,6 +16,7 @@ from django.utils.html import escape
 from django.utils.safestring import SafeString, mark_safe
 
 from pubs.web.assets import asset_url
+from pubs.web.places import place_name
 from pubs.web.routes import web_reverse
 
 register = template.Library()
@@ -50,3 +52,8 @@ def icon(name: str, cls: str = "", label: str = "") -> SafeString:
 @register.simple_tag
 def asset(name: str) -> str:
     return asset_url(name)
+
+
+@register.filter
+def place(name: str) -> str:
+    return place_name(name)

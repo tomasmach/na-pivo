@@ -57,7 +57,7 @@
       <ol class="rs-pubs" role="list" data-rows>
         {% for pub in listed %}<li class="rs-pub{% if not pub.fresh %} is-old{% endif %}{% if pub.first_old %} has-head{% endif %}" data-find="{{ pub.name }} {{ pub.city }}" data-median="{{ pub.per_half_litre }}"{% if not pub.fresh %} data-old{% endif %}>
           {% if pub.first_old %}<span class="rs-pub__old" data-old-head>{% translate "Zápisy starší než 3 měsíce" %}</span>{% endif %}
-          <span class="rs-pub__who"><span class="rs-pub__name name"><a href="{{ pub.map_url }}">{{ pub.name }}<span class="np-sr-only">, {% translate "na mapě" %}</span></a></span>{% if pub.city %}<span class="rs-pub__meta">{{ pub.city }}</span>{% endif %}{% if pub.rotates %}<span class="rs-pub__meta rs-pub__note">{% translate "pípy se tu střídají" %}</span>{% endif %}</span>
+          <span class="rs-pub__who"><span class="rs-pub__name name"><a href="{{ pub.url }}">{{ pub.name }}{% if pub.on_map %}<span class="np-sr-only">, {% translate "na mapě" %}</span>{% endif %}</a></span>{% if pub.city %}<span class="rs-pub__meta">{{ pub.city|place }}</span>{% endif %}{% if pub.rotates %}<span class="rs-pub__meta rs-pub__note">{% translate "pípy se tu střídají" %}</span>{% endif %}</span>
           <span class="rs-pub__when"><span aria-hidden="true">{% translate "potvrzeno" %} </span><span class="np-sr-only">{% translate "naposledy potvrzeno" %} </span><time datetime="{{ pub.confirmed }}">{{ pub.date }}</time>{% if not pub.fresh %}<span class="np-sr-only">, {% translate "starší než 3 měsíce" %}</span>{% endif %}</span>
           <span class="rs-pub__cost">{% if pub.price_czk %}<span class="rs-pub__price">{{ pub.price_czk }} {% translate "Kč" %}</span>{% if pub.litres and pub.volume_ml != 500 %}<span class="rs-pub__meta">{% blocktranslate with litres=pub.litres %}za {{ litres }} l{% endblocktranslate %}</span>{% endif %}{% else %}<span class="rs-pub__meta">{% translate "cena chybí" %}</span>{% endif %}</span>
         </li>{% endfor %}
@@ -99,7 +99,7 @@
     <section class="np-card" aria-labelledby="cities-title">
       <h2 class="np-title" id="cities-title">{% translate "Půllitr podle města" %}</h2>
       <div class="np-list">
-        {% for row in by_city %}{% include "web/components/row.html" with title=row.city meta=row.pubs_label value=row.median %}{% endfor %}
+        {% for row in by_city %}{% include "web/components/row.html" with title=row.city meta=row.pubs_label value=row.median href=row.url %}{% endfor %}
       </div>
     </section>
     {% endif %}
@@ -165,7 +165,7 @@
       <h2 class="np-title" id="brand-cities-title">{% blocktranslate with brand=beer.name %}Kde se {{ brand }} čepuje nejvíc{% endblocktranslate %}</h2>
     </div>
     <ol class="rs-strips" role="list">
-      {% for row in brand_cities %}<li class="rs-strip"><span class="rs-strip__who"><span class="rs-strip__name">{{ row.city }}</span></span><svg class="rs-strip__bar" aria-hidden="true" focusable="false"><rect class="rs-bar__track" width="100%" height="100%" rx="5"/><rect class="rs-bar__fill" width="{{ row.width }}" height="100%" rx="5"/></svg><span class="rs-strip__cost"><span class="rs-strip__median">{{ row.pubs }}</span><span class="rs-strip__meta">{% translate "hospod" %}</span></span></li>{% endfor %}
+      {% for row in brand_cities %}<li class="rs-strip"><span class="rs-strip__who"><span class="rs-strip__name">{{ row.city }}</span></span><svg class="rs-strip__bar" aria-hidden="true" focusable="false"><rect class="rs-bar__track" width="100%" height="100%" rx="5"/><rect class="rs-bar__fill" width="{{ row.width }}" height="100%" rx="5"/></svg><span class="rs-strip__cost"><span class="rs-strip__median">{{ row.pubs }}</span><span class="rs-strip__meta">{{ row.pubs_label }}</span></span></li>{% endfor %}
     </ol>
   </section>
   {% endif %}
