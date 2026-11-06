@@ -400,6 +400,7 @@ def test_price_page_tells_search_engines_the_year_the_median_and_the_dataset(cli
     ]
     assert data["Dataset"]["dateModified"] == today.isoformat()
     assert data["Dataset"]["temporalCoverage"] == f"{today - timedelta(days=365)}/{today}"
+    assert data["Dataset"]["license"] == "https://na-pivo.cz/llms.txt"
 
     english = client.get("/en/prices").content.decode()
     assert f"<title>Beer prices {today.year}: what a beer costs in Czech pubs | Na pivo</title>" in english

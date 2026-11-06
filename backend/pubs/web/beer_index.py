@@ -17,7 +17,7 @@ from django.utils.translation import gettext
 
 from pubs.api.pub_beers_views import _merged_aliases, city_name
 from pubs.api.views import _globally_reported_pub_cache_keys
-from pubs.home_views import AUTHOR, HOME_OG_PATH, canonical_host
+from pubs.home_views import AUTHOR, DATA_LICENSE_PATH, HOME_OG_PATH, canonical_host
 from pubs.models import BeerPage, PubPriceIndex, PubPriceSnapshot
 from pubs.price_map import _SOURCES, MIN_PUBS, WINDOW_DAYS, _confirmed_since, _in_czechia, _stats
 from pubs.regions import REGION_CODES, region_of
@@ -302,6 +302,7 @@ def beer_index(request: HttpRequest) -> HttpResponse:
             "spatialCoverage": {"@type": "Place", "name": gettext("Česko")},
             "inLanguage": lang,
             "copyrightHolder": AUTHOR,
+            "license": f"{settings.PUBLIC_WEB_ORIGIN}{DATA_LICENSE_PATH}",
         })
     origin = settings.PUBLIC_WEB_ORIGIN
     context["og_image"] = (

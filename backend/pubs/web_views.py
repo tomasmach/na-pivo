@@ -31,6 +31,7 @@ from pubs.checks import ANDROID_APP_LINK_FINGERPRINTS_ENV, normalized_cert_finge
 from pubs.home_views import (
     APP_STORE_URL,
     AUTHOR,
+    DATA_LICENSE_PATH,
     HOME_OG_PATH,
     PLAY_STORE_URL,
     app_store_url,
@@ -461,6 +462,7 @@ def _prices_structured_data(
             "temporalCoverage": f"{since.isoformat()}/{snapshot.day.isoformat()}",
             "spatialCoverage": {"@type": "Place", "name": area["name"] if area else gettext("Česko")},
             "isAccessibleForFree": True,
+            "license": f"{origin}{DATA_LICENSE_PATH}",
             "inLanguage": lang,
         })
     return ld_json({"@graph": graph})
@@ -552,8 +554,8 @@ def _beers_label(beers: int) -> str:
     return counted(beers, gettext("pivo"), gettext("piva"), gettext("piv"))
 
 
-def _beer_structured_data(origin: str, lang: str, page: BeerPage | None, url: str) -> str:
-    """The path Google shows above the result, the beers a list links to and a beer's price range."""
+def _beer_structured_data(origin: str, lang: str, page: BeerPage | None, url: str, live: dict) -> str:
+    """The path Google shows above the result, the beers a list links to, and a beer's prices and ratings."""
 
     crumbs = [("Na pivo", f"{origin}{HOME_PATHS[lang]}"), (gettext("Piva"), f"{origin}{BEER_PATHS[lang]}")]
     data = page.data if page else {}
@@ -587,20 +589,45 @@ def _beer_structured_data(origin: str, lang: str, page: BeerPage | None, url: st
             pub["price_czk"] for pub in data["listed"]
             if pub["fresh"] and pub["volume_ml"] == 500 and pub["price_czk"] is not None
         ]
+        ranking = live.get("ranking")
+        rated = bool(ranking and ranking["avg"] is not None and ranking["count"])
+        product: dict = {
+            "@type": "Product",
+            "name": data["name"],
+            "brand": {"@type": "Brand", "name": data["brand_name"]},
+            "url": url,
+        }
         if prices:
-            graph.append({
-                "@type": "Product",
-                "name": data["name"],
-                "brand": {"@type": "Brand", "name": data["brand_name"]},
-                "url": url,
-                "offers": {
-                    "@type": "AggregateOffer",
-                    "priceCurrency": "CZK",
-                    "lowPrice": min(prices),
-                    "highPrice": max(prices),
-                    "offerCount": len(prices),
-                },
-            })
+            product["offers"] = {
+                "@type": "AggregateOffer",
+                "priceCurrency": "CZK",
+                "lowPrice": min(prices),
+                "highPrice": max(prices),
+                "offerCount": len(prices),
+            }
+        if rated:
+            product["aggregateRating"] = {
+                "@type": "AggregateRating",
+                "ratingValue": round(ranking["avg"], 1),
+                "ratingCount": ranking["count"],
+                "bestRating": 5,
+                "worstRating": 1,
+            }
+            # The page shows the reviews only beside the stars, so they go here only with them.
+            reviews = [
+                {
+                    "@type": "Review",
+                    "author": {"@type": "Person", "name": review["nickname"]},
+                    "datePublished": review["day"].isoformat(),
+                    "reviewBody": review["note"],
+                    "reviewRating": {"@type": "Rating", "ratingValue": review["rating"], "bestRating": 5, "worstRating": 1},
+                }
+                for review in live.get("reviews", []) if review["rating"] is not None
+            ]
+            if reviews:
+                product["review"] = reviews
+        if prices or rated:
+            graph.append(product)
     return ld_json({"@graph": graph})
 
 
@@ -1099,7 +1126,7 @@ def beer_pages(request: HttpRequest, kind: str = BeerPage.Kind.LIST, key: str = 
                 {"city": city, "pubs": pubs, "width": f"{pubs * 100 / live['cities'][0][1]:.1f}%"}
                 for city, pubs in live.get("cities", [])
             ],
-            "structured_data": _beer_structured_data(origin, lang, page, f"{origin}{path}"),
+            "structured_data": _beer_structured_data(origin, lang, page, f"{origin}{path}", live),
             "page_url": path,
             "beers_url": BEER_PATHS[lang],
             "og_image_url": f"{origin}{path}/og.png?v={page.day.isoformat()}" if page else f"{origin}{HOME_OG_PATH}",
