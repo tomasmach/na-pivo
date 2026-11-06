@@ -18,7 +18,7 @@ from django.http import (
     HttpResponsePermanentRedirect,
     HttpResponseRedirect,
 )
-from django.utils import formats, timezone
+from django.utils import formats, timezone, translation
 from django.utils.text import slugify
 from django.utils.translation import gettext, pgettext
 from rest_framework.request import Request
@@ -26,7 +26,7 @@ from rest_framework.request import Request
 from pubs.api.pub_beers_views import CITIES_WITH_DISTRICTS
 from pubs.api.throttling import SharedScopedRateThrottle
 from pubs.beer_pages import page_path
-from pubs.home_views import HOME_OG_PATH, ld_json
+from pubs.home_views import HOME_OG_PATH, breadcrumb_list, ld_json
 from pubs.i18n import current_locale
 from pubs.models import BeerPage, PubPriceSnapshot
 from pubs.price_map import city_slug
@@ -34,6 +34,7 @@ from pubs.web import pubs_data
 from pubs.web.pages import render_page, web_page
 from pubs.web.places import has_pub_name, in_place, municipality, place_name, pub_name
 from pubs.web.pub_map import live_map, pub_map
+from pubs.web.public_common import og_image
 from pubs.web.pubs_og import render_pub_og
 from pubs.web.routes import web_reverse
 from pubs.web.words import plural
@@ -161,14 +162,7 @@ def _crumbs(crumbs: list[tuple[str, str]]) -> list[dict]:
 
 
 def _breadcrumb_data(crumbs: list[tuple[str, str]]) -> dict:
-    origin = settings.PUBLIC_WEB_ORIGIN
-    return {
-        "@type": "BreadcrumbList",
-        "itemListElement": [
-            {"@type": "ListItem", "position": index, "name": name, "item": f"{origin}{url}"}
-            for index, (name, url) in enumerate(crumbs, start=1)
-        ],
-    }
+    return breadcrumb_list([(name, f"{settings.PUBLIC_WEB_ORIGIN}{url}") for name, url in crumbs])
 
 
 def _city_in(name: str) -> str:
@@ -537,10 +531,10 @@ def pubs_city(request: HttpRequest, city: str) -> HttpResponse:
         }
     else:
         lead = f"{_pubs_count(total)}."
-    typical_price = None if district else data["typical_price"]
+    prices_area = _prices_area(city_page)
+    typical_price = None if district else _typical_price(data, prices_area)
     if typical_price:
         lead += " " + gettext("Půllitr tu stojí kolem %(price)s.") % {"price": _price_label(typical_price)}
-    has_prices_page = city_page in prices_page_slugs()
 
     title = _pubs_title(name)
     page_url = web_reverse("web-pubs-city", city=city)
@@ -579,7 +573,7 @@ def pubs_city(request: HttpRequest, city: str) -> HttpResponse:
             "city": data,
             "h1": title,
             "lead": lead,
-            "prices_url": web_reverse("beer-prices-city", city=city_page) if has_prices_page else "",
+            "prices_url": web_reverse("beer-prices-city", city=city_page) if prices_area else "",
             "prices_label": prices_label(data["name"]),
             "chips": chips,
             "extra_chips": extra_chips,
@@ -601,7 +595,7 @@ def pubs_city(request: HttpRequest, city: str) -> HttpResponse:
             "other_cities": _others(8, skip=city_page),
             "crumbs": _crumbs(crumbs),
             "structured_data": ld_json(structured),
-            "og_image_url": f"{origin}{HOME_OG_PATH}",
+            "og_image_url": f"{origin}{page_url}/og.png?v={_og_version(_city_og_payload(data, prices_area))}",
         },
         title=title,
         description=_city_description(name, rows, typical_price),
@@ -610,6 +604,60 @@ def pubs_city(request: HttpRequest, city: str) -> HttpResponse:
         **({"indexable": total >= MIN_LISTED} if district else {}),
     )
     return _public(response)
+
+
+def _prices_area(city: str) -> dict | None:
+    """The city on today's /ceny, when it has its own prices page there."""
+
+    snapshot = PubPriceSnapshot.objects.only("data").first()
+    cities = snapshot.data.get("cities", []) if snapshot else []
+    return next((area for area in cities if city_slug(area["name"]) == city), None)
+
+
+def _typical_price(data: dict, prices_area: dict | None) -> int | None:
+    # A city with its own /ceny page shows that page's median, so the two never disagree.
+    return prices_area["median"] if prices_area else data["typical_price"]
+
+
+def _city_og_payload(data: dict, prices_area: dict | None) -> dict:
+    """What the city's share image draws: its size and, once /ceny knows it, what beer costs there."""
+
+    price = _typical_price(data, prices_area)
+    figures = []
+    if prices_area:
+        figures.append((num(prices_area["pubs"]), gettext("hospod s cenou")))
+        figures.append((f"{prices_area['p25']}–{_price_label(prices_area['p75'])}", gettext("polovina hospod")))
+        if prices_area.get("cheapest"):
+            figures.append((_price_label(prices_area["cheapest"][0]["price_czk"]), gettext("nejlevněji")))
+    total = len(data["list"])
+    if not figures:
+        figures.append((num(total), plural(total, gettext("hospoda"), gettext("hospody"), gettext("hospod"))))
+    return {
+        "kicker": _pubs_count(total) if prices_area else "",
+        "title": gettext("Hospody %(in_city)s") % {"in_city": _city_in(data["name"])},
+        "hero": _price_label(price),
+        "hero_label": gettext("obvykle za 0,5 l") if price else "",
+        "figures": figures,
+        "address": settings.PUBLIC_WEB_ORIGIN.split("://", 1)[-1] + web_reverse("web-pubs-city", city=data["slug"]),
+    }
+
+
+@web_page
+def pubs_city_og_image(request: HttpRequest, city: str) -> HttpResponse:
+    wait = _wait(request, "web_og")
+    if wait:
+        response = HttpResponse(status=429)
+        response["Retry-After"] = str(wait)
+        return response
+    data = pubs_data.city_pubs(city)
+    if data is None:
+        raise Http404
+    with translation.override(getattr(request, "web_lang", "cs")):
+        payload = _city_og_payload(data, _prices_area(city))
+    image = cache.get_or_set(f"web:pubs:city-og:{_og_version(payload)}", lambda: og_image(**payload), 24 * 60 * 60)
+    response = HttpResponse(image, content_type="image/png")
+    response["Cache-Control"] = "public, max-age=86400"
+    return response
 
 
 # ---------- /hospoda/<klíč> ----------
@@ -658,20 +706,39 @@ def _og_version(payload: dict) -> str:
     return hashlib.sha256(json.dumps(payload, sort_keys=True, default=str).encode()).hexdigest()[:10]
 
 
-def _pub_structured(pub: dict, url: str, crumbs: list[tuple[str, str]]) -> dict:
+def _price_range(pub: dict) -> str:
+    """Cheapest to dearest beer on the menu the page lists, as the page writes prices."""
+
+    prices = sorted({beer["price"] for beer in pub["menu"] if beer["price"]})
+    if not prices:
+        return ""
+    if len(prices) == 1:
+        return _price_label(prices[0])
+    return f"{prices[0]}–{_price_label(prices[-1])}"
+
+
+def _pub_structured(pub: dict, url: str, crumbs: list[tuple[str, str]], map_url: str) -> dict:
+    """Only what the page itself shows: no visitors, no ratings from elsewhere, nothing guessed."""
+
     origin = settings.PUBLIC_WEB_ORIGIN
-    place = {
+    place: dict = {
         "@type": "BarOrPub",
+        "@id": f"{origin}{url}#pub",
         "name": pub_name(pub["name"]),
         "url": f"{origin}{url}",
         "geo": {"@type": "GeoCoordinates", "latitude": round(pub["lat"], 5), "longitude": round(pub["lng"], 5)},
-        "address": {
-            "@type": "PostalAddress",
-            **({"streetAddress": pub["address"]} if pub["address"] else {}),
-            "addressLocality": pub["district"] or pub["city"],
-            "addressCountry": "CZ",
-        },
+        "hasMap": map_url,
     }
+    locality = pub["district"] or pub["city"]
+    address = {
+        **({"streetAddress": pub["address"]} if pub["address"] and pub["address"] != locality else {}),
+        **({"addressLocality": locality} if locality else {}),
+        **({"addressCountry": pub["country"]} if pub["country"] else {}),
+    }
+    if address:
+        place["address"] = {"@type": "PostalAddress", **address}
+    if price_range := _price_range(pub):
+        place["priceRange"] = price_range
     if pub["hours"]:
         names = ("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday")
         place["openingHoursSpecification"] = [
@@ -679,7 +746,8 @@ def _pub_structured(pub: dict, url: str, crumbs: list[tuple[str, str]]) -> dict:
                 "@type": "OpeningHoursSpecification",
                 "dayOfWeek": f"https://schema.org/{names[index]}",
                 "opens": _hhmm(start),
-                "closes": _hhmm(end % (24 * 60)),
+                # Google reads round the clock as 00:00 to 23:59.
+                "closes": "23:59" if end - start >= 24 * 60 else _hhmm(end % (24 * 60)),
             }
             for index, day in enumerate(pubs_data.DAY_KEYS)
             for start, end in pub["hours"][day]
@@ -815,6 +883,9 @@ def pub_page(request: HttpRequest, key: str) -> HttpResponse:
     city = "" if pub["district"].startswith(pub["city"]) else city_place
     place_sub = ", ".join(part for part in dict.fromkeys((district_place, city)) if part and part != place)
     og = _og_payload(pub, lang)
+    navigation_url = "https://www.google.com/maps/dir/?api=1&destination=" + quote(
+        f"{pub['lat']:.6f},{pub['lng']:.6f}", safe=","
+    )
     where = district_place or city_place
     if has_pub_name(pub["name"]):
         title = gettext("%(name)s, %(place)s") % {"name": name, "place": where} if where else name
@@ -862,13 +933,12 @@ def pub_page(request: HttpRequest, key: str) -> HttpResponse:
             ),
             "live_map": live_map([{"lat": pub["lat"], "lng": pub["lng"], "name": name}], kind="focus"),
             "deep_link": f"napivo://h/{pub['cache_key']}?{urlencode({'n': pub['name']})}",
-            "navigation_url": (
-                "https://www.google.com/maps/dir/?api=1&destination="
-                + quote(f"{pub['lat']:.6f},{pub['lng']:.6f}", safe=",")
-            ),
+            "navigation_url": navigation_url,
             "login_url": f"{web_reverse('web-login')}?next={quote(url)}",
             "crumbs": _crumbs(crumbs),
-            "structured_data": ld_json(_pub_structured(pub, url, [("Na pivo", web_reverse("home")), *crumbs])),
+            "structured_data": ld_json(
+                _pub_structured(pub, url, [("Na pivo", web_reverse("home")), *crumbs], navigation_url)
+            ),
             "og_image_url": f"{settings.PUBLIC_WEB_ORIGIN}{url}/og.png?v={_og_version(og)}",
         },
         title=title,

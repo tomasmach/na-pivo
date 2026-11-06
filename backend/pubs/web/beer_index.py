@@ -17,9 +17,23 @@ from django.utils.translation import gettext
 
 from pubs.api.pub_beers_views import _merged_aliases, city_name
 from pubs.api.views import _globally_reported_pub_cache_keys
-from pubs.home_views import AUTHOR, DATA_LICENSE_PATH, HOME_OG_PATH, canonical_host
+from pubs.home_views import (
+    AUTHOR,
+    DATA_LICENSE_PATH,
+    HOME_OG_PATH,
+    canonical_host,
+    organization_ref,
+)
 from pubs.models import BeerPage, PubPriceIndex, PubPriceSnapshot
-from pubs.price_map import _SOURCES, MIN_PUBS, WINDOW_DAYS, _confirmed_since, _in_czechia, _stats
+from pubs.price_map import (
+    _SOURCES,
+    MIN_PUBS,
+    PUBLIC_MIN_CZK,
+    WINDOW_DAYS,
+    _confirmed_since,
+    _in_czechia,
+    _stats,
+)
 from pubs.regions import REGION_CODES, region_of
 from pubs.web.pages import render_page, web_page
 from pubs.web.public_common import (
@@ -54,7 +68,8 @@ def _regional(snapshot: PubPriceSnapshot) -> dict:
     now = snapshot.computed_at
     rows = _in_czechia(list(
         PubPriceIndex.objects.filter(
-            active=True, observed_at__gte=now - timedelta(days=WINDOW_DAYS), source__in=_SOURCES
+            active=True, observed_at__gte=now - timedelta(days=WINDOW_DAYS), source__in=_SOURCES,
+            price_czk__gte=PUBLIC_MIN_CZK,
         ).only("cache_key", "name", "lat", "lng", "city", "price_czk", "volume_ml", "observed_at")
     ))
     confirmed = _confirmed_since(rows, now - timedelta(days=WINDOW_DAYS))
@@ -298,8 +313,13 @@ def beer_index(request: HttpRequest) -> HttpResponse:
             "description": description,
             "url": f"{settings.PUBLIC_WEB_ORIGIN}{base}",
             "creator": AUTHOR,
+            "publisher": organization_ref(settings.PUBLIC_WEB_ORIGIN),
             "dateModified": data["day"],
+            "temporalCoverage": (
+                f"{(date.fromisoformat(data['day']) - timedelta(days=WINDOW_DAYS)).isoformat()}/{data['day']}"
+            ),
             "spatialCoverage": {"@type": "Place", "name": gettext("Česko")},
+            "isAccessibleForFree": True,
             "inLanguage": lang,
             "copyrightHolder": AUTHOR,
             "license": f"{settings.PUBLIC_WEB_ORIGIN}{DATA_LICENSE_PATH}",

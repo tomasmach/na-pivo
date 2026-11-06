@@ -21,7 +21,7 @@ from django.utils.translation import gettext
 from pubs.api.pub_beers_views import city_name
 from pubs.home_views import canonical_host
 from pubs.models import FriendBlock, PubPriceIndex, TourPublication
-from pubs.price_map import _SOURCES, WINDOW_DAYS
+from pubs.price_map import _SOURCES, PUBLIC_MIN_CZK, WINDOW_DAYS
 from pubs.tours import fresh_people_count, readable_publications
 from pubs.web.pages import render_page, web_page
 from pubs.web.places import pub_name
@@ -69,7 +69,7 @@ def _prices(cache_keys: set[str]) -> dict[str, int]:
     """The reference half litre each pub's price index knows from the last year."""
 
     rows = PubPriceIndex.objects.filter(
-        cache_key__in=cache_keys, active=True, source__in=_SOURCES,
+        cache_key__in=cache_keys, active=True, source__in=_SOURCES, price_czk__gte=PUBLIC_MIN_CZK,
         observed_at__gte=timezone.now() - timedelta(days=WINDOW_DAYS),
     ).values_list("cache_key", "price_czk", "volume_ml")
     return {key: round(price * 500 / (volume or 500)) for key, price, volume in rows}
@@ -315,7 +315,13 @@ def tour(request: HttpRequest, tour_id: str) -> HttpResponse:
         "itinerary": {
             "@type": "ItemList",
             "itemListElement": [
-                {"@type": "ListItem", "position": row["n"], "item": {"@type": "BarOrPub", "name": row["name"], "address": row["area"]}}
+                {"@type": "ListItem", "position": row["n"], "item": {
+                    "@type": "BarOrPub",
+                    "name": row["name"],
+                    **({"address": row["area"]} if row["area"] else {}),
+                    # The same id the pub's own page gives it.
+                    **({"@id": f"{origin}{row['url']}#pub", "url": f"{origin}{row['url']}"} if row["url"] else {}),
+                }}
                 for row in detail["rows"]
             ],
         },

@@ -1,7 +1,7 @@
 {% extends "web/public.html" %}
 {% load i18n web %}
 {% block head %}<link rel="stylesheet" href="{% asset "public-pages.css" %}">{{ structured_data }}{% endblock %}
-{% block og_image %}<meta property="og:image" content="{{ og_image }}">{% endblock %}
+{% block og_image %}{% translate "Pivní deníček Na pivo: piva za život, kalendář večerů a mapa hospod." as og_image_alt %}{% include "web/reskin/_og_image.html" with og_image_url=og_image %}{% endblock %}
 {% block scripts %}<script src="{% asset "public-pages.js" %}" defer></script>{% endblock %}
 {% block content %}
 {% include "web/components/breadcrumbs.html" with crumbs=crumbs %}

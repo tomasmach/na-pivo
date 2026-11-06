@@ -51,7 +51,7 @@ from pubs.models import (
     UserAddedPub,
 )
 from pubs.price_index import compute_reference_price
-from pubs.price_map import WINDOW_DAYS, city_slug, prague_district
+from pubs.price_map import PUBLIC_MIN_CZK, WINDOW_DAYS, city_slug, prague_district
 from pubs.pub_events import PubEvent
 from pubs.web.places import municipality
 
@@ -113,25 +113,29 @@ def _chunks(keys, size: int = _CHUNK):
 def _build_catalogue() -> dict:
     rows: dict[tuple[str, str], dict] = {}
 
-    def add(cache_key, name, raw_city, lat, lng, address=""):
+    # A pub somebody added in the app has no country of its own; the page then leaves it out.
+    def add(cache_key, name, raw_city, lat, lng, country="", address=""):
         name = " ".join((name or "").split())
         if not name or not cache_key:
             return
         rows.setdefault(
             (cache_key, normalize_pub_name(name)),
-            {"k": cache_key, "n": name, "raw": raw_city or "", "lat": lat, "lng": lng, "a": address or ""},
+            {"k": cache_key, "n": name, "raw": raw_city or "", "lat": lat, "lng": lng, "a": address or "",
+             "co": (country or "").upper()},
         )
 
-    for row in CanonicalPub.objects.filter(active=True).values_list("cache_key", "name", "city", "lat", "lng"):
+    for row in CanonicalPub.objects.filter(active=True).values_list("cache_key", "name", "city", "lat", "lng", "country"):
         add(*row)
     for row in (
         _public_pub_directory()
         .filter(discovery_kind=PubDirectory.DiscoveryKind.PUB)
-        .values_list("cache_key", "name", "city", "lat", "lng")
+        .values_list("cache_key", "name", "city", "lat", "lng", "country")
     ):
         add(*row)
-    for row in UserAddedPub.objects.filter(active=True).values_list("cache_key", "name", "city", "lat", "lng", "address"):
-        add(*row)
+    for cache_key, name, city, lat, lng, address in UserAddedPub.objects.filter(active=True).values_list(
+        "cache_key", "name", "city", "lat", "lng", "address"
+    ):
+        add(cache_key, name, city, lat, lng, address=address)
 
     # Both lists are short, so only the pubs they touch go into the per-pub checks.
     reported = set(PubReport.objects.filter(active=True).values_list("cache_key", flat=True).distinct())
@@ -267,7 +271,8 @@ def _prices(keys) -> dict[str, dict]:
     rows = {}
     for chunk in _chunks(keys):
         for row in PubPriceIndex.objects.filter(
-            cache_key__in=chunk, active=True, observed_at__gte=since, source__in=_PRICE_SOURCES
+            cache_key__in=chunk, active=True, observed_at__gte=since, source__in=_PRICE_SOURCES,
+            price_czk__gte=PUBLIC_MIN_CZK,
         ).values("cache_key", "name", "price_czk", "volume_ml"):
             rows[row["cache_key"]] = row
     return rows
@@ -346,7 +351,7 @@ def _menu_rows(beers) -> list[dict]:
         price, volume = beer.get("price_czk"), beer.get("volume_ml")
         rows.append({
             "name": beer["name"].strip()[:120],
-            "price": price if isinstance(price, int) and not isinstance(price, bool) and price > 0 else None,
+            "price": price if isinstance(price, int) and not isinstance(price, bool) and price >= PUBLIC_MIN_CZK else None,
             "volume": volume if isinstance(volume, int) and not isinstance(volume, bool) and volume > 0 else None,
         })
     return rows[:30]
@@ -392,6 +397,7 @@ def _enrich(pubs: list[dict]) -> list[dict]:
             "district": pub["d"],
             "city_slug": pub["c"],
             "address": pub["a"],
+            "country": pub.get("co", ""),
             "lat": pub["lat"],
             "lng": pub["lng"],
             "hours": valid_hours(menu["hours_json"]) if menu else None,

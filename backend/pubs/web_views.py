@@ -35,8 +35,12 @@ from pubs.home_views import (
     DATA_LICENSE_PATH,
     HOME_OG_PATH,
     PLAY_STORE_URL,
+    WEBSITE_ID,
     app_store_url,
+    breadcrumb_list,
     ld_json,
+    organization,
+    organization_ref,
     play_store_url,
 )
 from pubs.home_views import PATHS as HOME_PATHS
@@ -321,13 +325,15 @@ def _home_structured_data(origin: str, lang: str) -> str:
 
     return ld_json({
         "@graph": [
+            organization(origin),
             {
                 "@type": "WebSite",
-                "@id": f"{origin}/#website",
+                "@id": f"{origin}{WEBSITE_ID}",
                 "url": f"{origin}/",
                 "name": "Na pivo",
                 "alternateName": ["Na Pivo", "na-pivo.cz"],
                 "inLanguage": ["cs", "en"],
+                "publisher": organization_ref(origin),
             },
             {
                 "@type": "MobileApplication",
@@ -345,6 +351,7 @@ def _home_structured_data(origin: str, lang: str) -> str:
                 "sameAs": [APP_STORE_URL, PLAY_STORE_URL],
                 "offers": {"@type": "Offer", "price": "0", "priceCurrency": "CZK"},
                 "author": AUTHOR,
+                "publisher": organization_ref(origin),
             },
         ],
     })
@@ -445,13 +452,7 @@ def _prices_structured_data(
     ]
     if area:
         crumbs.append((area["name"], url))
-    graph: list[dict] = [{
-        "@type": "BreadcrumbList",
-        "itemListElement": [
-            {"@type": "ListItem", "position": position, "name": name, "item": item}
-            for position, (name, item) in enumerate(crumbs, start=1)
-        ],
-    }]
+    graph: list[dict] = [breadcrumb_list(crumbs)]
     if snapshot and snapshot.data.get("country"):
         since = snapshot.day - timedelta(days=snapshot.data.get("window_days", 365))
         graph.append({
@@ -466,6 +467,7 @@ def _prices_structured_data(
             ),
             "url": url,
             "creator": AUTHOR,
+            "publisher": organization_ref(origin),
             "dateModified": snapshot.day.isoformat(),
             "temporalCoverage": f"{since.isoformat()}/{snapshot.day.isoformat()}",
             "spatialCoverage": {"@type": "Place", "name": area["name"] if area else gettext("Česko")},
@@ -573,13 +575,7 @@ def _beer_structured_data(origin: str, lang: str, page: BeerPage | None, url: st
         crumbs.append((data["brand_name"], f"{origin}{page_path(BeerPage.Kind.BRAND, data['brand_key'], lang)}"))
     if page and page.kind != BeerPage.Kind.LIST:
         crumbs.append((data["name"], url))
-    graph: list[dict] = [{
-        "@type": "BreadcrumbList",
-        "itemListElement": [
-            {"@type": "ListItem", "position": position, "name": name, "item": item}
-            for position, (name, item) in enumerate(crumbs, start=1)
-        ],
-    }]
+    graph: list[dict] = [breadcrumb_list(crumbs)]
     if page and page.kind != BeerPage.Kind.BEER and data["beers"]:
         graph.append({
             "@type": "ItemList",
