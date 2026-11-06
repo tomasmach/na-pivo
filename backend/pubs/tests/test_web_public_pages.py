@@ -154,6 +154,7 @@ def test_beer_index_by_region_with_share_image_and_no_bulk_export(client, django
 
     assert client.get("/pivni-index/data.csv").status_code == 404
     assert "data.csv" not in html and "DataDownload" not in html
+    assert '"license": "https://na-pivo.cz/llms.txt"' in html
 
     image = client.get("/pivni-index/og.png")
     assert image.status_code == 200 and image.content[:8] == b"\x89PNG\r\n\x1a\n"

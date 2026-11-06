@@ -298,6 +298,8 @@ def test_beer_page_shows_pubs_prices_and_dates_without_anyone_who_wrote_them(cli
     assert product["offers"] == {
         "@type": "AggregateOffer", "priceCurrency": "CZK", "lowPrice": 52, "highPrice": 64, "offerCount": 3,
     }
+    # Nobody rated it yet, so there are no stars to claim.
+    assert "aggregateRating" not in product and "review" not in product
     crumbs = [crumb["name"] for crumb in data["@graph"][0]["itemListElement"]]
     assert crumbs == ["Na pivo", "Piva", "Testovar", "Testovar 11°"]
     # Nothing about who wrote what is stored for the page either.

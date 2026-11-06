@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import re
 import uuid
 from datetime import timedelta
@@ -93,6 +94,18 @@ def test_beer_page_shows_the_rating_and_only_public_signed_reviews(client):
         assert hidden not in html
     # The brand's other beer is one click away.
     assert '<a href="/pivo/testovar-12" class="np-row">' in html
+    data = json.loads(re.search(r'<script type="application/ld\+json">(.*?)</script>', html).group(1))
+    product = next(item for item in data["@graph"] if item["@type"] == "Product")
+    shown = re.search(r'<span class="rs-rating__value">([\d,]+)</span>', html).group(1)
+    assert product["aggregateRating"]["ratingValue"] == float(shown.replace(",", "."))
+    assert f'z {product["aggregateRating"]["ratingCount"]} hodnocení' in html
+    assert product["review"] == [{
+        "@type": "Review",
+        "author": {"@type": "Person", "name": "stamgast"},
+        "datePublished": (timezone.localdate() - timedelta(days=1)).isoformat(),
+        "reviewBody": "Hladinka jak peřina.",
+        "reviewRating": {"@type": "Rating", "ratingValue": 5.0, "bestRating": 5, "worstRating": 1},
+    }]
     english = client.get("/en/beer/testovar-11").content.decode()
     assert "What the regulars say" in english
 

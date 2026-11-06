@@ -15,6 +15,8 @@ from django.http import HttpRequest, HttpResponse, HttpResponsePermanentRedirect
 from django.utils.safestring import SafeString, mark_safe
 
 HOME_OG_PATH = "/og/home.png"
+# The rules for reusing the site's data (quote a fact with the source, never copy the whole).
+DATA_LICENSE_PATH = "/llms.txt"
 APP_STORE_URL = "https://apps.apple.com/cz/app/id6773790025"
 PLAY_STORE_URL = "https://play.google.com/store/apps/details?id=com.tomasmach.na_pivo"
 PATHS = {"cs": "/", "en": "/en"}
