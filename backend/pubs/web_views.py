@@ -622,7 +622,7 @@ def _beer_structured_data(origin: str, lang: str, page: BeerPage | None, url: st
                     "reviewBody": review["note"],
                     "reviewRating": {"@type": "Rating", "ratingValue": review["rating"], "bestRating": 5, "worstRating": 1},
                 }
-                for review in live.get("reviews", []) if review["rating"] is not None
+                for review in live.get("reviews", []) if review["rating"]
             ]
             if reviews:
                 product["review"] = reviews
