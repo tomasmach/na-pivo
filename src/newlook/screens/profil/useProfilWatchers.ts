@@ -86,17 +86,6 @@ export function useProfilWatchers() {
       router.push(href);
     };
 
-    if (onTab && isSignedIn && accountId && level != null) {
-      const key = `${accountId}:${level}`;
-      if (levelCheck !== key && useLaunchModalMutex.getState().claim('level-up')) {
-        levelCheck = key;
-        void observeLevel(accountId, level).then((up) => {
-          if (up) open('level-up', { pathname: '/nv/novy-level', params: { since: up.since } });
-          else release('level-up');
-        });
-      }
-    }
-
     // The welcome pager owns the first launch.
     if (onTab && !firstLaunch && !publicNightsChecked) {
       if (useLaunchModalMutex.getState().claim('public-nights')) {
@@ -108,6 +97,17 @@ export function useProfilWatchers() {
           }
           void markPublicNightsAsked();
           open('public-nights', '/nv/verejne-noci');
+        });
+      }
+    }
+
+    if (onTab && isSignedIn && accountId && level != null) {
+      const key = `${accountId}:${level}`;
+      if (levelCheck !== key && useLaunchModalMutex.getState().claim('level-up')) {
+        levelCheck = key;
+        void observeLevel(accountId, level).then((up) => {
+          if (up) open('level-up', { pathname: '/nv/novy-level', params: { since: up.since } });
+          else release('level-up');
         });
       }
     }

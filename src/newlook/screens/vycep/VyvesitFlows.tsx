@@ -12,7 +12,7 @@ import { selectNeedsNickname, useAccountStore } from '@/stores/accountStore';
 import { useBeerPhotosStore, type BeerPhotoLocal } from '@/stores/beerPhotosStore';
 import { useTallyStore } from '@/stores/tallyStore';
 import { useVycepStore } from '@/stores/vycepStore';
-import { nightPublishPayload, type NightSummary } from '@/vycep/nightModel';
+import { nightPublishPayload, nightSummariesNewestFirst, type NightSummary } from '@/vycep/nightModel';
 
 import { BackHeader, Screen } from '../../components/chrome';
 import { Icon } from '../../components/Icon';
@@ -290,7 +290,10 @@ function NightStack({ night, mark }: { night: NightSummary | null; mark?: string
 /** The one-time ask after the update: post every finished night, rating and photo to the whole world. */
 export function VerejneNociScreen() {
   const router = useRouter();
-  const night = useNightToPublish();
+  const current = useTallyStore((st) => st.current);
+  const history = useTallyStore((st) => st.history);
+  // The newest night even when it already hangs for the crew, not the next one left to post.
+  const night = useMemo(() => nightSummariesNewestFirst(current, history)[0] ?? null, [current, history]);
   const me = useMe();
   const needsNickname = useAccountStore(selectNeedsNickname);
   const shareDefault = useVycepStore((st) => st.shareDefault);

@@ -8,7 +8,9 @@ jest.mock('@react-native-async-storage/async-storage', () =>
 
 const mockPush = jest.fn();
 let mockPath = '/nv/kompas';
-const mockAccount = { needsNickname: false };
+const mockAccount = { needsNickname: false, profile: null as { id: string } | null };
+const mockMe: { xp: { level: number } | null; isSignedIn: boolean } = { xp: null, isSignedIn: false };
+const mockObserveLevel = jest.fn();
 
 jest.mock('expo-router', () => ({
   usePathname: () => mockPath,
@@ -22,8 +24,8 @@ jest.mock('@/stores/accountStore', () => ({
 }));
 jest.mock('../profilModel', () => ({
   badgeIcon: () => 'medal',
-  observeLevel: jest.fn(),
-  useMe: () => ({ xp: null, isSignedIn: false }),
+  observeLevel: (...args: unknown[]) => mockObserveLevel(...args),
+  useMe: () => mockMe,
 }));
 jest.mock('../../../ui/store', () => ({ toast: jest.fn() }));
 
@@ -66,6 +68,10 @@ beforeEach(() => {
   mockPush.mockClear();
   mockPath = '/nv/kompas';
   mockAccount.needsNickname = false;
+  mockAccount.profile = null;
+  mockMe.xp = null;
+  mockMe.isSignedIn = false;
+  mockObserveLevel.mockReset();
 });
 
 /** The pub-reminder tests start after the one-time public-nights ask was answered. */
@@ -89,6 +95,24 @@ describe('one-time ask to post nights publicly', () => {
     await view.rerender({});
     await flush();
     expect(mockPush.mock.calls).toEqual([['/nv/verejne-noci'], ['/nv/pripominky']]);
+  });
+
+  it('comes before the level-up sheet', async () => {
+    mockAccount.profile = { id: 'acc-1' };
+    mockMe.isSignedIn = true;
+    mockMe.xp = { level: 3 };
+    mockObserveLevel.mockResolvedValue({ since: 2 });
+    const { useProfilWatchers } = load();
+    const view = await renderHook(() => useProfilWatchers());
+    await flush();
+    expect(mockPush.mock.calls).toEqual([['/nv/verejne-noci']]);
+
+    mockPath = '/nv/verejne-noci';
+    await view.rerender({});
+    mockPath = '/nv/kompas';
+    await view.rerender({});
+    await flush();
+    expect(mockPush.mock.calls[1]).toEqual([{ pathname: '/nv/novy-level', params: { since: 2 } }]);
   });
 
   it('stays away for someone who already posts everything to the world', async () => {
