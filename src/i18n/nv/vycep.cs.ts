@@ -98,6 +98,18 @@ export const vycepCs = {
   firstDecor: ['@Hospodsky', '@PivniVlk'],
   roundLabel: 'Runda',
 
+  // Jednorázový dotaz na veřejné noci
+  askKicker: 'Novinka na Výčepu',
+  askTitle: 'Můžu tvoje noci vyvěšovat všem?',
+  askBody: 'Po každém „Dopito“ vyvěsím tvoji noc na Výčep, ať všichni vidí, kolik padlo. Nové fotky taky.',
+  askPrivate: 'Útrata, přesná poloha a jednotlivá piva zůstanou jen tobě. Vypneš to v Nastavení.',
+  askYes: 'Jo, vyvěšuj',
+  askNo: 'Ne, nech to být',
+  askYou: 'tohle jsi ty',
+  askSampleAuthor: '@Kozel_z_Brna',
+  askSampleCity: 'Brno',
+  askSamplePubs: ['Pivnice Pegas', 'U Kocoura'],
+
   // FotoPivař
   contestTitle: 'FotoPivař',
   lastRound: 'Minulé kolo',

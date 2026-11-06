@@ -96,6 +96,18 @@ export const vycepEn: typeof vycepCs = {
   firstDecor: ['@Hospodsky', '@PivniVlk'],
   roundLabel: 'Round',
 
+  // One-time ask to post nights publicly
+  askKicker: 'New in the Taproom',
+  askTitle: 'Can I post your nights for everyone?',
+  askBody: 'After every “Done” I post your night to the Taproom so everyone sees how many went down. New photos too.',
+  askPrivate: 'Spending, exact location and individual beers stay private. Turn it off in Settings.',
+  askYes: 'Yes, post them',
+  askNo: 'No, leave it',
+  askYou: 'this is you',
+  askSampleAuthor: '@Kozel_z_Brna',
+  askSampleCity: 'Brno',
+  askSamplePubs: ['Pivnice Pegas', 'U Kocoura'],
+
   contestTitle: 'Beer Snap',
   lastRound: 'Last round',
   roundEnded: 'Round over',
