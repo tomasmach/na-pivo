@@ -1,6 +1,6 @@
 {% extends "web/app.html" %}
 {% load i18n web %}
-{% block head %}<link rel="stylesheet" href="{% asset "diary.css" %}">{% endblock %}
+{% block stylesheet %}{% stylesheet "diary.css" %}{% endblock %}
 {% block content %}
 <section class="dy-log np-card" aria-labelledby="dy-log-title">
   <form class="dy-log__form" data-log-form novalidate>

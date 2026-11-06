@@ -3,6 +3,7 @@
 ``{% web_url "web-pubs-city" city="praha" %}``  path in the language being rendered
 ``{% icon "map-pin" %}``                         inline lucide icon (``class`` adds classes)
 ``{% asset "np.css" %}``                         versioned URL of a web file
+``{% stylesheet "pubs.css" %}``                  the one stylesheet link of a page: np.css with these
 """
 
 from __future__ import annotations
@@ -14,7 +15,7 @@ from django import template
 from django.utils.html import escape
 from django.utils.safestring import SafeString, mark_safe
 
-from pubs.web.assets import asset_url
+from pubs.web.assets import asset_url, stylesheet_name
 from pubs.web.routes import web_reverse
 
 register = template.Library()
@@ -50,3 +51,8 @@ def icon(name: str, cls: str = "", label: str = "") -> SafeString:
 @register.simple_tag
 def asset(name: str) -> str:
     return asset_url(name)
+
+
+@register.simple_tag
+def stylesheet(*names: str) -> SafeString:
+    return mark_safe(f'<link rel="stylesheet" href="{asset_url(stylesheet_name(names))}">')

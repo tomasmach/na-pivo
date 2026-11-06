@@ -22,6 +22,8 @@ _MIN_SPAN_LAT = 0.0065
 _SCALES = (50, 100, 200, 500, 1000, 2000, 5000, 10000, 20000, 50000)
 # Width of one character of the 12 px bold label, generous for capitals.
 _CHAR = 7.8
+# Space kept between two price pills.
+_GAP = 2
 _BEER = mark_safe((Path(__file__).resolve().parent / "icons" / "beer.svg").read_text().strip())
 
 
@@ -37,8 +39,8 @@ def pub_map(
 ) -> dict | None:
     """SVG geometry for ``web/pubs/_map.html``.
 
-    ``points`` are ``{"lat", "lng", "label", "url"}``; a point without a label is a
-    small dot. ``background`` are other pubs, drawn as density. ``focus`` draws the
+    ``points`` are ``{"lat", "lng", "label", "url"}`` in priority order; a point without
+    a label, or whose label would cover one before it, is a small dot. ``background`` are other pubs, drawn as density. ``focus`` draws the
     one point as the big pin of a pub page.
     """
 
@@ -65,16 +67,27 @@ def pub_map(
         if 0 <= x < width and 0 <= y < height:
             cell = (int(x // _CELL), int(y // _CELL))
             cells[cell] = cells.get(cell, 0) + 1
-    density = [
-        {"x": cx * _CELL + 1.5, "y": cy * _CELL + 1.5, "level": 1 if count == 1 else 2 if count < 4 else 3}
-        for (cx, cy), count in sorted(cells.items())
-    ]
+    # One path per shade: a 3 px square stroked 3 px wide with round joins is the 6 px
+    # rounded cell, and a thousand cells stay three elements to render and send.
+    paths: dict[int, list[str]] = {}
+    for (cx, cy), count in sorted(cells.items()):
+        level = 1 if count == 1 else 2 if count < 4 else 3
+        paths.setdefault(level, []).append(f"M{cx * _CELL + 3} {cy * _CELL + 3}h3v3h-3z")
+    density = [{"level": level, "d": "".join(paths[level])} for level in sorted(paths)]
 
     pins = []
+    placed: list[tuple[float, float, float, float]] = []
     for index, point in enumerate(points):
         x, y = project(point["lat"], point["lng"])
         label = point.get("label") or ""
         pill = round(len(label) * _CHAR + 34) if label else 0
+        # Points come in priority order; a pill that would cover one already placed is a dot.
+        box = (x - pill / 2 - _GAP, y - 15 - _GAP, x + pill / 2 + _GAP, y + 15 + _GAP)
+        tight = bool(label) and not focus and any(
+            box[0] < other[2] and box[2] > other[0] and box[1] < other[3] and box[3] > other[1] for other in placed
+        )
+        if label and not tight:
+            placed.append(box)
         pins.append({
             **point,
             "x": round(x, 1),
@@ -84,6 +97,7 @@ def pub_map(
             "icon_x": round(-pill / 2 + 10, 1),
             "text_x": round(-pill / 2 + 28, 1),
             "first": index == 0,
+            "tight": tight,
         })
     # The first pin is drawn last, so no other pin covers it.
     pins.reverse()

@@ -3,7 +3,7 @@
 Final exports:
 
 - `og-invite.png` — 1200 × 630 Open Graph preview.
-- `favicon.ico` — 16, 32, 48 and 64 px favicon bundle.
+- `favicon.ico` — 16, 32 and 48 px favicon bundle, PNG-compressed frames.
 - `favicon-512.png` — flat-color favicon source/export.
 - `apple-touch-icon.png` — 180 × 180 touch icon.
 - `og-home.png` — 1200 × 630 share image of the home page, variant B4 „Deník s mapou“

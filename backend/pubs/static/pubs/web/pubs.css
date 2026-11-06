@@ -56,8 +56,9 @@
 .np-pubrow__rating .np-icon { width: 14px; height: 14px; color: var(--np-yellow); }
 .np-pubs-list__foot {
   display: flex; align-items: center; justify-content: space-between; gap: 12px;
-  padding: 14px 16px 10px; color: var(--np-muted); font-size: 13px;
+  padding: 4px 12px 0 16px; color: var(--np-muted); font-size: 13px;
 }
+.np-pubs-list__foot .np-link { display: inline-flex; align-items: center; min-height: 44px; padding: 0 4px; }
 .np-pubs-list__empty { display: grid; justify-items: start; gap: 10px; padding: 24px 16px; }
 .np-pubs-side { display: grid; gap: 28px; min-width: 0; }
 .np-pubs-section { display: grid; gap: 14px; margin-top: 8px; }

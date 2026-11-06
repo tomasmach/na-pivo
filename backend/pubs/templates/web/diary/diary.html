@@ -1,6 +1,6 @@
 {% extends "web/app.html" %}
 {% load i18n web %}
-{% block head %}<link rel="stylesheet" href="{% asset "diary.css" %}">{% endblock %}
+{% block stylesheet %}{% stylesheet "diary.css" %}{% endblock %}
 {% block content %}
 <header class="np-app__head dy-head">
   <h1 class="np-app__title">{% translate "Deník" %}</h1>

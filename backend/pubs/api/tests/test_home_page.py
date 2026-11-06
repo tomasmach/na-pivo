@@ -59,7 +59,7 @@ def test_every_home_asset_is_served(client):
     html = client.get("/").content.decode()
     paths = set(re.findall(r'"(/web/[^"?]+)\?v=\w+"', html))
 
-    assert {"/web/np.css", "/web/reskin.css", "/web/reskin.js", "/web/home-phones.webp"} <= paths
+    assert {"/web/np+reskin.css", "/web/reskin.js", "/web/home-phones.avif", "/web/home-phones.webp"} <= paths
     for path in paths:
         response = client.get(path)
         assert response.status_code == 200, path

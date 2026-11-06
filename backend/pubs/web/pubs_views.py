@@ -350,7 +350,8 @@ def pubs_city(request: HttpRequest, city: str) -> HttpResponse:
     now = timezone.now()
     chosen = _filters(request, data)
     params = {key: ("1" if chosen[key] is True else chosen[key]) for key in _FILTERS if chosen[key]}
-    rows = [_pub_row(pub, now, data["name"]) for pub in data["list"]]
+    # Filters and sorting need only the opening state; the full row is built for the pubs on the page.
+    rows = [{**pub, "status": status_line(pub["hours"], now)} for pub in data["list"]]
     known_hours = [row for row in rows if row["status"]]
     open_now = [row for row in known_hours if row["status"]["open"]]
     visible = _apply(rows, chosen)
@@ -358,7 +359,7 @@ def pubs_city(request: HttpRequest, city: str) -> HttpResponse:
         page = min(max(int(request.GET.get("page", "1")), 1), MAX_PAGES)
     except ValueError:
         page = 1
-    shown = visible[: page * PAGE_SIZE]
+    shown = [_pub_row(row, now, data["name"]) for row in visible[: page * PAGE_SIZE]]
     for index, row in enumerate(shown, start=1):
         row["anchor"] = f"h{index}"
 
@@ -424,7 +425,7 @@ def pubs_city(request: HttpRequest, city: str) -> HttpResponse:
     page_url = web_reverse("web-pubs-city", city=city)
     crumbs = [("Na pivo", web_reverse("home")), (gettext("Hospody"), web_reverse("web-pubs")), (name, page_url)]
     origin = settings.PUBLIC_WEB_ORIGIN
-    top = _sorted(rows, "")[:PAGE_SIZE]
+    top = [_pub_row(row, now, name) for row in _sorted(rows, "")[:PAGE_SIZE]]
     structured = {"@graph": [
         _breadcrumb_data(crumbs),
         {

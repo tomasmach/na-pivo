@@ -1,5 +1,6 @@
 {% extends "web/public.html" %}
 {% load i18n web %}
+{% block stylesheet %}{% stylesheet "pubs.css" %}{% endblock %}
 {% block head %}{% include "web/pubs/_head.html" %}{% endblock %}
 {% block content %}
 {% if not query %}
