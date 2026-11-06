@@ -36,7 +36,14 @@ from pubs.web.diary_views import diary, log_beer, night, profile
 from pubs.web.invite_views import plan_invite, plan_invite_calendar, plan_invite_og
 from pubs.web.news import news
 from pubs.web.pages import component_gallery
-from pubs.web.pubs_views import pub_og_image, pub_page, pubs_city, pubs_index, search_page
+from pubs.web.pubs_views import (
+    pub_og_image,
+    pub_page,
+    pubs_city,
+    pubs_city_og_image,
+    pubs_index,
+    search_page,
+)
 from pubs.web.rankings import rankings
 from pubs.web.routes import bilingual
 from pubs.web.tours import tour, tour_og, tours
@@ -46,6 +53,7 @@ urlpatterns = [
 
     *bilingual("hospody", "en/pubs", pubs_index, "web-pubs"),
     *bilingual("hospody/<slug:city>", "en/pubs/<slug:city>", pubs_city, "web-pubs-city"),
+    *bilingual("hospody/<slug:city>/og.png", "en/pubs/<slug:city>/og.png", pubs_city_og_image, "pubs-city-og"),
     *bilingual("hospoda/<str:key>", "en/pub/<str:key>", pub_page, "web-pub"),
     *bilingual("hospoda/<str:key>/og.png", "en/pub/<str:key>/og.png", pub_og_image, "pub-og-image"),
 

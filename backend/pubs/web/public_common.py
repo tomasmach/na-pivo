@@ -11,7 +11,7 @@ from django.utils.text import slugify
 from django.utils.translation import gettext
 from PIL import Image, ImageDraw
 
-from pubs.home_views import HOME_OG_PATH, ld_json
+from pubs.home_views import HOME_OG_PATH, breadcrumb_list, ld_json
 from pubs.price_map import _FOAM, _FOAM_MUTED, _GROUND, _HAIR, _MUTED, _fitted, _font
 from pubs.regions import REGION_CODES
 from pubs.web.pages import render_page
@@ -113,14 +113,7 @@ def breadcrumbs(items: list[tuple[str, str]]) -> tuple[list[dict], str]:
 
     origin = settings.PUBLIC_WEB_ORIGIN
     crumbs = [{"label": label, "url": url} for label, url in items]
-    graph = {
-        "@type": "BreadcrumbList",
-        "itemListElement": [
-            {"@type": "ListItem", "position": position, "name": label, "item": f"{origin}{url}"}
-            for position, (label, url) in enumerate(items, start=1)
-        ],
-    }
-    return crumbs, graph
+    return crumbs, breadcrumb_list([(label, f"{origin}{url}") for label, url in items])
 
 
 def structured(*graph: dict):
