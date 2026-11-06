@@ -185,7 +185,7 @@ export function HledaniScreen() {
     s.kind === 'menu' ? { key: `${BEER_NAME_FILTER_PREFIX}${s.slug}`, label: s.name } : { key: s.brandSlug ?? s.slug, label: s.brandName ?? s.name };
   const beerLabel = beerSuggestion ? (beerSuggestion.brandName ?? beerSuggestion.name).replace(/ \d+°$/, '') : '';
   const nearbyRows = suggestions.nearby.slice(0, 3);
-  const noMatch = canSearch && !searching && !results.length && !beerSuggestion;
+  const noMatch = canSearch && !searching && !failed && beer?.term === term && !results.length && !beerSuggestion;
   const addPub = (name?: string) => router.push(name ? { pathname: '/nv/pridat-hospodu', params: { name } } : '/nv/pridat-hospodu');
 
   return (
