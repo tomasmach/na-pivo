@@ -15,9 +15,11 @@ from pubs.api.tests.test_piva import _auth, _products, _rate_many, _register
 from pubs.api.tests.test_tour_publications import directory  # noqa: F401  (autouse: the pubs tours use)
 from pubs.api.tests.test_tour_search import published
 from pubs.beer_ranking import refresh_beer_ranking
+from pubs.home_views import HOME_OG_PATH
 from pubs.models import FriendBlock, PubPriceSnapshot, TourPublication
 from pubs.price_map import save_price_snapshot
 from pubs.pub_events import PubEvent
+from pubs.tests.sitemaps import sitemap_xml
 from pubs.tests.test_price_map import BRNO, PRAGUE, _price
 from pubs.web import beer_index, news, rankings, tours
 
@@ -66,10 +68,10 @@ def test_empty_ranking_and_region_say_so_honestly(client):
     assert "Žebříček se teprve plní" in html
     assert "Z 0 hodnocení" not in html
     assert '<a href="/">Na pivo</a>' in html
-    regional = _page(client, "/zebricky?kraj=jihomoravsky")
+    regional = _page(client, "/zebricky/jihomoravsky")
     assert "Nejlepší piva: Jihomoravský kraj" in regional and "Žebříček se teprve plní" in regional
-    # A filtered list is the same page for search engines.
-    assert 'name="robots"' not in regional and client.get("/zebricky?kraj=praha")["X-Robots-Tag"] == "noindex, nofollow"
+    # A kraj without beers stays out of search results, its links do not.
+    assert 'name="robots"' not in regional and client.get("/zebricky/praha")["X-Robots-Tag"] == "noindex, follow"
 
 
 # --- news ----------------------------------------------------------------------
@@ -164,7 +166,7 @@ def test_beer_index_without_prices_waits(client):
     html = _page(client, "/pivni-index")
     assert "Index se teprve počítá" in html
     image = client.get("/pivni-index/og.png")
-    assert image.status_code == 302 and image["Location"] == "/og/home.png"
+    assert image.status_code == 302 and image["Location"] == HOME_OG_PATH
 
 
 # --- tours ---------------------------------------------------------------------
@@ -221,7 +223,7 @@ def test_tours_hide_blocked_authors_from_a_signed_in_reader():
 
 
 def test_sitemap_lists_the_new_pages_in_both_languages():
-    xml = Client().get("/sitemap.xml").content.decode()
+    xml = sitemap_xml(Client())
 
     for module in (rankings, news, beer_index):
         [path] = module.sitemap_paths()

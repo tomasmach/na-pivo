@@ -92,6 +92,18 @@ def parse_pub_key(key: str) -> tuple[str, str] | None:
     return (match.group(1) or "", match.group(2)) if match else None
 
 
+def town_name(raw_city: str) -> str:
+    """The city a pub page and its list go under: Praha for "Praha 2", Louny for the post office "Louny 1"."""
+
+    return municipality(city_name(raw_city))
+
+
+def merged_city(slug: str) -> str:
+    """The town a post office address like /hospody/louny-1 now lives at, or "" when it is not one."""
+
+    return catalogue()["merged"].get(slug, "")
+
+
 def district_name(raw_city: str) -> str:
     """Praha 2, Brno-střed: the part of a city the catalogue names, if it names one."""
 
@@ -152,9 +164,13 @@ def _build_catalogue() -> dict:
 
     spellings: dict[str, Counter] = defaultdict(Counter)
     districts: dict[str, Counter] = defaultdict(Counter)
+    # The address a town would have under its post office name ("louny-1"), leading to the town.
+    merged: dict[str, str] = {}
     for pub in pubs:
-        city = city_name(pub["raw"])
+        city = town_name(pub["raw"])
         pub["c"] = city_slug(city) if city else ""
+        if pub["c"] and (posted := city_slug(city_name(pub["raw"]))) != pub["c"]:
+            merged[posted] = pub["c"]
         pub["d"] = district_name(pub["raw"])
         pub["f"] = fold(f"{pub['n']} {city} {pub['d']}")
         if pub["c"]:
@@ -170,7 +186,7 @@ def _build_catalogue() -> dict:
         }
         for slug, counter in spellings.items()
     }
-    return {"pubs": pubs, "cities": cities}
+    return {"pubs": pubs, "cities": cities, "merged": {old: new for old, new in merged.items() if old not in cities}}
 
 
 # The catalogue itself stays in this process: unpickling ~28 000 pubs from the
@@ -273,7 +289,7 @@ def _prices(keys) -> dict[str, dict]:
         for row in PubPriceIndex.objects.filter(
             cache_key__in=chunk, active=True, observed_at__gte=since, source__in=_PRICE_SOURCES,
             price_czk__gte=PUBLIC_MIN_CZK,
-        ).values("cache_key", "name", "price_czk", "volume_ml"):
+        ).values("cache_key", "name", "price_czk", "volume_ml", "observed_at"):
             rows[row["cache_key"]] = row
     return rows
 
@@ -411,6 +427,12 @@ def _enrich(pubs: list[dict]) -> list[dict]:
             "rating": rating[0] if rating else None,
             "raters": rating[1] if rating else 0,
             "ratings": rating[2] if rating else 0,
+            "changed_at": max(
+                (at for at in (
+                    menu and menu["beers_updated_at"], menu and menu["hours_updated_at"], price and price["observed_at"],
+                ) if at),
+                default=None,
+            ),
         })
     return out
 
@@ -464,7 +486,7 @@ def _candidates(cache_key: str) -> list[dict]:
         if row and row["name"]:
             return [{
                 "k": cache_key, "n": row["name"], "raw": row["city"] or "", "lat": row["lat"], "lng": row["lng"],
-                "a": "", "c": city_slug(city_name(row["city"] or "")), "d": district_name(row["city"] or ""),
+                "a": "", "c": city_slug(town_name(row["city"] or "")), "d": district_name(row["city"] or ""),
             }]
     return []
 
@@ -742,11 +764,44 @@ def search_counts() -> dict:
     return data
 
 
-def sitemap_pub_keys(limit: int = 5000) -> list[str]:
-    """Pubs with something to read (a menu or a price), for the sitemap."""
+# Below this a town's page lists too few pubs to stand on its own in search results.
+MIN_INDEXED_CITY_PUBS = 3
 
-    with_data = set(PubCommunityData.objects.exclude(beers=[]).values_list("cache_key", flat=True)) | set(
-        PubPriceIndex.objects.filter(active=True, source__in=_PRICE_SOURCES).values_list("cache_key", flat=True)
-    )
-    return [pub_key(pub["n"], pub["k"]) for pub in catalogue()["pubs"] if pub["k"] in with_data][:limit]
 
+def has_content(pub: dict) -> bool:
+    """Whether a pub page has something to read: a menu or a price. Decides the sitemap and noindex alike."""
+
+    return bool(pub["beers"]) or pub["price"] is not None
+
+
+def city_indexed(city: dict) -> bool:
+    """A town page is indexed with enough pubs and at least one with content, decides the sitemap and noindex alike."""
+
+    return city["pubs"] >= MIN_INDEXED_CITY_PUBS and city["slug"] in _indexed()["cities"]
+
+
+def indexed_pubs() -> dict[str, datetime | None]:
+    """Address key of every pub page with content, and when its menu, hours or price last changed."""
+
+    return _indexed()["pubs"]
+
+
+def _indexed() -> dict:
+    data = cache.get("web:pubs:indexed")
+    if data is None:
+        with_data = set(PubCommunityData.objects.exclude(beers=[]).values_list("cache_key", flat=True)) | set(
+            PubPriceIndex.objects.filter(active=True, source__in=_PRICE_SOURCES).values_list("cache_key", flat=True)
+        )
+        rows = _enrich([pub for pub in catalogue()["pubs"] if pub["k"] in with_data])
+        # Two spellings of one name in a cell share an address. Like find_pub, the first one is the page.
+        pubs, cities, seen = {}, set(), set()
+        for row in rows:
+            if row["key"] in seen:
+                continue
+            seen.add(row["key"])
+            if has_content(row):
+                pubs[row["key"]] = row["changed_at"]
+                cities.add(row["city_slug"])
+        data = {"pubs": pubs, "cities": cities}
+        cache.set("web:pubs:indexed", data, CATALOGUE_TTL)
+    return data

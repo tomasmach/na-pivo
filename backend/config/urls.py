@@ -4,12 +4,12 @@ from django.conf import settings
 from django.conf.urls.static import static
 from django.contrib import admin
 from django.urls import include, path
-from django.views.generic import RedirectView
 
 from pubs.models import BeerPage
 from pubs.profile_pages import public_profile_page
 from pubs.pub_web_views import pub_share_landing
 from pubs.web.routes import bilingual
+from pubs.web.sitemap import sitemap_file, sitemap_index
 from pubs.web_views import (
     android_asset_statements,
     apple_app_site_association,
@@ -23,7 +23,6 @@ from pubs.web_views import (
     llms_txt,
     party_invite_landing,
     robots_txt,
-    sitemap_xml,
     tour_invite_landing,
 )
 
@@ -33,29 +32,25 @@ handler500 = "pubs.web.pages.server_error"
 urlpatterns = [
     path("", home, name="home"),
     path("en", home, {"lang": "en"}, name="home-en"),
-    path("en/", RedirectView.as_view(url="/en", permanent=True)),
     path("robots.txt", robots_txt, name="robots-txt"),
     path("llms.txt", llms_txt, name="llms-txt"),
-    path("sitemap.xml", sitemap_xml, name="sitemap-xml"),
+    path("sitemap.xml", sitemap_index, name="sitemap-xml"),
+    path("sitemap-<slug:part>.xml", sitemap_file, name="sitemap-file"),
     path("ceny", beer_prices, name="beer-prices"),
-    path("ceny/", RedirectView.as_view(url="/ceny", permanent=True)),
     path("ceny/og.png", beer_prices_og_image, name="beer-prices-og-image"),
     path("ceny/<slug:city>", beer_prices, name="beer-prices-city"),
     path("ceny/<slug:city>/og.png", beer_prices_og_image, name="beer-prices-city-og-image"),
     path("en/prices", beer_prices, {"lang": "en"}, name="beer-prices-en"),
-    path("en/prices/", RedirectView.as_view(url="/en/prices", permanent=True)),
     path("en/prices/og.png", beer_prices_og_image, {"lang": "en"}, name="beer-prices-og-image-en"),
     path("en/prices/<slug:city>", beer_prices, {"lang": "en"}, name="beer-prices-city-en"),
     path("en/prices/<slug:city>/og.png", beer_prices_og_image, {"lang": "en"}, name="beer-prices-city-og-image-en"),
     path("pivo", beer_pages, name="beer-list"),
-    path("pivo/", RedirectView.as_view(url="/pivo", permanent=True)),
     path("pivo/og.png", beer_pages_og_image, name="beer-list-og-image"),
     path("pivo/znacka/<slug:key>", beer_pages, {"kind": BeerPage.Kind.BRAND}, name="beer-brand"),
     path("pivo/znacka/<slug:key>/og.png", beer_pages_og_image, {"kind": BeerPage.Kind.BRAND}, name="beer-brand-og-image"),
     path("pivo/<slug:key>", beer_pages, {"kind": BeerPage.Kind.BEER}, name="beer"),
     path("pivo/<slug:key>/og.png", beer_pages_og_image, {"kind": BeerPage.Kind.BEER}, name="beer-og-image"),
     path("en/beer", beer_pages, {"lang": "en"}, name="beer-list-en"),
-    path("en/beer/", RedirectView.as_view(url="/en/beer", permanent=True)),
     path("en/beer/og.png", beer_pages_og_image, {"lang": "en"}, name="beer-list-og-image-en"),
     path("en/beer/brand/<slug:key>", beer_pages, {"lang": "en", "kind": BeerPage.Kind.BRAND}, name="beer-brand-en"),
     path("en/beer/brand/<slug:key>/og.png", beer_pages_og_image, {"lang": "en", "kind": BeerPage.Kind.BRAND}, name="beer-brand-og-image-en"),

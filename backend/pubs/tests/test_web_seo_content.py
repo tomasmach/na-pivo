@@ -11,6 +11,7 @@ from django.core.management import call_command
 from django.utils import translation
 
 from pubs.models import PubDirectory
+from pubs.tests.sitemaps import sitemap_xml
 from pubs.tests.test_beer_pages import _pub as _beer_pub
 from pubs.tests.test_beer_pages import _second_beer, _three_fresh_pubs, catalog  # noqa: F401
 from pubs.tests.test_price_map import BRNO, _catalog, _price
@@ -197,7 +198,7 @@ def test_the_about_page_says_who_makes_the_app_in_both_languages(client):
     assert "apps.apple.com" in html and "play.google.com" in html
     assert "Who makes it" in english.content.decode()
     assert 'href="/o-appce">O appce</a>' in client.get("/ceny").content.decode()
-    assert "https://na-pivo.cz/o-appce" in client.get("/sitemap.xml").content.decode()
+    assert "https://na-pivo.cz/o-appce" in sitemap_xml(client)
 
 
 def test_every_list_names_a_pub_without_its_register_code(client):

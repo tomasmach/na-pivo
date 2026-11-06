@@ -104,6 +104,8 @@ MIDDLEWARE = [
     # final response. Streams (live game SSE, file downloads) pass through.
     "pubs.compression.BufferedGZipMiddleware",
     "pubs.observability.RequestLogMiddleware",
+    # /hospody/, /CENY and /zebricky?kraj=praha lead to the page's address before anything else looks at it.
+    "pubs.web.routes.canonical_address_middleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     # Resolves the request language from Accept-Language ("en" from the new app,
     # anything else falls back to LANGUAGE_CODE). Must sit after

@@ -6,15 +6,27 @@ shell so ``pubs.web.pages`` can import it.
 
 from __future__ import annotations
 
+import hashlib
 import json
 from functools import wraps
+from pathlib import Path
 from urllib.parse import quote, urlsplit
 
 from django.conf import settings
 from django.http import HttpRequest, HttpResponse, HttpResponsePermanentRedirect
 from django.utils.safestring import SafeString, mark_safe
 
-HOME_OG_PATH = "/og/home.png"
+_ASSETS = Path(__file__).resolve().parent / "static" / "pubs" / "invite"
+
+
+def _versioned(path: str, filename: str) -> str:
+    """The image's address with its content hash: it is served as immutable, so a new image needs a new address."""
+
+    return f"{path}?v={hashlib.sha256((_ASSETS / filename).read_bytes()).hexdigest()[:10]}"
+
+
+HOME_OG_PATH = _versioned("/og/home.png", "og-home.png")
+INVITE_OG_PATH = _versioned("/og/invite.png", "og-invite.png")
 # The rules for reusing the site's data (quote a fact with the source, never copy the whole).
 DATA_LICENSE_PATH = "/llms.txt"
 APP_STORE_URL = "https://apps.apple.com/cz/app/id6773790025"

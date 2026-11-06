@@ -8,7 +8,7 @@
   <div class="rs-head__main">
     <h1 class="np-h1{% if kind != "list" %} rs-h1--long{% endif %}" id="page-title">{{ h1 }}</h1>
     {% if kind == "beer" and day %}<p class="rs-sub">{% if brand_url %}<a href="{{ brand_url }}">{{ beer.brand_name }}</a>{% else %}{{ beer.brand_name }}{% endif %}{% for row in about %} · {{ row.value }}{% endfor %}</p>{% endif %}
-    {% if day %}<p class="rs-note">{% icon "info" "np-icon--s" %}{% if kind == "list" %}{% blocktranslate with date=day|date:"DATE_FORMAT" %}Piva, která za poslední 3 měsíce potvrdily aspoň 3 hospody. Stav k {{ date }}.{% endblocktranslate %}{% else %}{% blocktranslate with date=day|date:"DATE_FORMAT" %}Podle lístků, které lidi zapsali v Na pivo. Stav k {{ date }}.{% endblocktranslate %}{% endif %}</p>{% endif %}
+    {% if day %}<p class="rs-note">{% icon "info" "np-icon--s" %}{% if kind == "list" %}{% blocktranslate with date=day|timed %}Piva, která za poslední 3 měsíce potvrdily aspoň 3 hospody. Stav k {{ date }}.{% endblocktranslate %}{% else %}{% blocktranslate with date=day|timed %}Podle lístků, které lidi zapsali v Na pivo. Stav k {{ date }}.{% endblocktranslate %}{% endif %}</p>{% endif %}
 
     {% if rating or brand_rating %}{% with shown=rating|default:brand_rating %}
     <div class="rs-rating">

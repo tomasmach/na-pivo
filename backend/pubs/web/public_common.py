@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 from io import BytesIO
 
 from django.conf import settings
-from django.http import HttpRequest, HttpResponse
+from django.core.cache import cache
+from django.http import HttpRequest, HttpResponse, HttpResponseRedirect
 from django.utils import translation
 from django.utils.text import slugify
 from django.utils.translation import gettext
@@ -80,7 +83,7 @@ def region_names() -> dict[str, tuple[str, str]]:
 
 
 def region_slug(code: str) -> str:
-    """The kraj in a query string: ?kraj=jihomoravsky, the same in both languages."""
+    """The kraj in an address: /zebricky/jihomoravsky or ?kraj=jihomoravsky, the same in both languages."""
 
     return {"CZ063": "vysocina"}.get(code) or slugify(_CZECH_SHORT[code])
 
@@ -122,6 +125,26 @@ def structured(*graph: dict):
 
 def home_og_image() -> str:
     return f"{settings.PUBLIC_WEB_ORIGIN}{HOME_OG_PATH}"
+
+
+def og_version(payload: dict) -> str:
+    return hashlib.sha256(json.dumps(payload, sort_keys=True, default=str).encode()).hexdigest()[:10]
+
+
+def og_png(request: HttpRequest, payload: dict | None) -> HttpResponse:
+    """A page's share card drawn by ``og_image``, cached a day; the general picture while there is nothing to draw."""
+
+    wait = throttle_wait(request, "web_og")
+    if wait:
+        response = HttpResponse(status=429)
+        response["Retry-After"] = str(wait)
+        return response
+    if payload is None:
+        return HttpResponseRedirect(HOME_OG_PATH)
+    image = cache.get_or_set(f"web:og:{og_version(payload)}", lambda: og_image(**payload), 24 * 60 * 60)
+    response = HttpResponse(image, content_type="image/png")
+    response["Cache-Control"] = "public, max-age=86400"
+    return response
 
 
 # Share images reuse the fonts and colours of the /ceny and /pivo images.

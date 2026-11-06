@@ -35,6 +35,7 @@ from pubs.price_map import (
     _stats,
 )
 from pubs.regions import REGION_CODES, region_of
+from pubs.web.dates import time_tag, with_times
 from pubs.web.pages import render_page, web_page
 from pubs.web.public_common import (
     breadcrumbs,
@@ -184,7 +185,7 @@ def beer_index(request: HttpRequest) -> HttpResponse:
     names = region_names()
     base = web_reverse("web-beer-index")
     crumbs, crumb_graph = breadcrumbs([
-        ("Na pivo", web_reverse("home")), (gettext("Ceny piva"), web_reverse("beer-prices")), (gettext("Pivní index"), base),
+        ("Na pivo", web_reverse("home")), (gettext("Ceny piva"), web_reverse("beer-prices")), (gettext("Pivní index Česka"), base),
     ])
     context: dict = {"crumbs": crumbs, "data": None}
     graph = [crumb_graph]
@@ -194,7 +195,7 @@ def beer_index(request: HttpRequest) -> HttpResponse:
     country = data["country"] if data else None
     if data and country:
         day = date.fromisoformat(data["day"])
-        when = formats.date_format(day, "j. n. Y" if lang == "cs" else "N j, Y")
+        when = time_tag(day, formats.date_format(day, "j. n. Y" if lang == "cs" else "N j, Y"))
         country_median = country["median"]
         year_ago = data["year_ago"] or {}
         change = country_median - year_ago["country"] if year_ago.get("country") else None
@@ -254,19 +255,18 @@ def beer_index(request: HttpRequest) -> HttpResponse:
                     })
             risers.sort(key=lambda row: (-row["change"], row["name"]))
         expensive, cheap = (by_price[-1], by_price[0]) if len(by_price) >= 2 else (None, None)
-        quote = gettext(
-            "„Nejlevnější pivo v české hospodě stálo k %(when)s střední cenou %(price)s Kč.%(regions)s“"
-        ) % {
-            "when": when,
-            "price": country_median,
-            "regions": (
+        quote = with_times(
+            gettext("„Nejlevnější pivo v české hospodě stálo k %(when)s střední cenou %(price)s Kč.%(regions)s“"),
+            when=when,
+            price=country_median,
+            regions=(
                 " " + gettext("Nejdráž je %(dear)s (%(dear_price)s Kč), nejlevněji %(cheap)s (%(cheap_price)s Kč).") % {
                     "dear": expensive["name"], "dear_price": expensive["median"],
                     "cheap": cheap["name"], "cheap_price": cheap["median"],
                 }
                 if expensive else ""
             ),
-        }
+        )
         context.update({
             "data": data,
             "median": country_median,

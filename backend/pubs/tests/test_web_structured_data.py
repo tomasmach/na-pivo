@@ -197,7 +197,7 @@ def test_shared_pages_carry_full_share_tags(client, path):
     for tag in (
         '<meta property="og:image:width" content="1200">',
         '<meta property="og:image:height" content="630">',
-        '<meta property="og:image:alt" content="Pivní deníček Na pivo',
+        '<meta property="og:image:alt" content="',
         '<meta name="twitter:card" content="summary_large_image">',
     ):
         assert tag in html
@@ -245,3 +245,84 @@ def test_beer_page_counts_tank_spellings_once_and_keeps_other_beers_apart():
     assert "Jinde Testovar 11 nefiltrovaný tank" in {pub["name"] for pub in beers["testovar-11-nefiltrovany"]["listed"]}
     everywhere = {pub["name"] for beer in beers.values() for pub in beer["listed"]}
     assert not {"Jinde Testovar 11 tmavý", "Jinde Testovar tank", "Tehelná"} & everywhere
+
+
+def test_beer_product_describes_itself_with_the_page_summary(client):
+    for name in ("U Kalicha", "Na Růžku", "U Lípy"):
+        _menu_pub(name, [("Testovar 11°", 55, 500)])
+    call_command("snapshot_beer_prices", stdout=StringIO())
+
+    html = _get(client, "/pivo/testovar-11")
+
+    description = _node(html, "Product")["description"]
+    assert description == "Kde se čepuje Testovar 11° a za kolik: 3 hospody s čerstvým zápisem, obvykle 55 Kč za 0,5 l."
+    assert f'<meta name="description" content="{description}">' in html
+
+
+def test_home_share_image_carries_its_version_and_only_that_is_immutable(client):
+    html = _get(client, "/")
+    path = re.search(r'<meta property="og:image" content="https://na-pivo.cz(/og/home.png\?v=[0-9a-f]{10})">', html).group(1)
+
+    assert "immutable" in client.get(path)["Cache-Control"]
+    assert client.get("/og/home.png")["Cache-Control"] == "public, max-age=604800"
+
+
+def test_rankings_and_news_have_their_own_share_cards(client):
+    for rank, key in enumerate(("testovar-11", "testovar-12"), start=1):
+        BeerRanking.objects.create(
+            product=BeerProduct.objects.get(key=key), rating_avg=4.6 - rank / 10, rating_count=60, rank=rank,
+            computed_at=timezone.now(),
+        )
+    for page, alt in (("/zebricky", "Nejlepší piva v Česku"), ("/novinky", "Co je nového v hospodách")):
+        html = _get(client, page)
+        image = re.search(rf'<meta property="og:image" content="https://na-pivo.cz({page}/og\.png\?v=\w+)">', html)
+        assert image and f'<meta property="og:image:alt" content="{alt}">' in html
+        response = client.get(image.group(1))
+        assert response.status_code == 200 and response["Content-Type"] == "image/png"
+    assert client.get("/en/rankings/og.png")["Content-Type"] == "image/png"
+
+
+def test_rankings_card_waits_for_a_ranking(client):
+    response = client.get("/zebricky/og.png")
+
+    assert response.status_code == 302 and response["Location"].startswith("/og/home.png?v=")
+
+
+def test_dates_are_machine_readable(client):
+    tiger = _pub()
+    _menu(tiger)
+    for price in (48, 52, 56, 60, 64):
+        _indexed_price("Praha 2", price)
+    call_command("snapshot_beer_prices", stdout=StringIO())
+    today = timezone.localdate().isoformat()
+
+    assert f'<time datetime="{today}">ověřeno dnes</time>' in _get(client, f"/hospoda/u-zlateho-tygra-{tiger.cache_key}")
+    assert re.search(rf'Stav k <time datetime="{today}">[^<]+</time>\.', _get(client, "/ceny"))
+    UserAddedPub.objects.create(
+        client_id=uuid.uuid4(), cache_key="u2fkbjfr", name="Pivnice U Rotundy", lat=50.0866, lng=14.4174, city="Praha 1",
+    )
+    assert f'<h2 class="pp-day"><time datetime="{today}">Dnes</time></h2>' in _get(client, "/novinky")
+
+
+def test_area_prices_are_a_table_with_headers(client):
+    for price in (48, 52, 56, 60, 64):
+        _indexed_price("Praha 2", price)
+    call_command("snapshot_beer_prices", stdout=StringIO())
+
+    html = _get(client, "/ceny")
+
+    table = re.search(r'<table class="rs-strips" role="table" aria-labelledby="cities-title">.*?</table>', html, re.S).group(0)
+    assert re.findall(r'<th scope="col" role="columnheader">([^<]+)</th>', table) == ["Město", "Medián"]
+    assert re.search(r'<th class="rs-strip__who" scope="row" role="rowheader"><span class="rs-strip__name name"><a href="/ceny/praha">Praha</a>', table)
+    assert "<li" not in table
+
+
+def test_beer_index_goes_by_one_name_in_its_data(client):
+    for price in (48, 52, 56, 60, 64):
+        _indexed_price("Praha 2", price)
+    call_command("snapshot_beer_prices", stdout=StringIO())
+
+    html = _get(client, "/pivni-index")
+
+    assert _node(html, "Dataset")["name"] == "Pivní index Česka"
+    assert _node(html, "BreadcrumbList")["itemListElement"][-1]["name"] == "Pivní index Česka"

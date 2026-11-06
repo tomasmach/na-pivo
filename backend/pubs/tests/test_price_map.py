@@ -24,6 +24,7 @@ from pubs.models import (
     PubPriceSnapshot,
 )
 from pubs.price_map import build_price_map, city_slug, prague_district
+from pubs.tests.sitemaps import sitemap_xml
 from pubs.web.pages import _csp
 
 PRAGUE = (50.08, 14.42)
@@ -409,7 +410,7 @@ def test_price_page_tells_search_engines_the_year_the_median_and_the_dataset(cli
     assert "The median beer price in Czech pubs is 47 CZK." in english
     assert _structured_data(english)["Dataset"]["description"].startswith("From each pub I take")
     assert _structured_data(english)["BreadcrumbList"]["itemListElement"][0]["item"] == "https://na-pivo.cz/en"
-    assert f"<loc>https://na-pivo.cz/ceny</loc>\n  <lastmod>{today}</lastmod>" in client.get("/sitemap.xml").content.decode()
+    assert f"<loc>https://na-pivo.cz/ceny</loc>\n  <lastmod>{today}</lastmod>" in sitemap_xml(client)
 
 
 def test_price_page_without_numbers_has_no_dataset(client):
@@ -600,7 +601,7 @@ def test_country_page_links_every_city_and_the_sitemap_lists_them(client, settin
 
     assert '<a href="/ceny/brno">Brno</a>' in client.get("/ceny").content.decode()
     assert '<a href="/en/prices/praha">Prague</a>' in client.get("/en/prices").content.decode()
-    sitemap = client.get("/sitemap.xml").content.decode()
+    sitemap = sitemap_xml(client)
     assert "<loc>https://na-pivo.cz/ceny/brno</loc>" in sitemap
     assert "<loc>https://na-pivo.cz/en/prices/praha</loc>" in sitemap
 
