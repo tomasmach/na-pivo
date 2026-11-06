@@ -165,6 +165,24 @@ def _pubs_line(row: dict) -> str:
     ) % {"pub": row["pub_name"], "n": thousands(others)}
 
 
+def _region_description(place: str, data: dict) -> str:
+    """What this kraj's ranking says: how many ratings and which beers lead, so no two kraje read the same."""
+
+    if not data["rows"]:
+        return gettext(
+            "%(place)s: žebříček se teprve plní. Pivo se do něj dostane s aspoň %(n)s hodnoceními."
+        ) % {"place": place, "n": MIN_RATINGS}
+    text = ngettext(
+        "%(place)s: nejlíp hodnocená piva z %(n)s hodnocení v appce Na pivo.",
+        "%(place)s: nejlíp hodnocená piva z %(n)s hodnocení v appce Na pivo.",
+        data["ratings"],
+    ) % {"place": place, "n": thousands(data["ratings"])}
+    leaders = [f"{row['name']} ({decimal(row['avg'])})" for row in data["rows"][:3]]
+    if len(leaders) == 1:
+        return f"{text} " + gettext("Vede %(beer)s.") % {"beer": leaders[0]}
+    return f"{text} " + gettext("Vede %(beer)s, pak %(others)s.") % {"beer": leaders[0], "others": ", ".join(leaders[1:])}
+
+
 def _path(region: str, lang: str | None = None) -> str:
     if region:
         return web_reverse("web-rankings-region", lang, kraj=region_slug(region))
@@ -249,7 +267,8 @@ def rankings(request: HttpRequest, kraj: str = "") -> HttpResponse:
         )
         updated = gettext("přepočítáno %(when)s") % {"when": when}
 
-    crumbs, crumb_graph = breadcrumbs([("Na pivo", web_reverse("home")), (gettext("Žebříčky"), base), (gettext("Piva"), url())])
+    last_crumb = (names[region][1], _path(region)) if region else (gettext("Piva"), url())
+    crumbs, crumb_graph = breadcrumbs([("Na pivo", web_reverse("home")), (gettext("Žebříčky"), base), last_crumb])
     graph = [crumb_graph]
     if rows:
         graph.append({
@@ -292,7 +311,7 @@ def rankings(request: HttpRequest, kraj: str = "") -> HttpResponse:
             "og_image": home_og_image(),
         },
         title=title,
-        description=gettext(
+        description=_region_description(names[region][1], data) if region else gettext(
             "Která piva lidi v appce Na pivo hodnotí nejlíp. Do žebříčku se dostane pivo s aspoň %(n)s hodnoceními, každý mu dává jednu známku."
         ) % {"n": MIN_RATINGS},
         section="rankings",

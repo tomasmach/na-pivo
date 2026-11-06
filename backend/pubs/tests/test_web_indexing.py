@@ -428,3 +428,37 @@ def test_login_and_register_stay_out_of_search_results(client):
         assert _canonical(response.content.decode()) is None
     locs = _locs(sitemap_xml(client))
     assert not any(part in loc for loc in locs for part in ("prihlaseni", "registrace", "/en/login", "/en/register"))
+
+
+def _breadcrumb_names(html: str) -> list[str]:
+    import json
+
+    for block in re.findall(r'<script type="application/ld\+json">(.*?)</script>', html, re.S):
+        data = json.loads(block)
+        for node in data.get("@graph", [data]):
+            if node.get("@type") == "BreadcrumbList":
+                return [(item["name"], item["item"]) for item in node["itemListElement"]]
+    return []
+
+
+def test_kraj_ranking_has_its_own_description_and_breadcrumb(client):
+    _rank_in_prague()
+    [product] = _products(1)
+
+    czech = client.get("/zebricky/praha").content.decode()
+    assert (
+        f'content="Praha: nejlíp hodnocená piva z 50 hodnocení v appce Na pivo. Vede {product.name} (4,0)."' in czech
+    )
+    assert _breadcrumb_names(czech)[-1] == ("Praha", f"{ORIGIN}/zebricky/praha")
+    assert '<span aria-current="page">Praha</span>' in czech
+    english = client.get("/en/rankings/praha").content.decode()
+    assert f'content="Prague: the best rated beers from 50 ratings in the Na pivo app. {product.name} (4.0) leads."' in english
+    assert _breadcrumb_names(english)[-1] == ("Prague", f"{ORIGIN}/en/rankings/praha")
+
+    empty = client.get("/zebricky/jihomoravsky").content.decode()
+    assert 'content="Jihomoravský kraj: žebříček se teprve plní.' in empty
+    assert _breadcrumb_names(empty)[-1] == ("Jihomoravský kraj", f"{ORIGIN}/zebricky/jihomoravsky")
+    # The whole of Czechia keeps its own text and crumb.
+    national = client.get("/zebricky").content.decode()
+    assert 'content="Která piva lidi v appce Na pivo hodnotí nejlíp.' in national
+    assert _breadcrumb_names(national)[-1][0] == "Piva"
