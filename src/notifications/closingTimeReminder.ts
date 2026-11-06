@@ -26,6 +26,8 @@ const CANDIDATE_LIMIT = 15;
 const CANDIDATE_RADIUS_KM = 2;
 // Hours do not move during an evening; ask the server again only now and then.
 const REFRESH_AFTER_MS = 15 * 60 * 1000;
+// The server queues unknown hours; ask again soon, but not on every count.
+const RETRY_AFTER_MS = 2 * 60 * 1000;
 // Lets a late start still ring right away without racing the scheduler.
 const MIN_SCHEDULE_AHEAD_MS = 5 * 1000;
 
@@ -58,7 +60,7 @@ function loadNotifications(): NotificationsModule | null {
 const Notifications = loadNotifications();
 let installed = false;
 let operationQueue: Promise<void> = Promise.resolve();
-let lastLookup: { eveningKey: string; atMs: number; plan: ClosingPlan | null } | null = null;
+let lastLookup: { eveningKey: string; nextAtMs: number; plan: ClosingPlan | null } | null = null;
 
 function serialize(operation: () => Promise<void>): Promise<void> {
   const result = operationQueue.then(operation, operation);
@@ -116,10 +118,10 @@ async function notificationsGranted(): Promise<boolean> {
 
 /**
  * Tonight's pub and the nearest pubs around it, with their hours, in one request.
- * Undefined means the answer is not known yet (no pubs loaded, no hours), so the
- * next sync asks again instead of waiting out the refresh interval.
+ * Undefined means no pubs around are loaded yet, so the next sync tries again
+ * without asking the server.
  */
-async function lookupPlan(session: TallySession): Promise<ClosingPlan | null | undefined> {
+async function lookupPlan(session: TallySession): Promise<{ plan: ClosingPlan | null; retryAfterMs: number } | undefined> {
   const at = decodeGeohash8(session.pubKey);
   const nearby = findNearbyPubs({ lat: at.lat, lng: at.lng, limit: CANDIDATE_LIMIT + 1, maxKm: CANDIDATE_RADIUS_KM })
     .filter(({ pub }) => geohash8(pub.lat, pub.lng) !== session.pubKey)
@@ -130,8 +132,8 @@ async function lookupPlan(session: TallySession): Promise<ClosingPlan | null | u
   // Cache only: a reminder must not spend the scraping budget the pub pages use.
   const hours = await fetchPubHours([current, ...nearby.map(({ pub }) => pub)], undefined, { syncBudget: 0 });
   const currentHours = hours.get(current.id);
-  if (!currentHours || currentHours.status === 'pending') return undefined;
-  return planClosingReminder({
+  if (!currentHours || currentHours.status === 'pending') return { plan: null, retryAfterMs: RETRY_AFTER_MS };
+  const plan = planClosingReminder({
     nowMs: Date.now(),
     current: currentHours,
     candidates: nearby.flatMap(({ pub, distanceMeters }) => {
@@ -149,6 +151,7 @@ async function lookupPlan(session: TallySession): Promise<ClosingPlan | null | u
       }];
     }),
   });
+  return { plan, retryAfterMs: REFRESH_AFTER_MS };
 }
 
 function contentFor(session: TallySession, plan: ClosingPlan) {
@@ -182,9 +185,9 @@ async function syncInternal(): Promise<void> {
     return;
   }
 
-  if (!lastLookup || lastLookup.eveningKey !== eveningKey || Date.now() - lastLookup.atMs > REFRESH_AFTER_MS) {
-    const plan = await lookupPlan(session);
-    lastLookup = plan === undefined ? null : { eveningKey, atMs: Date.now(), plan };
+  if (!lastLookup || lastLookup.eveningKey !== eveningKey || Date.now() >= lastLookup.nextAtMs) {
+    const result = await lookupPlan(session);
+    lastLookup = result ? { eveningKey, nextAtMs: Date.now() + result.retryAfterMs, plan: result.plan } : null;
   }
   // The evening may have changed while the hours were loading.
   if (eveningKeyFor(useTallyStore.getState().current) !== eveningKey) return;
