@@ -1187,13 +1187,17 @@ def beer_pages_og_image(
 
 
 
-# Crawlers that collect pages to train AI models or fill datasets. The prices and menus are ours to keep.
-# AI search and the fetchers a person sends to one page (OAI-SearchBot, ChatGPT-User,
-# Claude-SearchBot, Claude-User, PerplexityBot, Perplexity-User) read the site like a search engine.
+# AI search and the fetchers a person sends to one page read the site like a search engine.
+# Amzn-SearchBot answers Alexa; Amazonbot below also collects for Amazon's model training.
+AI_SEARCH_CRAWLERS = (
+    "OAI-SearchBot", "ChatGPT-User", "Claude-SearchBot", "Claude-User", "PerplexityBot", "Perplexity-User",
+    "YouBot", "Amzn-SearchBot", "Amzn-User",
+)
+# Crawlers that collect pages to train AI models, fill datasets or feed SEO tools. The prices and menus are ours to keep.
 DATA_CRAWLERS = (
     "GPTBot", "ClaudeBot", "anthropic-ai", "CCBot", "Google-Extended", "Applebot-Extended", "Bytespider",
     "Amazonbot", "meta-externalagent", "FacebookBot", "cohere-ai", "Diffbot", "Omgilibot", "Timpibot",
-    "YouBot", "ImagesiftBot", "DataForSeoBot", "AhrefsBot", "SemrushBot", "MJ12bot", "DotBot",
+    "ImagesiftBot", "DataForSeoBot", "AhrefsBot", "SemrushBot", "MJ12bot", "DotBot",
 )
 
 
@@ -1220,6 +1224,7 @@ def llms_txt(_request: HttpRequest) -> HttpResponse:
     """What AI tools may do with the site: answer from a page with a link to it, never copy the data."""
 
     origin = settings.PUBLIC_WEB_ORIGIN
+    allowed, blocked = ", ".join(AI_SEARCH_CRAWLERS), ", ".join(DATA_CRAWLERS)
     text = f"""# Na pivo
 
 > Česká appka a web o hospodách, cenách piva a pivním deníku. Czech app and website about pubs, beer prices and a beer diary. {origin}
@@ -1227,15 +1232,17 @@ def llms_txt(_request: HttpRequest) -> HttpResponse:
 ## Pravidla pro AI a roboty
 
 - Obsah a data webu Na pivo patří Na pivo: ceny piva, lístky hospod, hodnocení, Pivní index, žebříčky a trasy.
-- AI vyhledávače a asistenti můžou stránky číst a odpovídat z nich, když u odpovědi odkážou na zdrojovou stránku na {origin}. Platí to pro OAI-SearchBot, ChatGPT-User, Claude-SearchBot, Claude-User, PerplexityBot a Perplexity-User.
-- Používat obsah k trénování nebo ladění modelů je bez písemného souhlasu zakázáno. Stejně tak je zakázané obsah hromadně stahovat a ukládat do databází nebo datasetů. Roboti, kteří sbírají data pro trénink nebo datasety, mají v robots.txt zakázaný celý web kromě tohoto souboru.
+- AI vyhledávače a asistenti můžou stránky číst a odpovídat z nich, když u odpovědi odkážou na zdrojovou stránku na {origin}. Platí to pro {allowed}.
+- Používat obsah k trénování nebo ladění modelů je bez písemného souhlasu zakázáno. Stejně tak je zakázané obsah hromadně stahovat a ukládat do databází nebo datasetů.
+- Roboti, kteří sbírají data pro trénink AI, datasety nebo SEO nástroje, mají v robots.txt zakázaný celý web kromě tohoto souboru: {blocked}.
 - O souhlas si napiš na tomades1@gmail.com.
 
 ## Rules for AI and crawlers
 
 - The content and data of Na pivo belong to Na pivo: beer prices, pub menus, ratings, the Beer index, rankings and tours.
-- AI search engines and assistants may read the pages and answer from them if the answer links to the source page on {origin}. This covers OAI-SearchBot, ChatGPT-User, Claude-SearchBot, Claude-User, PerplexityBot and Perplexity-User.
-- Using the content to train or fine-tune models is prohibited without written permission. So is scraping it in bulk or storing it in databases or datasets. Crawlers that collect data for training or datasets are disallowed from the whole site in robots.txt, except this file.
+- AI search engines and assistants may read the pages and answer from them if the answer links to the source page on {origin}. This covers {allowed}.
+- Using the content to train or fine-tune models is prohibited without written permission. So is scraping it in bulk or storing it in databases or datasets.
+- Crawlers that collect data for AI training, datasets or SEO tools are disallowed from the whole site in robots.txt, except this file: {blocked}.
 - To ask for permission, write to tomades1@gmail.com.
 """
     response = HttpResponse(text, content_type="text/plain; charset=utf-8")

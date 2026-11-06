@@ -4333,6 +4333,14 @@ msgstr "“%(query)s”"
 msgid "Podívej se, kde mají otevřeno a co čepují."
 msgstr "See where's open and what's on tap."
 
+#, python-format
+msgid "%(title)s, strana %(page)s"
+msgstr "%(title)s, page %(page)s"
+
+#, python-format
+msgid "Strana %(page)s z %(pages)s."
+msgstr "Page %(page)s of %(pages)s."
+
 msgctxt "one"
 msgid "hodnocení"
 msgstr "rating"

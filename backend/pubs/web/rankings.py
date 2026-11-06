@@ -6,7 +6,7 @@ from datetime import timedelta
 
 from django.core.cache import cache
 from django.db.models import Sum
-from django.http import Http404, HttpRequest, HttpResponse, HttpResponsePermanentRedirect
+from django.http import Http404, HttpRequest, HttpResponse
 from django.utils import formats, timezone
 from django.utils.translation import gettext, ngettext, npgettext
 
@@ -165,17 +165,20 @@ def _pubs_line(row: dict) -> str:
     ) % {"pub": row["pub_name"], "n": thousands(others)}
 
 
-def _path(region: str) -> str:
-    return web_reverse("web-rankings-region", kraj=region_slug(region)) if region else web_reverse("web-rankings")
+def _path(region: str, lang: str | None = None) -> str:
+    if region:
+        return web_reverse("web-rankings-region", lang, kraj=region_slug(region))
+    return web_reverse("web-rankings", lang)
+
+
+def region_path(kraj: str, lang: str) -> str:
+    """Where the old /zebricky?kraj=<slug> lives now; an unknown kraj is the whole of Czechia."""
+
+    return _path(REGION_BY_SLUG.get(kraj, ""), lang)
 
 
 @web_page
 def rankings(request: HttpRequest, kraj: str = "") -> HttpResponse:
-    if not kraj and "kraj" in request.GET:
-        # The kraj used to sit in the query string; its page has its own address now.
-        query = request.GET.copy()
-        old = REGION_BY_SLUG.get(query.pop("kraj")[-1], "")
-        return HttpResponsePermanentRedirect(_path(old) + (f"?{query.urlencode()}" if query else ""))
     region = REGION_BY_SLUG.get(kraj, "")
     if kraj and not region:
         raise Http404

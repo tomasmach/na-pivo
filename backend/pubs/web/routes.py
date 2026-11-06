@@ -44,29 +44,70 @@ def web_reverse(name: str, lang: str | None = None, **kwargs) -> str:
 
 
 
-def _resolves(path: str) -> bool:
+def _page(path: str) -> str | None:
+    """Base name of the page at this address, or None when no page is there."""
+
     try:
-        resolve(path)
+        match = resolve(path)
     except Resolver404:
-        return False
-    return True
+        return None
+    return base_name(match.url_name or "")
 
 
-def trailing_slash_middleware(get_response):
-    """A web address asked for with a slash at the end leads to the page without one, query string kept.
+# Pages whose addresses are all lower case, so /CENY or /ceny/Praha can only mean the lower-case page.
+# Tokens, invite codes, nicknames and file names keep their case and are not listed. A pub page sends
+# any spelling of its own key on in one step, so only an address its route does not match is lowered here.
+_PUB_PAGE = "web-pub"
+CASELESS_PAGES = frozenset({
+    "home", "beer-prices", "beer-prices-city", "beer-list", "beer-brand", "beer", "web-pubs", "web-pubs-city",
+    "web-rankings", "web-rankings-region", "web-news", "web-tours", "web-beer-index", "web-search",
+    "web-login", "web-register",
+})
 
-    Only when the address with the slash is not a page itself, so the API and admin keep their slashes,
-    and only for GET and HEAD, so a form post is never turned into a GET.
+
+def _address(path: str) -> str:
+    """The address a web page asked for this way lives at: no slash at the end, lower case where case means nothing."""
+
+    if path != "/" and path.endswith("/") and _page(path) is None:
+        stripped = path.rstrip("/")
+        if stripped and not stripped.startswith("//"):
+            if _page(stripped) is not None:
+                path = stripped
+            elif _page(stripped.lower()) in (*CASELESS_PAGES, _PUB_PAGE):
+                return stripped.lower()
+    lower = path.lower()
+    if lower != path:
+        asked, meant = _page(path), _page(lower)
+        if (meant in CASELESS_PAGES and asked in (None, *CASELESS_PAGES)) or (meant == _PUB_PAGE and asked is None):
+            path = lower
+    return path
+
+
+def canonical_address_middleware(get_response):
+    """An old or sloppy address of a web page leads to its address in one 301, query string kept.
+
+    /hospody/ and /CENY lose the slash and the capitals, and the old ?kraj= of the rankings moves into the
+    path, all at once. GET and HEAD only, so a form post is never turned into a GET, and never the API or admin.
     """
 
     def middleware(request: HttpRequest):
         path = request.path_info
-        if path != "/" and path.endswith("/") and request.method in ("GET", "HEAD") and not path.startswith("/v1/"):
-            target = path.rstrip("/")
-            if target and not target.startswith("//") and _resolves(target) and not _resolves(path):
-                query = request.META.get("QUERY_STRING", "")
-                location = request.path[: len(request.path) - len(path)] + target
-                return HttpResponsePermanentRedirect(f"{location}?{query}" if query else location)
-        return get_response(request)
+        if request.method not in ("GET", "HEAD") or path.startswith(("/v1/", "/admin/")):
+            return get_response(request)
+        if not (path.endswith("/") or path != path.lower() or "kraj" in request.GET):
+            return get_response(request)
+        target = _address(path)
+        query = request.META.get("QUERY_STRING", "")
+        old_kraj = "kraj" in request.GET and _page(target) == "web-rankings"
+        if old_kraj:
+            from pubs.web.rankings import region_path
+
+            params = request.GET.copy()
+            lang = "en" if target.startswith("/en/") else "cs"
+            target, query = region_path(params.pop("kraj")[-1], lang), params.urlencode()
+        if target == path and not old_kraj:
+            return get_response(request)
+        location = request.path[: len(request.path) - len(path)] + target
+        return HttpResponsePermanentRedirect(f"{location}?{query}" if query else location)
 
     return middleware

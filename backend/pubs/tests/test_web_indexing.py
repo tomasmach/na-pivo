@@ -67,10 +67,11 @@ def test_robots_lets_ai_search_in_and_keeps_training_crawlers_out_but_for_llms_t
     robots.parse(client.get("/robots.txt").content.decode().splitlines())
 
     for agent in ("OAI-SearchBot", "ChatGPT-User", "Claude-SearchBot", "Claude-User", "PerplexityBot",
-                  "Perplexity-User", "Googlebot", "SeznamBot"):
+                  "Perplexity-User", "YouBot", "Amzn-SearchBot", "Googlebot", "SeznamBot"):
         assert robots.can_fetch(agent, f"{ORIGIN}/ceny/praha"), agent
         assert not robots.can_fetch(agent, f"{ORIGIN}/v1/pubs"), agent
-    for agent in ("GPTBot", "ClaudeBot", "anthropic-ai", "CCBot", "Google-Extended", "Applebot-Extended", "Bytespider"):
+    for agent in ("GPTBot", "ClaudeBot", "anthropic-ai", "CCBot", "Google-Extended", "Applebot-Extended", "Bytespider",
+                  "Amazonbot", "AhrefsBot"):
         assert not robots.can_fetch(agent, f"{ORIGIN}/ceny/praha"), agent
         assert robots.can_fetch(agent, f"{ORIGIN}/llms.txt"), agent
 
@@ -81,6 +82,12 @@ def test_llms_txt_lets_ai_search_quote_with_a_link_and_forbids_training(client):
     assert "odpovídat z nich, když u odpovědi odkážou na zdrojovou stránku" in text
     assert "k trénování nebo ladění modelů je bez písemného souhlasu zakázáno" in text
     assert "if the answer links to the source page" in text and "Claude-SearchBot" in text
+    # It names exactly the crawlers robots.txt keeps out, and none it lets in.
+    robots = client.get("/robots.txt").content.decode()
+    blocked = re.findall(r"^User-agent: (\S+)$", robots, re.M)[1:]
+    assert f"kromě tohoto souboru: {', '.join(blocked)}." in text
+    assert f"except this file: {', '.join(blocked)}." in text
+    assert "YouBot" not in blocked and "Amazonbot" in blocked
 
 
 # ---------- trailing slash ----------
@@ -334,3 +341,90 @@ def test_post_office_town_is_one_price_page_and_its_address_moves_there(client):
 
     locs = _locs(sitemap_xml(client))
     assert f"{ORIGIN}/ceny/louny" in locs and not any("louny-1" in loc for loc in locs)
+
+
+
+# ---------- second audit round ----------
+
+
+def test_filters_of_a_city_are_not_followed_but_districts_are(client):
+    for index in range(25):
+        pub = _pub(f"Hospoda {index:02d}", lat=50.08 + index / 1000, lng=14.42, city=f"Praha {index % 2 + 1}")
+        PubCommunityData.objects.create(
+            cache_key=pub.cache_key, name=pub.name, lat=pub.lat, lng=pub.lng, city=pub.city,
+            beers=[{"name": "Kozel 11° tankové", "price_czk": 45, "volume_ml": 500}], beers_updated_at=timezone.now(),
+        )
+
+    html = client.get("/hospody/praha").content.decode()
+    links = dict(re.findall(r'<a [^>]*href="(\?[^"]*)"([^>]*)>', html))
+    for url, attrs in links.items():
+        facet = any(f"{key}=" in url for key in ("open", "beer", "max55", "tank", "garden", "sort"))
+        assert ('rel="nofollow"' in attrs) == facet, (url, attrs)
+    assert "?max55=1" in links and "?sort=name" in links and "?district=praha-1" in links
+    assert 'rel="nofollow"' not in links["?page=2#h21"]
+    filtered = client.get("/hospody/praha?tank=1").content.decode()
+    assert 'href="?tank=1&amp;page=2#h21" rel="nofollow" data-more' in filtered
+
+
+@pytest.mark.parametrize(("asked", "target"), [
+    ("/CENY", "/ceny"),
+    ("/ceny/Praha", "/ceny/praha"),
+    ("/HOSPODY/praha?page=2&sort=name", "/hospody/praha?page=2&sort=name"),
+    ("/En/Pubs/Praha/", "/en/pubs/praha"),
+    ("/Zebricky/Praha", "/zebricky/praha"),
+    ("/Pivo/Pilsner-Urquell", "/pivo/pilsner-urquell"),
+    ("/Hospoda/U-Tygra-U2FKBNHU", "/hospoda/u-tygra-u2fkbnhu"),
+])
+def test_capitals_in_a_page_address_lead_to_lower_case(client, asked, target):
+    response = client.get(asked)
+
+    assert response.status_code == 301 and response["Location"] == target
+
+
+@pytest.mark.parametrize("path", ["/trasy/AbCdEf", "/t/AbCdEf", "/p/AbCd", "/u/KralVycepu", "/party/ABCD",
+                                  "/pozvanka/AbCdEf", "/V1/pubs", "/web/MAPLIBRE-LICENSE.txt"])
+def test_addresses_where_case_matters_keep_it(client, path):
+    assert client.get(path).status_code != 301
+
+
+def test_capitals_leave_posts_alone(client):
+    assert client.post("/CENY").status_code == 404
+
+
+def test_later_pages_of_a_city_say_which_page_they_are(client):
+    for index in range(45):
+        _pub(f"Hospoda {index:02d}", lat=50.08 + index / 1000, lng=14.42, city="Praha")
+
+    first = client.get("/hospody/praha").content.decode()
+    second = client.get("/hospody/praha?page=2").content.decode()
+    english = client.get("/en/pubs/praha?page=3").content.decode()
+
+    assert "<title>Hospody v Praze | Na pivo</title>" in first and "Strana" not in first.split("</head>")[0]
+    assert "<title>Hospody v Praze, strana 2 | Na pivo</title>" in second
+    assert '<meta name="description" content="Strana 2 z 3. 45\u00a0hospod.' in second
+    assert "<title>Pubs in Prague, page 3 | Na pivo</title>" in english
+    assert '<meta name="description" content="Page 3 of 3. 45' in english
+
+
+@pytest.mark.parametrize(("asked", "target"), [
+    ("/zebricky/?kraj=praha", "/zebricky/praha"),
+    ("/zebricky//?kraj=praha&styl=pale", "/zebricky/praha?styl=pale"),
+    ("/en/rankings/?kraj=jihomoravsky", "/en/rankings/jihomoravsky"),
+    ("/Zebricky?kraj=praha", "/zebricky/praha"),
+    ("/zebricky?kraj=neznamy&n=40", "/zebricky?n=40"),
+    ("/zebricky/praha/?styl=pale", "/zebricky/praha?styl=pale"),
+])
+def test_old_kraj_links_reach_the_kraj_in_one_step(client, asked, target):
+    response = client.get(asked)
+
+    assert response.status_code == 301 and response["Location"] == target
+    assert client.get(target).status_code == 200
+
+
+def test_login_and_register_stay_out_of_search_results(client):
+    for path in ("/prihlaseni", "/registrace", "/en/login", "/en/register"):
+        response = client.get(path)
+        assert response.status_code == 200 and response["X-Robots-Tag"] == "noindex, follow"
+        assert _canonical(response.content.decode()) is None
+    locs = _locs(sitemap_xml(client))
+    assert not any(part in loc for loc in locs for part in ("prihlaseni", "registrace", "/en/login", "/en/register"))

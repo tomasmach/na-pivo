@@ -7,7 +7,7 @@ import json
 import re
 import unicodedata
 from datetime import datetime
-from urllib.parse import quote, urlencode
+from urllib.parse import parse_qs, quote, urlencode, urlsplit
 
 from django.conf import settings
 from django.core.cache import cache
@@ -276,6 +276,14 @@ def _query(params: dict, **changes) -> str:
     return f"?{urlencode(merged)}" if merged else "?"
 
 
+# Filters that only narrow or reorder the city's list. Crawlers need not follow them; a district is a page to find.
+_FACETS = ("open", "beer", "max55", "tank", "garden", "sort")
+
+
+def _facet(url: str) -> bool:
+    return any(key in _FACETS for key in parse_qs(urlsplit(url).query))
+
+
 def _filters(request: HttpRequest, data: dict) -> dict:
     get = request.GET
     districts = {slugify(name): name for name in data["districts"]}
@@ -447,6 +455,8 @@ def pubs_city(request: HttpRequest, city: str) -> HttpResponse:
          "selected": index == 0}
         for index, row in enumerate(shown[:PAGE_SIZE])
     ]
+    for item in [*chips, *extra_chips, *(item for menu in (menu_district, menu_beer, menu_sort) if menu for item in menu["items"])]:
+        item["nofollow"] = _facet(item["url"])
     response = render_page(
         request,
         "web/pubs/city.html",
@@ -464,6 +474,7 @@ def pubs_city(request: HttpRequest, city: str) -> HttpResponse:
             "rows": shown,
             "count_label": gettext("%(shown)s z %(total)s") % {"shown": num(start + len(shown)), "total": num(len(visible))},
             "more_url": _query(params, page=str(page + 1)) + f"#h{start + len(shown) + 1}" if page < last_page else "",
+            "more_nofollow": _facet(_query(params)),
             "filtered": bool(params),
             "map": pub_map(map_points, [(pub["lat"], pub["lng"]) for pub in data["list"]]),
             "live_map": live_map(map_points),
@@ -476,8 +487,12 @@ def pubs_city(request: HttpRequest, city: str) -> HttpResponse:
             "structured_data": ld_json(structured),
             "og_image_url": f"{origin}{HOME_OG_PATH}",
         },
-        title=title,
-        description=f"{lead} {gettext('Podívej se, kde mají otevřeno a co čepují.')}",
+        # Every page of the list is its own in search results, so each says which one it is.
+        title=gettext("%(title)s, strana %(page)s") % {"title": title, "page": page} if page > 1 else title,
+        description=(
+            (gettext("Strana %(page)s z %(pages)s.") % {"page": page, "pages": last_page} + " " if page > 1 else "")
+            + f"{lead} {gettext('Podívej se, kde mají otevřeno a co čepují.')}"
+        ),
         section="pubs",
         indexable=pubs_data.city_indexed(data),
         follow=True,
