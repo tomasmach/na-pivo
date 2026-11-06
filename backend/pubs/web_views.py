@@ -18,7 +18,14 @@ from django.conf import settings
 from django.core.cache import cache
 from django.db.models import Count, Max, Q, Sum
 from django.db.models.functions import TruncMonth
-from django.http import FileResponse, Http404, HttpRequest, HttpResponse, JsonResponse
+from django.http import (
+    FileResponse,
+    Http404,
+    HttpRequest,
+    HttpResponse,
+    HttpResponsePermanentRedirect,
+    JsonResponse,
+)
 from django.utils import formats, timezone, translation
 from django.utils.translation import gettext, pgettext_lazy
 
@@ -771,6 +778,10 @@ def beer_prices(request: HttpRequest, city: str = "") -> HttpResponse:
     missing = False
     if city and not wait:
         area = next((area for area in data.get("cities", []) if city_slug(area["name"]) == city), None)
+        town = data.get("merged", {}).get(city, "")
+        if area is None and any(city_slug(other["name"]) == town for other in data.get("cities", [])):
+            query = request.META.get("QUERY_STRING", "")
+            return HttpResponsePermanentRedirect(f"{PRICE_PATHS[lang]}/{town}" + (f"?{query}" if query else ""))
         # A city drops out once it has fewer than five priced pubs. Its old links get a 404
         # that still leads to the other cities.
         if area is None:

@@ -34,6 +34,7 @@ from pubs.models import (
     PubPriceIndex,
     PubPriceSnapshot,
 )
+from pubs.web.places import municipality
 
 # A year is how long the app itself shows a pub's price; older ones count as gone.
 WINDOW_DAYS = 365
@@ -209,7 +210,7 @@ def _cheapest(rows: list[PubPriceIndex], in_city: str = "") -> list[dict]:
             ):
                 continue
             city = place["city"] or row.city
-            if in_city and city_slug(city_name(city)) != city_slug(in_city):
+            if in_city and city_slug(municipality(city_name(city))) != city_slug(in_city):
                 continue
             picked.append({
                 "name": place["name"],
@@ -266,10 +267,14 @@ def build_price_map(now: datetime | None = None) -> dict:
     by_slug: dict[str, list[PubPriceIndex]] = defaultdict(list)
     spellings: dict[str, Counter] = defaultdict(Counter)
     districts: dict[str, list[PubPriceIndex]] = defaultdict(list)
+    # "Louny 1" is the post office of Louny, so its pubs count there and /ceny/louny-1 leads there.
+    merged: dict[str, str] = {}
     for row in rows:
-        if (city := city_name(row.city)) and (slug := city_slug(city)):
+        if (city := municipality(city_name(row.city))) and (slug := city_slug(city)):
             by_slug[slug].append(row)
             spellings[slug][city] += 1
+            if (posted := city_slug(city_name(row.city))) != slug:
+                merged[posted] = slug
         if district := prague_district(row.city):
             districts[district].append(row)
     cities = {spellings[slug].most_common(1)[0][0]: group for slug, group in by_slug.items()}
@@ -284,6 +289,7 @@ def build_price_map(now: datetime | None = None) -> dict:
         ],
         "prague_districts": sorted(_areas(districts), key=_district_order),
         "cheapest": _cheapest(rows),
+        "merged": {old: new for old, new in merged.items() if old not in by_slug},
     }
 
 

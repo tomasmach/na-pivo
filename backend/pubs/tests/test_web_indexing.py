@@ -18,7 +18,7 @@ from pubs.price_map import save_price_snapshot
 from pubs.tests.sitemaps import sitemap_xml
 from pubs.tests.test_price_map import BRNO, PRAGUE, _price
 from pubs.tests.test_web_account import PASSWORD, _member, _web, no_emails  # noqa: F401  (fixture)
-from pubs.web import sitemap
+from pubs.web import pubs_data, sitemap
 
 pytestmark = pytest.mark.django_db
 
@@ -280,3 +280,57 @@ def test_public_page_answers_304_when_unchanged_and_signed_in_pages_never(client
     _member("pivar@example.com", "pivar")
     signed_in = _web("pivar@example.com").get("/hospody/praha")
     assert signed_in["Cache-Control"] == "private, no-store" and "ETag" not in signed_in
+
+
+# ---------- post office names ----------
+
+
+@pytest.mark.parametrize(("raw", "town"), [
+    ("Louny 1", "Louny"),
+    ("Ústí nad Labem 1", "Ústí nad Labem"),
+    ("Olomouc 9", "Olomouc"),
+    ("Praha 7", "Praha"),
+    ("Plzeň 3", "Plzeň"),
+    ("Brno-střed", "Brno"),
+    ("Praha-východ", "Praha-východ"),
+    ("Kladno", "Kladno"),
+])
+def test_town_of_a_pub_drops_the_post_office_number_but_not_the_district(raw, town):
+    assert pubs_data.town_name(raw) == town
+
+
+def test_post_office_town_is_one_city_page_and_its_address_moves_there(client):
+    _pub("U Lva", lat=50.356, lng=13.797, city="Louny")
+    _pub("Na Mostě", lat=50.357, lng=13.798, city="Louny")
+    _pub("Pod Poštou", lat=50.358, lng=13.799, city="Louny 1")
+    _pub("U Kříže", lat=50.10, lng=14.44, city="Praha 7")
+
+    page = client.get("/hospody/louny")
+    assert page.status_code == 200 and "X-Robots-Tag" not in page
+    assert page.content.decode().count('class="np-pubrow"') == 3
+    moved = client.get("/hospody/louny-1?sort=name")
+    assert moved.status_code == 301 and moved["Location"] == "/hospody/louny?sort=name"
+    assert client.get("/en/pubs/louny-1")["Location"] == "/en/pubs/louny"
+    # A Prague district is still Prague's, and an unknown address stays a 404.
+    assert client.get("/hospody/praha-7").status_code != 301
+    assert client.get("/hospody/neexistuje-1").status_code == 404
+
+    locs = _locs(sitemap_xml(client))
+    assert f"{ORIGIN}/hospody/louny" in locs and not any("louny-1" in loc for loc in locs)
+
+
+def test_post_office_town_is_one_price_page_and_its_address_moves_there(client):
+    louny = (50.356, 13.797)
+    for price in (45, 48, 50, 52, 55):
+        _price("Louny", price, louny)
+    _price("Louny 1", 47, louny)
+    snapshot = save_price_snapshot()
+
+    assert [(area["name"], area["pubs"]) for area in snapshot.data["cities"]] == [("Louny", 6)]
+    assert client.get("/ceny/louny").status_code == 200
+    assert client.get("/ceny/louny-1")["Location"] == "/ceny/louny"
+    assert client.get("/en/prices/louny-1?x=1")["Location"] == "/en/prices/louny?x=1"
+    assert client.get("/ceny/praha-7").status_code == 404
+
+    locs = _locs(sitemap_xml(client))
+    assert f"{ORIGIN}/ceny/louny" in locs and not any("louny-1" in loc for loc in locs)

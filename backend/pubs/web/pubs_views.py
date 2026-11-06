@@ -344,6 +344,9 @@ def pubs_city(request: HttpRequest, city: str) -> HttpResponse:
         return _slow_down(request, wait, "pubs")
     data = pubs_data.city_pubs(city)
     if data is None:
+        if town := pubs_data.merged_city(city):
+            query = request.META.get("QUERY_STRING", "")
+            return HttpResponsePermanentRedirect(web_reverse("web-pubs-city", city=town) + (f"?{query}" if query else ""))
         return _missing(request, "city")
 
     now = timezone.now()
