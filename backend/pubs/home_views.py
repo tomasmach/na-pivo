@@ -21,6 +21,44 @@ APP_STORE_URL = "https://apps.apple.com/cz/app/id6773790025"
 PLAY_STORE_URL = "https://play.google.com/store/apps/details?id=com.tomasmach.na_pivo"
 PATHS = {"cs": "/", "en": "/en"}
 AUTHOR = {"@type": "Person", "name": "Tomáš Mach", "url": "https://www.instagram.com/jsem_mach/"}
+# Stable ids, so any page can name the publisher and the site the home page describes.
+ORGANIZATION_ID = "/#org"
+WEBSITE_ID = "/#website"
+
+
+def organization_ref(origin: str) -> dict:
+    # The name too, so a page without the full node still says who published it.
+    return {"@type": "Organization", "@id": f"{origin}{ORGANIZATION_ID}", "name": "Na pivo"}
+
+
+def breadcrumb_list(items: list[tuple[str, str]]) -> dict:
+    """BreadcrumbList of (name, absolute url). A crumb repeating the one before it is the same page, so it goes."""
+
+    crumbs: list[tuple[str, str]] = []
+    for name, url in items:
+        if not crumbs or crumbs[-1][1] != url:
+            crumbs.append((name, url))
+    return {
+        "@type": "BreadcrumbList",
+        "itemListElement": [
+            {"@type": "ListItem", "position": position, "name": name, "item": url}
+            for position, (name, url) in enumerate(crumbs, start=1)
+        ],
+    }
+
+
+def organization(origin: str) -> dict:
+    """Who publishes the site and the app. The Instagram is the founder's own, so it stays on him."""
+
+    return {
+        "@type": "Organization",
+        "@id": f"{origin}{ORGANIZATION_ID}",
+        "name": "Na pivo",
+        "url": f"{origin}/",
+        "logo": {"@type": "ImageObject", "url": f"{origin}/apple-touch-icon.png", "width": 180, "height": 180},
+        "founder": {**AUTHOR, "sameAs": [AUTHOR["url"]]},
+        "sameAs": [APP_STORE_URL, PLAY_STORE_URL],
+    }
 # Keeps "</script>" inside a value from ending the block early.
 _LD_ESCAPES = {ord("<"): "\\u003c", ord(">"): "\\u003e", ord("&"): "\\u0026"}
 

@@ -25,6 +25,7 @@ from pubs.models import (
     PubContributionLog,
     UserAddedPub,
 )
+from pubs.price_map import PUBLIC_MIN_CZK
 from pubs.pub_events import PubEvent
 from pubs.web.pages import render_page, web_page
 from pubs.web.public_common import (
@@ -98,6 +99,7 @@ def _menu_changes(start: datetime, end: datetime) -> list[dict]:
             elif (
                 isinstance(beer.get("price_czk"), int)
                 and isinstance(current.get("price_czk"), int)
+                and min(beer["price_czk"], current["price_czk"]) >= PUBLIC_MIN_CZK
                 and beer["price_czk"] != current["price_czk"]
             ):
                 changes.append({
@@ -131,7 +133,8 @@ def _feed(week: int) -> dict:
             price, volume = prices.get((tap.cache_key, tap.product_id), (None, None))
             items.append({
                 "kind": "tap", "key": tap.cache_key, "name": tap.pub_name, "at": tap.observed_at,
-                "beer": tap.product.name, "price": price if (volume or 500) == 500 else None,
+                "beer": tap.product.name,
+                "price": price if (volume or 500) == 500 and (price or 0) >= PUBLIC_MIN_CZK else None,
             })
         items += _menu_changes(start, end)
         for pub in UserAddedPub.objects.filter(active=True, created_at__gte=start, created_at__lt=end).order_by(

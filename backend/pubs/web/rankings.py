@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import timedelta
 
+from django.conf import settings
 from django.core.cache import cache
 from django.db.models import Sum
 from django.http import HttpRequest, HttpResponse
@@ -11,12 +12,11 @@ from django.utils import formats, timezone
 from django.utils.translation import gettext, ngettext, npgettext
 
 from pubs.beer_pages import page_path
-from pubs.beer_ranking import POURING_FRESH_DAYS, STYLES
+from pubs.beer_ranking import STYLES
 from pubs.models import (
     BeerPage,
     BeerRanking,
     BeerRegionRanking,
-    PubBeerProduct,
     PubPriceSnapshot,
     UserAddedPub,
 )
@@ -89,12 +89,13 @@ def _ranking(region: str, style: str) -> dict:
             picked.append(row)
             if len(picked) == MAX_ROWS:
                 break
-        ids = [row.product_id for row in picked]
-        pubs = _pouring(ids)
-        with_page = set(
-            BeerPage.objects.filter(kind=BeerPage.Kind.BEER, key__in=[row.product.key for row in picked])
-            .values_list("key", flat=True)
-        )
+        # The same pubs /pivo counts: confirmed lately, one per pub, in the public catalogue.
+        pages = {
+            key: {"pubs": pubs or 0, "pub_name": name or ""}
+            for key, pubs, name in BeerPage.objects.filter(
+                kind=BeerPage.Kind.BEER, key__in=[row.product.key for row in picked]
+            ).values_list("key", "data__pubs", "data__listed__0__name")
+        }
         return {
             "ratings": totals["n"] or 0,
             "computed_at": stamp,
@@ -105,38 +106,14 @@ def _ranking(region: str, style: str) -> dict:
                     "brand": row.product.brand_name,
                     "avg": row.rating_avg,
                     "count": row.rating_count,
-                    "has_page": row.product.key in with_page,
-                    **pubs.get(row.product_id, {"pubs": 0, "pub_name": ""}),
+                    "has_page": row.product.key in pages,
+                    **pages.get(row.product.key, {"pubs": 0, "pub_name": ""}),
                 }
                 for row in picked
             ],
         }
 
     return cache.get_or_set(f"web:rankings:{region}:{style}", build, PAGE_CACHE_SECONDS)
-
-
-def _pouring(product_ids: list[int]) -> dict[int, dict]:
-    """How many pubs pour each beer lately, and the one confirmed most recently."""
-
-    from pubs.api.views import _globally_reported_pub_cache_keys
-
-    links = list(
-        PubBeerProduct.objects.filter(
-            product_id__in=product_ids,
-            active=True,
-            last_seen_at__gte=timezone.now() - timedelta(days=POURING_FRESH_DAYS),
-        )
-        .order_by("-last_seen_at")
-        .values_list("product_id", "cache_key", "name")
-    )
-    hidden = _globally_reported_pub_cache_keys({link[1] for link in links})
-    result: dict[int, dict] = {}
-    for product_id, cache_key, name in links:
-        if cache_key in hidden:
-            continue
-        row = result.setdefault(product_id, {"keys": set(), "pub_name": name})
-        row["keys"].add(cache_key)
-    return {pid: {"pubs": len(row["keys"]), "pub_name": row["pub_name"]} for pid, row in result.items()}
 
 
 def _side_numbers() -> dict:
@@ -241,7 +218,13 @@ def rankings(request: HttpRequest) -> HttpResponse:
             "@type": "ItemList",
             "name": title,
             "itemListElement": [
-                {"@type": "ListItem", "position": row["position"], "name": row["name"]} for row in rows
+                {
+                    "@type": "ListItem",
+                    "position": row["position"],
+                    "name": row["name"],
+                    **({"url": f"{settings.PUBLIC_WEB_ORIGIN}{row['url']}"} if row["url"] else {}),
+                }
+                for row in rows
             ],
         })
     side = _side_numbers()
