@@ -160,7 +160,8 @@ def merge_accounts(source_pk: int, target_pk: int) -> None:
             )
         )
     )
-    for key, day, metric in both.values_list("cache_key", "day", "metric"):
+    # Same row order as record(), so a merge and a batch cannot lock the counts crosswise.
+    for key, day, metric in both.order_by("cache_key", "day", "metric").values_list("cache_key", "day", "metric"):
         PubReachDaily.objects.filter(
             cache_key=key, day=day, channel=APP, metric=metric, source="", visitors__gt=0
         ).update(visitors=F("visitors") - 1)
