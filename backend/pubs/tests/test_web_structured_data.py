@@ -12,8 +12,10 @@ from django.core.cache import cache
 from django.core.management import call_command
 from django.utils import timezone
 
-from pubs.beer_catalog import sync_pub_beer_indexes_for_menu
+from pubs.beer_catalog import match_beer, sync_pub_beer_indexes_for_menu, without_tank_words
+from pubs.beer_pages import build_beer_pages
 from pubs.models import (
+    BeerBrand,
     BeerPage,
     BeerProduct,
     BeerRanking,
@@ -66,7 +68,11 @@ def test_home_names_the_publisher_every_dataset_points_to(client):
     org = _node(html, "Organization")
     assert org["@id"] == "https://na-pivo.cz/#org"
     assert org["logo"]["width"] >= 112 and org["logo"]["url"] == "https://na-pivo.cz/apple-touch-icon.png"
-    assert "https://play.google.com/store/apps/details?id=com.tomasmach.na_pivo" in org["sameAs"]
+    assert org["sameAs"] == [
+        "https://apps.apple.com/cz/app/id6773790025",
+        "https://play.google.com/store/apps/details?id=com.tomasmach.na_pivo",
+        "https://www.instagram.com/jsem_mach/",
+    ]
     assert _node(html, "WebSite")["publisher"]["@id"] == org["@id"]
     assert _node(html, "MobileApplication")["publisher"]["@id"] == org["@id"]
 
@@ -138,7 +144,7 @@ def test_price_map_leaves_out_prices_under_the_floor():
 def test_ranking_counts_the_pubs_the_beer_page_counts(client):
     for name in ("U Kalicha", "Na Růžku", "U Lípy"):
         _menu_pub(name, [("Testovar 11°", 55, 500)])
-    # The app's index also links a pub abroad and a tank spelling the page does not count; the page decides.
+    # The app's index also links a pub abroad, which the page leaves out, and a tank spelling it counts too.
     for name, beer, kwargs in (
         ("Tehelná", "Testovar 11°", {"at": BRATISLAVA, "country": "sk"}),
         ("Kozlovna", "Testovar 11 tankové", {}),
@@ -157,8 +163,8 @@ def test_ranking_counts_the_pubs_the_beer_page_counts(client):
     )
 
     html = _get(client, "/zebricky")
-    assert BeerPage.objects.get(kind=BeerPage.Kind.BEER, key="testovar-11").data["pubs"] == 3
-    assert re.search(r"a 2\s+další\s+hospody", html), re.findall(r">[^<>]*další[^<>]*<", html)
+    assert BeerPage.objects.get(kind=BeerPage.Kind.BEER, key="testovar-11").data["pubs"] == 4
+    assert re.search(r"a 3\s+další\s+hospody", html), re.findall(r">[^<>]*další[^<>]*<", html)
     item = _node(html, "ItemList")["itemListElement"][0]
     assert item["url"] == "https://na-pivo.cz/pivo/testovar-11"
     urls = [crumb["item"] for crumb in _node(html, "BreadcrumbList")["itemListElement"]]
@@ -195,3 +201,47 @@ def test_shared_pages_carry_full_share_tags(client, path):
         '<meta name="twitter:card" content="summary_large_image">',
     ):
         assert tag in html
+
+
+_TANK_SPELLINGS = ["Testovar 11° tankové", "Testovar 11 z tanku", "Tanková Testovar 11", "Testovar 11 (tank)"]
+
+
+@pytest.mark.parametrize("name", [*_TANK_SPELLINGS, "Testovar 11 nefiltrovaný tank", "Testovar 12 tank", "Testovar tank"])
+def test_tank_words_are_the_only_ones_dropped(name):
+    plain = without_tank_words(name)
+    assert "tank" not in plain
+    assert plain.split()[-1] != "z"
+    # The app's own index already reads every tank spelling as the beer it is.
+    if name in _TANK_SPELLINGS:
+        assert match_beer(name, fuzzy=True).product.key == "testovar-11"
+
+
+def test_beer_page_counts_tank_spellings_once_and_keeps_other_beers_apart():
+    brand = BeerBrand.objects.get(key="testovar")
+    BeerProduct.objects.create(
+        key="testovar-11-nefiltrovany", brand=brand, brand_key=brand.key, brand_name=brand.name,
+        name="Testovar 11° nefiltrovaný", aliases=["Testovar 11 nefiltrovaný"], rank=2,
+    )
+    _menu_pub("U Kalicha", [("Testovar 11°", 52, 500)])
+    for index, name in enumerate(_TANK_SPELLINGS):
+        _menu_pub(f"Tankovna {index}", [(name, 60 + index, 500)])
+    # The bottle and the tank of one pub are one pub, at its cheaper half litre.
+    _menu_pub("U Lípy", [("Testovar 11°", 58, 500), ("Testovar 11° tankové", 54, 500)])
+    for name in ("Testovar 11 nefiltrovaný tank", "Testovar 11 tmavý", "Testovar 12 tank", "Testovar tank"):
+        _menu_pub(f"Jinde {name}", [(name, 50, 500)])
+    for name in ("Testovar 12°", "Testovar 11 nefiltrovaný"):
+        for index in range(2):
+            _menu_pub(f"{name} {index}", [(name, 50, 500)])
+    _menu_pub("Tehelná", [("Testovar 11° tankové", 45, 500)], at=BRATISLAVA, country="sk")
+
+    beers = build_beer_pages()["beers"]
+
+    listed = {pub["name"]: pub["price_czk"] for pub in beers["testovar-11"]["listed"]}
+    assert set(listed) == {"U Kalicha", "U Lípy", *(f"Tankovna {index}" for index in range(4))}
+    assert beers["testovar-11"]["pubs"] == 6 and listed["U Lípy"] == 54
+    assert beers["testovar-11"]["cheapest"]["price_czk"] == 52
+    # A tank of another degree or of the unfiltered beer counts there; dark and the bare brand count nowhere.
+    assert "Jinde Testovar 12 tank" in {pub["name"] for pub in beers["testovar-12"]["listed"]}
+    assert "Jinde Testovar 11 nefiltrovaný tank" in {pub["name"] for pub in beers["testovar-11-nefiltrovany"]["listed"]}
+    everywhere = {pub["name"] for beer in beers.values() for pub in beer["listed"]}
+    assert not {"Jinde Testovar 11 tmavý", "Jinde Testovar tank", "Tehelná"} & everywhere
