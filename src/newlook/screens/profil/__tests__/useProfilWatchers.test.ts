@@ -28,11 +28,13 @@ jest.mock('../profilModel', () => ({
 jest.mock('../../../ui/store', () => ({ toast: jest.fn() }));
 
 const SEEN_KEY = 'na-pivo-pub-reminder-onboarding-seen-version';
+const PUBLIC_ASK_KEY = 'na-pivo-public-nights-ask-seen';
 
 type Loaded = {
   useProfilWatchers: typeof import('../useProfilWatchers').useProfilWatchers;
   onboarding: typeof import('@/stores/onboardingStore').useOnboardingStore;
   settings: typeof import('@/stores/settingsStore').useSettingsStore;
+  vycep: typeof import('@/stores/vycepStore').useVycepStore;
   storage: typeof import('@react-native-async-storage/async-storage').default;
 };
 
@@ -46,6 +48,7 @@ function load(): Loaded {
       useProfilWatchers: require('../useProfilWatchers').useProfilWatchers,
       onboarding: require('@/stores/onboardingStore').useOnboardingStore,
       settings: require('@/stores/settingsStore').useSettingsStore,
+      vycep: require('@/stores/vycepStore').useVycepStore,
       storage: (({ default: d, ...m }) => d ?? m)(require('@react-native-async-storage/async-storage')),
     };
     /* eslint-enable @typescript-eslint/no-require-imports */
@@ -65,9 +68,50 @@ beforeEach(() => {
   mockAccount.needsNickname = false;
 });
 
+/** The pub-reminder tests start after the one-time public-nights ask was answered. */
+async function loadAsked(): Promise<Loaded> {
+  const loaded = load();
+  await loaded.storage.setItem(PUBLIC_ASK_KEY, '1');
+  return loaded;
+}
+
+describe('one-time ask to post nights publicly', () => {
+  it('opens first, once, and comes before the pub-reminder offer', async () => {
+    const { useProfilWatchers, storage } = load();
+    const view = await renderHook(() => useProfilWatchers());
+    await flush();
+    expect(mockPush.mock.calls).toEqual([['/nv/verejne-noci']]);
+    expect(await storage.getItem(PUBLIC_ASK_KEY)).toBe('1');
+
+    mockPath = '/nv/verejne-noci';
+    await view.rerender({});
+    mockPath = '/nv/kompas';
+    await view.rerender({});
+    await flush();
+    expect(mockPush.mock.calls).toEqual([['/nv/verejne-noci'], ['/nv/pripominky']]);
+  });
+
+  it('stays away for someone who already posts everything to the world', async () => {
+    const { useProfilWatchers, vycep, storage } = load();
+    vycep.setState({ shareDefault: 'public', nightAutopublish: 'public' });
+    await renderHook(() => useProfilWatchers());
+    await flush();
+    expect(mockPush).not.toHaveBeenCalledWith('/nv/verejne-noci');
+    expect(await storage.getItem(PUBLIC_ASK_KEY)).toBeNull();
+  });
+
+  it('waits out the welcome session', async () => {
+    const { useProfilWatchers, onboarding } = load();
+    onboarding.setState({ firstLaunchSession: true });
+    await renderHook(() => useProfilWatchers());
+    await flush();
+    expect(mockPush).not.toHaveBeenCalled();
+  });
+});
+
 describe('pub reminder offer in the new look', () => {
   it('opens once over a tab and remembers the version', async () => {
-    const { useProfilWatchers, storage } = load();
+    const { useProfilWatchers, storage } = await loadAsked();
     const view = await renderHook(() => useProfilWatchers());
     await flush();
     expect(mockPush).toHaveBeenCalledWith('/nv/pripominky');
@@ -82,7 +126,7 @@ describe('pub reminder offer in the new look', () => {
   });
 
   it('stays away for someone who already saw it in this version', async () => {
-    const { useProfilWatchers, storage } = load();
+    const { useProfilWatchers, storage } = await loadAsked();
     await storage.setItem(SEEN_KEY, '3.0.0');
     await renderHook(() => useProfilWatchers());
     await flush();
@@ -90,7 +134,7 @@ describe('pub reminder offer in the new look', () => {
   });
 
   it('stays away when reminders are already on', async () => {
-    const { useProfilWatchers, settings } = load();
+    const { useProfilWatchers, settings } = await loadAsked();
     settings.setState({ pubReminderEnabled: true });
     await renderHook(() => useProfilWatchers());
     await flush();
@@ -98,7 +142,7 @@ describe('pub reminder offer in the new look', () => {
   });
 
   it('waits out the welcome session and non-tab screens', async () => {
-    const { useProfilWatchers, onboarding } = load();
+    const { useProfilWatchers, onboarding } = await loadAsked();
     onboarding.setState({ firstLaunchSession: true });
     const view = await renderHook(() => useProfilWatchers());
     await flush();
@@ -117,7 +161,7 @@ describe('pub reminder offer in the new look', () => {
 
   it('never stacks with the nickname prompt; the prompt follows once the offer closes', async () => {
     mockAccount.needsNickname = true;
-    const { useProfilWatchers } = load();
+    const { useProfilWatchers } = await loadAsked();
     const view = await renderHook(() => useProfilWatchers());
     await flush();
     expect(mockPush.mock.calls).toEqual([['/nv/pripominky']]);

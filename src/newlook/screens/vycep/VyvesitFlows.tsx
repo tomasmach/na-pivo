@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 import { Image, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { nvBack } from '@/newlook/navigation';
@@ -8,7 +8,7 @@ import { trackUiInteraction } from '@/data/uxTelemetry';
 import { enqueueNightOp } from '@/data/nightsQueue';
 import { updateSharingPrefs } from '@/data/sharingPrefsClient';
 import { t } from '@/i18n';
-import { useAccountStore } from '@/stores/accountStore';
+import { selectNeedsNickname, useAccountStore } from '@/stores/accountStore';
 import { useBeerPhotosStore, type BeerPhotoLocal } from '@/stores/beerPhotosStore';
 import { useTallyStore } from '@/stores/tallyStore';
 import { useVycepStore } from '@/stores/vycepStore';
@@ -41,25 +41,32 @@ function photoUri(photo: BeerPhotoLocal): string | null {
   return photo.imageUrl ?? photo.localUri ?? null;
 }
 
-function PreviewCard({ night, photo, onPhoto, compact }: { night: NightSummary | null; photo?: string | null; onPhoto?: () => void; compact?: boolean }) {
+function PreviewCard({ night, photo, onPhoto, compact, mark, author }: { night: NightSummary | null; photo?: string | null; onPhoto?: () => void; compact?: boolean; mark?: string; author?: string }) {
   const me = useMe();
+  const handle = author ?? me.handle;
   return (
     <View style={{ backgroundColor: C.card, borderRadius: 24, padding: 16, gap: 12, borderWidth: 1, borderColor: C.hairline }}>
       <View style={[s.row, { gap: 12 }]}>
         <View style={[{ width: 32, height: 32, borderRadius: 16, backgroundColor: C.control }, s.center]}>
           <T s={13} w={800} c={C.yellow}>
-            {me.initial}
+            {handle.replace('@', '').charAt(0).toUpperCase()}
           </T>
         </View>
         <View style={s.fill}>
           <T s={15} w={700}>
-            {me.handle}
+            {handle}
           </T>
           <T s={12} c={C.muted}>
             {night ? [night.city, shortDay(night.startedAt)].filter(Boolean).join(' · ') : ' '}
           </T>
         </View>
-        {!compact ? (
+        {mark ? (
+          <View style={{ borderRadius: 999, paddingHorizontal: 9, paddingVertical: 3, backgroundColor: C.control }}>
+            <T s={12} w={700} c={C.yellow}>
+              {mark}
+            </T>
+          </View>
+        ) : !compact ? (
           <T s={12} w={700} c={C.muted}>
             {t.nv.vycep.preview}
           </T>
@@ -250,6 +257,94 @@ export function VyvesitSheet() {
   );
 }
 
+// Someone with no night yet sees how somebody else's night hangs, so the ask still shows the Výčep.
+const SAMPLE_NIGHT: NightSummary = {
+  clientKey: 'sample',
+  drinkingDay: '',
+  startedAt: '',
+  endedAt: '',
+  beerCount: 6,
+  wineCount: 0,
+  softDrinkCount: 0,
+  shotCount: 0,
+  pubNames: [...t.nv.vycep.askSamplePubs],
+  city: t.nv.vycep.askSampleCity,
+  durationMinutes: 190,
+};
+
+function NightStack({ night, mark }: { night: NightSummary | null; mark?: string }) {
+  return (
+    <View style={{ height: 236, justifyContent: 'flex-end' }}>
+      {t.nv.vycep.firstDecor.map((u, i) => (
+        <View key={u} style={{ position: 'absolute', top: i * 30, left: 34 - i * 16, right: 34 - i * 16, height: 80, borderRadius: 22, backgroundColor: i ? '#1A1A1A' : '#121212', borderWidth: 1, borderColor: C.hairline, paddingHorizontal: 14, paddingVertical: 8 }}>
+          <T s={13} w={700} c={C.muted}>
+            {u}
+          </T>
+        </View>
+      ))}
+      {night ? <PreviewCard night={night} compact mark={mark} /> : <PreviewCard night={SAMPLE_NIGHT} compact author={t.nv.vycep.askSampleAuthor} />}
+    </View>
+  );
+}
+
+/** The one-time ask after the update: post every finished night, rating and photo to the whole world. */
+export function VerejneNociScreen() {
+  const router = useRouter();
+  const night = useNightToPublish();
+  const me = useMe();
+  const needsNickname = useAccountStore(selectNeedsNickname);
+  const shareDefault = useVycepStore((st) => st.shareDefault);
+  const autopublish = useVycepStore((st) => st.nightAutopublish);
+  const answered = useRef(false);
+
+  const yes = () => {
+    if (answered.current) return;
+    answered.current = true;
+    if (shareDefault !== 'public' || autopublish !== 'public') void updateSharingPrefs({ shareDefault: 'public', nightAutopublish: 'public' });
+    // The world feed hides nights without a nickname, so ask for one right away.
+    if (needsNickname) router.replace('/nv/dokoncit-ucet');
+    else nvBack(router);
+  };
+  const no = () => {
+    if (answered.current) return;
+    answered.current = true;
+    nvBack(router);
+  };
+
+  return (
+    <Screen
+      footer={
+        <View>
+          <Button label={t.nv.vycep.askYes} onPress={yes} />
+          <Press onPress={no} style={{ alignItems: 'center', paddingTop: 12, paddingBottom: 4 }} hitSlop={{ top: 6, bottom: 10, left: 40, right: 40 }}>
+            <T s={13} w={600} c={C.muted}>
+              {t.nv.vycep.askNo}
+            </T>
+          </Press>
+        </View>
+      }
+      gap={16}
+    >
+      <NightStack night={night} mark={me.nickname ? t.nv.vycep.askYou : undefined} />
+      <View style={{ gap: 10, marginTop: 12 }}>
+        <T s={14} w={700} c={C.yellow}>
+          {t.nv.vycep.askKicker}
+        </T>
+        <D s={44}>{t.nv.vycep.askTitle}</D>
+        <T s={16} c={C.text2} lh={1.45}>
+          {t.nv.vycep.askBody}
+        </T>
+      </View>
+      <View style={[s.row, { gap: 10, alignItems: 'flex-start' }]}>
+        <Icon name="lock" size={15} color={C.muted} />
+        <T s={14} c={C.text2} lh={1.4} style={s.fill}>
+          {t.nv.vycep.askPrivate}
+        </T>
+      </View>
+    </Screen>
+  );
+}
+
 export function PrvniVyveseniScreen() {
   const router = useRouter();
   const fromSettings = useLocalSearchParams<{ from?: string }>().from === 'nastaveni';
@@ -272,16 +367,7 @@ export function PrvniVyveseniScreen() {
       header={<BackHeader />}
       gap={16}
     >
-      <View style={{ height: 210, justifyContent: 'flex-end' }}>
-        {t.nv.vycep.firstDecor.map((u, i) => (
-          <View key={u} style={{ position: 'absolute', top: i * 26, left: 34 - i * 16, right: 34 - i * 16, height: 80, borderRadius: 22, backgroundColor: i ? '#1A1A1A' : '#121212', borderWidth: 1, borderColor: C.hairline, padding: 14 }}>
-            <T s={13} w={700} c={C.muted}>
-              {u}
-            </T>
-          </View>
-        ))}
-        <PreviewCard night={night} compact />
-      </View>
+      <NightStack night={night} />
       <View style={{ gap: 10, marginTop: 12 }}>
         {fromSettings ? null : (
           <T s={14} w={700} c={C.yellow}>

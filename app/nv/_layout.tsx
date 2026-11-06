@@ -73,6 +73,7 @@ export default function NewLookLayout() {
         <Stack.Screen name="vyfot" options={{ presentation: 'fullScreenModal', animation: 'slide_from_bottom' }} />
         <Stack.Screen name="notifikace" options={{ animation: 'fade' }} />
         <Stack.Screen name="onboarding" options={{ animation: 'fade', gestureEnabled: false }} />
+        <Stack.Screen name="verejne-noci" options={{ animation: 'fade', gestureEnabled: false }} />
         <Stack.Screen name="prihlaseni" options={{ presentation: 'fullScreenModal', animation: 'slide_from_bottom' }} />
         <Stack.Screen name="tour-editor" options={{ presentation: 'modal', animation: 'slide_from_bottom' }} />
         <Stack.Screen name="tour-mapa" options={{ animation: 'fade' }} />

@@ -16,6 +16,7 @@ import { useBadgeStore } from '@/stores/badgeStore';
 import { useLaunchModalMutex } from '@/stores/launchModalMutex';
 import { useOnboardingStore } from '@/stores/onboardingStore';
 import { useSettingsStore, waitForSettingsHydration } from '@/stores/settingsStore';
+import { markPublicNightsAsked, shouldAskPublicNights } from '@/vycep/publicNightsAsk';
 
 import { toast } from '../../ui/store';
 import { badgeIcon, observeLevel, useMe } from './profilModel';
@@ -25,6 +26,7 @@ const TAB_PATHS = new Set(['/nv', '/nv/kompas', '/nv/piva', '/nv/stamgast', '/nv
 let levelCheck: string | null = null;
 let nudgeChecked = false;
 let reminderChecked = false;
+let publicNightsChecked = false;
 let openSheet: string | null = null;
 
 function release(id: string) {
@@ -35,9 +37,9 @@ function release(id: string) {
  * The new look has no BadgeHost, nickname nudge or pub-reminder explainer of
  * its own, so the header avatar, which sits on every tab, raises them: a medal
  * toast when a badge goes up, the level-up sheet once per new level, the
- * pub-reminder offer and the nickname prompt once per app version. Sheets only
- * open over a tab, one at a time: each holds the launch-modal mutex until the
- * user is back on a tab.
+ * one-time ask to post nights publicly, and the pub-reminder offer and the
+ * nickname prompt once per app version. Sheets only open over a tab, one at a
+ * time: each holds the launch-modal mutex until the user is back on a tab.
  */
 export function useProfilWatchers() {
   const router = useRouter();
@@ -96,6 +98,20 @@ export function useProfilWatchers() {
     }
 
     // The welcome pager owns the first launch.
+    if (onTab && !firstLaunch && !publicNightsChecked) {
+      if (useLaunchModalMutex.getState().claim('public-nights')) {
+        publicNightsChecked = true;
+        void shouldAskPublicNights().then((ask) => {
+          if (!ask) {
+            release('public-nights');
+            return;
+          }
+          void markPublicNightsAsked();
+          open('public-nights', '/nv/verejne-noci');
+        });
+      }
+    }
+
     if (onTab && !firstLaunch && !remindersOn && !reminderChecked) {
       if (useLaunchModalMutex.getState().claim('pub-reminder')) {
         reminderChecked = true;
