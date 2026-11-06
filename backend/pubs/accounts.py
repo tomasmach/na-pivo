@@ -2693,6 +2693,7 @@ def _merge_anonymous_account(source: Account | None, target: Account) -> None:
     PubBeerProduct.objects.filter(account=source).update(account=target)
     PubAmenity.objects.filter(first_mapper=source).update(first_mapper=target)
     ClientEvent.objects.filter(account=source).update(account=target)
+    pub_reach.merge_accounts(source.pk, target.pk)
     ContentReport.objects.filter(reporter=source).update(reporter=target)
     ContentReport.objects.filter(target_account=source).update(target_account=target)
     XpEvent.objects.filter(account=source).update(account=target)

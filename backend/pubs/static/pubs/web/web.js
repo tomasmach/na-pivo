@@ -42,7 +42,8 @@
   var reachPub = document.querySelector("[data-reach-pub]");
   if (reachPub && !navigator.webdriver) {
     var referrer = "";
-    try { referrer = document.referrer ? new URL(document.referrer).origin : ""; } catch (e) { referrer = ""; }
+    // Scheme and host only; the Google app on Android refers as android-app://com.google..., whose origin is "null".
+    try { var from = new URL(document.referrer); referrer = from.protocol + "//" + from.host; } catch (e) { referrer = ""; }
     var reach = function (type) {
       var body = JSON.stringify({ pub: reachPub.getAttribute("data-reach-pub"), type: type, ref: referrer });
       try {

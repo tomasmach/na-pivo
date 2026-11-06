@@ -106,3 +106,19 @@ it('ignores anything that is not a pub cell', async () => {
 
   expect(fetchSpy).not.toHaveBeenCalled();
 });
+
+it('does not resend a batch whose request timed out, the server may have saved it', async () => {
+  jest.useFakeTimers();
+  fetchSpy.mockImplementationOnce(
+    (_url: string, init: RequestInit) =>
+      new Promise((_resolve, reject) => init.signal?.addEventListener('abort', () => reject(new Error('aborted')))),
+  );
+  trackPubReach('navigation', TIGER);
+  const first = flushPubReach();
+  jest.advanceTimersByTime(8000);
+  await first;
+  jest.runOnlyPendingTimers();
+  await flushPubReach();
+
+  expect(fetchSpy).toHaveBeenCalledTimes(1);
+});

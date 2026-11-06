@@ -260,3 +260,27 @@ def test_hard_deleting_an_account_forgets_the_pubs_it_reached():
 
     assert PubReachVisitor.objects.count() == 0
     assert PubReachDaily.objects.get().count == 1
+
+
+def test_merging_accounts_counts_the_person_once_and_deleting_the_target_forgets_both():
+    from django.db import transaction
+
+    from pubs import accounts
+
+    source, source_client = _account(1)
+    target, target_client = _account(2)
+    _send(source_client, {"type": "detail_view", "pub": TIGER}, {"type": "detail_view", "pub": FLEK})
+    _send(target_client, {"type": "detail_view", "pub": TIGER})
+    today = pub_reach.reach_day(timezone.now())
+
+    with transaction.atomic():
+        accounts._merge_anonymous_account(source, target)
+
+    report = pub_reach.pub_report(TIGER, today, today, today)
+    assert {row["metric"]: (row["count"], row["visitors"]) for row in report["app"]}["detail_view"] == (2, 1)
+    assert PubReachDaily.objects.get(cache_key=TIGER).visitors == 1
+    assert set(PubReachVisitor.objects.values_list("visitor", flat=True)) == {pub_reach.visitor_id(target.pk)}
+
+    accounts.hard_delete(target)
+
+    assert PubReachVisitor.objects.count() == 0

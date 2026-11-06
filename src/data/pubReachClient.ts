@@ -95,7 +95,11 @@ export async function flushPubReach(): Promise<void> {
   pending = pending.slice(batch.length);
   sending = true;
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  let timedOut = false;
+  const timeout = setTimeout(() => {
+    timedOut = true;
+    controller.abort();
+  }, REQUEST_TIMEOUT_MS);
   let retry = false;
   try {
     const response = await fetch(endpoint, {
@@ -107,7 +111,9 @@ export async function flushPubReach(): Promise<void> {
     // A rejected batch never gets better; throttling and server errors pass.
     retry = response.status === 429 || response.status >= 500;
   } catch {
-    retry = true;
+    // No connection: the batch never left, so it waits. A timeout may have been
+    // saved already, and sending it again would count it twice.
+    retry = !timedOut;
   } finally {
     clearTimeout(timeout);
     sending = false;

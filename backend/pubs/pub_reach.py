@@ -19,7 +19,7 @@ from zoneinfo import ZoneInfo
 
 from django.conf import settings
 from django.db import connection
-from django.db.models import Count, Sum
+from django.db.models import Count, Exists, F, OuterRef, Sum
 from django.utils import timezone
 
 from pubs.models import (
@@ -142,6 +142,30 @@ def record(events: list[ReachEvent], channel: str, visitor: int | None = None) -
             f"count = {table}.count + excluded.count, visitors = {table}.visitors + excluded.visitors",
             [value for row in rows for value in row],
         )
+
+
+def merge_accounts(source_pk: int, target_pk: int) -> None:
+    """Count a merged account as the account it joined, once per pub, day and metric.
+
+    The merge holds both account locks, which the app batch also takes, so no batch
+    can add rows for either hash meanwhile.
+    """
+
+    source, target = visitor_id(source_pk), visitor_id(target_pk)
+    moving = PubReachVisitor.objects.filter(visitor=source)
+    both = moving.filter(
+        Exists(
+            PubReachVisitor.objects.filter(
+                visitor=target, cache_key=OuterRef("cache_key"), day=OuterRef("day"), metric=OuterRef("metric")
+            )
+        )
+    )
+    for key, day, metric in both.values_list("cache_key", "day", "metric"):
+        PubReachDaily.objects.filter(
+            cache_key=key, day=day, channel=APP, metric=metric, source="", visitors__gt=0
+        ).update(visitors=F("visitors") - 1)
+    both.delete()
+    moving.update(visitor=target)
 
 
 def forget_account(account_pk: int) -> None:
