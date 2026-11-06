@@ -49,6 +49,7 @@ export const stamgastEn: typeof stamgastCs = {
   draft: 'draught',
 
   placeHome: 'At home / cottage',
+  placeAddPub: 'Add',
   placeLocate: 'Allow location',
   placeLocateSub: "I'll show the pubs around you",
   placeSearching: 'Looking for pubs around you…',

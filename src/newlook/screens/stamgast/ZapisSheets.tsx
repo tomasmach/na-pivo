@@ -36,6 +36,8 @@ import { addBeersToMenu, usePubMenu } from './pubMenu';
 
 type Kind = 'pivo' | 'vino' | 'nealko' | 'panak';
 const OUTSIDE_CHOICES = ['private', 'outdoors'] as const;
+// Three chips share one line down to 360-point phones.
+const PLACE_CHIP = { flexGrow: 1, flexShrink: 1, justifyContent: 'center', paddingHorizontal: 10 } as const;
 type HomeServing = 'lahvac' | 'plech' | 'jinak';
 
 const KIND_TYPE: Record<Kind, DrinkType> = { pivo: 'beer', vino: 'wine', nealko: 'soft_drink', panak: 'shot' };
@@ -898,7 +900,7 @@ export function ZmenitMistoSheet() {
   return (
     <Sheet title={copy.placeUnknown} top={360}>
       {forBackfill ? null : (
-        <View style={[s.row, { gap: 10 }]}>
+        <View style={[s.row, { gap: 6 }]}>
           {OUTSIDE_CHOICES.map((context) => (
             <Chip
               key={context}
@@ -906,13 +908,20 @@ export function ZmenitMistoSheet() {
               icon={OUTSIDE_ICON[context]}
               active={place?.kind === 'outside' && place.context === context}
               height={48}
-              style={{ flex: 1, justifyContent: 'center' }}
+              style={PLACE_CHIP}
               onPress={() => {
                 useNvPlaceStore.getState().setOutside(context);
                 nvBack(router);
               }}
             />
           ))}
+          <Chip
+            label={copy.placeAddPub}
+            icon="map-pin-plus"
+            height={48}
+            style={PLACE_CHIP}
+            onPress={() => router.replace('/nv/pridat-hospodu')}
+          />
         </View>
       )}
       <View>

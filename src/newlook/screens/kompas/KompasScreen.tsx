@@ -323,6 +323,15 @@ function MapMode({ k, name, onCompass }: { k: Kompas; name: NameReveal; onCompas
       </ScrollView>
 
       <Animated.View layout={layoutMove} style={{ position: 'absolute', right: SCREEN_X - 8, bottom: tabSpace + cardSpace + 12, gap: 8 }}>
+        <Press
+          haptic
+          onPress={() => openAddPub(router)}
+          accessibilityRole="button"
+          accessibilityLabel={L().addPub}
+          style={[{ width: 46, height: 46, borderRadius: 23, backgroundColor: C.yellow }, s.center, shadow.raised]}
+        >
+          <Icon name="map-pin-plus" size={20} color={C.black} />
+        </Press>
         <View>
           <GlassButton icon="layers" label={L().layers} onPress={() => router.push('/nv/vrstvy')} />
           {layersDot ? (
@@ -506,6 +515,11 @@ const EMPTY_ICON: Record<Exclude<Kompas['state'], 'normal'>, IconName> = {
   noresults: 'funnel-x',
 };
 
+function openAddPub(router: ReturnType<typeof useRouter>) {
+  trackUiInteraction('compass_add_pub_open');
+  router.push('/nv/pridat-hospodu');
+}
+
 function emptyCopy(state: Exclude<Kompas['state'], 'normal'>): { title: string; body: string } {
   switch (state) {
     case 'loading':
@@ -538,6 +552,7 @@ function CompassMode({ k, name, onMap }: { k: Kompas; name: NameReveal; onMap: (
       <View style={[s.row, { justifyContent: 'space-between', height: 44 }]}>
         <IconButton icon="map" color={C.yellow} onPress={onMap} label={L().map} iconSize={20} />
         <View style={[s.row, { gap: 10 }]}>
+          <IconButton icon="map-pin-plus" onPress={() => openAddPub(router)} label={L().addPub} iconSize={20} />
           <IconButton icon="search" onPress={() => router.push('/nv/hledani')} label={L().search} iconSize={20} />
           <AvatarSlot />
         </View>
@@ -655,10 +670,7 @@ function CompassMode({ k, name, onMap }: { k: Kompas; name: NameReveal; onMap: (
             icon="plus"
             kind="raised"
             flex
-            onPress={() => {
-              trackUiInteraction('compass_add_pub_open');
-              router.push('/nv/pridat-hospodu');
-            }}
+            onPress={() => openAddPub(router)}
           />
         </View>
       ) : (
