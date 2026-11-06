@@ -45,10 +45,15 @@ describe('buildBeerEveningLiveActivityProps', () => {
       // The widget runtime has no strings file, so every word it draws is
       // built here and travels with the payload.
       beerWordLabel: t.liveActivity.beerWord(1),
-      beerCountA11yLabel: t.liveActivity.beerCountA11y(1),
+      beerWordForms: {
+        one: t.liveActivity.beerWord(1),
+        few: t.liveActivity.beerWord(2),
+        many: t.liveActivity.beerWord(5),
+      },
       totalPriceLabel: t.liveActivity.total('65 Kč'),
       latestBeerLabel: 'Plzeň 12°',
       latestTimeLabel: t.liveActivity.latestAt(latestBeerAt),
+      latestTimeTemplate: t.liveActivity.latestAt('{time}'),
       addBeerLabel: t.liveActivity.addBeer,
       addBeerA11yLabel: t.liveActivity.addBeerA11y,
       openCounterLabel: t.liveActivity.openCounter,

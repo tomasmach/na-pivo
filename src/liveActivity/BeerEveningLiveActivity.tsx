@@ -56,14 +56,16 @@ export interface BeerEveningLiveActivityProps {
   latestBeerAt: string;
   /** The noun under the numeral, already declined for `beerCount`. */
   beerWordLabel: string;
-  /** VoiceOver label for the bare number in the compact/minimal presentations. */
-  beerCountA11yLabel: string;
+  /** Forms of `beerWordLabel` for 1, 2–4 and 5+. */
+  beerWordForms?: { one: string; few: string; many: string };
   /** The running total as a whole line; empty when the total is unknown. */
   totalPriceLabel: string;
   /** The latest beer's name, or the fallback when it has none. */
   latestBeerLabel: string;
   /** When the latest beer was counted, or the line for an evening with none. */
   latestTimeLabel: string;
+  /** `latestTimeLabel` with `{time}` in place of `latestBeerAt`. */
+  latestTimeTemplate?: string;
   addBeerLabel: string;
   addBeerA11yLabel: string;
   openCounterLabel: string;
@@ -133,14 +135,27 @@ const BeerEveningLiveActivity = (
         endPoint: { x: 0.5, y: 1 },
       };
 
-  // Every word below arrives finished from `liveBeerActivityModel`: this
-  // runtime is isolated from the app, so it has no strings file and no locale.
+  // Every word below arrives from `liveBeerActivityModel`: this runtime is
+  // isolated from the app, so it has no strings file and no locale. The native
+  // `+ pivo` intent bumps only `beerCount`, `latestBeerAt` and clears
+  // `totalPrice`, so the lines that depend on them are put together here.
   // Running total sits under the pub name; the latest beer with its wall-clock
   // time lives next to the button so the freshest info is closest to the action.
-  const beerWord = props.beerWordLabel;
-  const priceLabel = props.totalPriceLabel;
+  const count = props.beerCount;
+  const forms = props.beerWordForms;
+  const beerWord = !forms
+    ? props.beerWordLabel
+    : count === 1
+      ? forms.one
+      : count >= 2 && count <= 4
+        ? forms.few
+        : forms.many;
+  const priceLabel = props.totalPrice ? props.totalPriceLabel : '';
   const latestBeerLabel = props.latestBeerLabel;
-  const latestTimeLabel = props.latestTimeLabel;
+  const latestTimeLabel =
+    props.latestBeerAt && props.latestTimeTemplate
+      ? props.latestTimeTemplate.replace('{time}', props.latestBeerAt)
+      : props.latestTimeLabel;
   const departsAtMs = props.homeTransitDepartsAtMs;
   // The system redraws a stale activity at the departure even while the app
   // sleeps; a later update knows it from the clock.
@@ -455,7 +470,7 @@ const BeerEveningLiveActivity = (
           foregroundStyle(accent),
           monospacedDigit(),
           contentTransition('numericText'),
-          accessibilityLabel(props.beerCountA11yLabel),
+          accessibilityLabel(`${props.beerCount} ${beerWord}`),
         ]}
       >
         {props.beerCount}
@@ -468,7 +483,7 @@ const BeerEveningLiveActivity = (
           foregroundStyle(accent),
           monospacedDigit(),
           contentTransition('numericText'),
-          accessibilityLabel(props.beerCountA11yLabel),
+          accessibilityLabel(`${props.beerCount} ${beerWord}`),
         ]}
       >
         {props.beerCount}

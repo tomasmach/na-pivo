@@ -1329,7 +1329,6 @@ export const cs = {
     beerFallback: 'Pivo',
     beerWord: (count: number) =>
       czechPlural(count, { one: 'pivo', few: 'piva', many: 'piv' }),
-    beerCountA11y: (count: number) => `Počet piv ${count}`,
     total: (amount: string) => `Celkem ${amount}`,
     latestBeerFallback: 'Poslední pivo',
     latestAt: (time: string) => `zapsáno v ${time}`,
