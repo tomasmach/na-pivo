@@ -562,11 +562,12 @@ def pubs_city(request: HttpRequest, city: str) -> HttpResponse:
          "selected": index == 0}
         for index, row in enumerate(shown[:PAGE_SIZE])
     ]
+    # Every district search engines may list gets a link from its city and its neighbours.
     district_tiles = [
-        {"label": place_name(other), "url": district_url(city_page, other)}
-        for other, _ in sorted(districts[:8], key=lambda item: _natural(item[0]))
-        if other != name
-    ] if len(districts) >= 2 else []
+        {"label": place_name(other["name"]), "url": web_reverse("web-pubs-city", city=other["slug"])}
+        for other in sorted(districts_with_pages(), key=lambda other: _natural(other["name"]))
+        if other["city"]["slug"] == city_page and other["pubs"] >= MIN_LISTED and other["name"] != name
+    ]
     response = render_page(
         request,
         "web/pubs/city.html",
@@ -836,16 +837,33 @@ def _pub_stats(pub: dict, now: datetime) -> list[dict]:
     return stats[:3]
 
 
+_KIND_WORDS = {
+    "hospoda", "hospudka", "hostinec", "pivnice", "restaurace", "restaurant", "vycep", "pivovar", "pivovarsky",
+    "krcma", "putyka", "pub", "bar", "pivni", "kavarna", "bistro", "pohostinstvi",
+}
+
+
+def _names_its_kind(name: str) -> bool:
+    """"Hospoda Pod Tankem", "Pivnice U Kocoura": the name already says what kind of place it is."""
+
+    words = pubs_data.fold(name).split()
+    return bool(words) and words[0] in _KIND_WORDS
+
+
 def _pub_description(pub: dict, where: str, has_ratings: bool, today) -> str:
     """Only what the page shows: the menu, its date, the cheapest beer, the hours if known."""
 
     values = {"name": pub_name(pub["name"]), "place": where, "price": pub["price"]}
     if pub["menu"]:
         values["beers"] = counted(len(pub["menu"]), gettext("pivo"), gettext("piva"), gettext("piv"))
-        text = (
-            gettext("Co čepují v hospodě %(name)s, %(place)s: %(beers)s") if has_pub_name(pub["name"])
-            else gettext("Co čepují v hospodě bez jména, %(place)s: %(beers)s")
-        ) % values
+        if not has_pub_name(pub["name"]):
+            sentence = gettext("Co čepují v hospodě bez jména, %(place)s: %(beers)s")
+        elif _names_its_kind(values["name"]):
+            # "v hospodě Hospoda Pod Tankem" says it twice, so the pub itself pours.
+            sentence = gettext("Co čepuje %(name)s, %(place)s: %(beers)s")
+        else:
+            sentence = gettext("Co čepují v hospodě %(name)s, %(place)s: %(beers)s")
+        text = sentence % values
         if pub["price"]:
             text += " " + gettext("od %(price)s Kč") % values
         if pub["menu_updated_at"]:

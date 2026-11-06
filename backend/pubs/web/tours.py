@@ -24,7 +24,7 @@ from pubs.models import FriendBlock, PubPriceIndex, TourPublication
 from pubs.price_map import _SOURCES, PUBLIC_MIN_CZK, WINDOW_DAYS
 from pubs.tours import fresh_people_count, readable_publications
 from pubs.web.pages import render_page, web_page
-from pubs.web.places import pub_name
+from pubs.web.places import place_name, pub_name
 from pubs.web.pub_map import live_map
 from pubs.web.public_common import (
     PAGE_CACHE_SECONDS,
@@ -99,8 +99,8 @@ def _card(publication: TourPublication, prices: dict[str, int]) -> dict:
     return {
         "token": publication.token,
         "title": publication.title,
-        "city": city_name(publication.city) or publication.city,
-        "area": publication.city,
+        "city": place_name(city_name(publication.city) or publication.city),
+        "area": place_name(publication.city),
         "stops": publication.stop_count,
         "walk_m": publication.walk_m,
         "avg": round(sum(known) / len(known)) if known else None,
@@ -176,7 +176,7 @@ def tours(request: HttpRequest) -> HttpResponse:
     except ValueError:
         page = 1
     data = _listing(city, stops)
-    city_label = data["cities"].get(city, "")
+    city_label = place_name(data["cities"].get(city, ""))
     city = city if city_label else ""
     hidden = _hidden_authors(request.web_account)
     cards = [_card_view(card) for card in data["cards"] if card["owner_id"] not in hidden]
@@ -194,7 +194,7 @@ def tours(request: HttpRequest) -> HttpResponse:
         for key in STOP_BUCKETS
     ]
     city_links = [{"label": gettext("Všechna města"), "url": url(mesto=""), "current": not city}] + [
-        {"label": name, "url": url(mesto=slug), "current": slug == city} for slug, name in data["cities"].items()
+        {"label": place_name(name), "url": url(mesto=slug), "current": slug == city} for slug, name in data["cities"].items()
     ]
     crumbs, crumb_graph = breadcrumbs([("Na pivo", web_reverse("home")), (gettext("Trasy"), base)])
     graph = [crumb_graph]
@@ -303,7 +303,7 @@ def tour(request: HttpRequest, tour_id: str) -> HttpResponse:
     city_url = f"{base}?mesto={slugify(city)}" if city else base
     crumb_items = [("Na pivo", web_reverse("home")), (gettext("Trasy"), base)]
     if city:
-        crumb_items.append((city, city_url))
+        crumb_items.append((place_name(city), city_url))
     crumb_items.append((publication.title, web_reverse("web-tour", tour_id=publication.token)))
     crumbs, crumb_graph = breadcrumbs(crumb_items)
     origin = settings.PUBLIC_WEB_ORIGIN
@@ -337,7 +337,7 @@ def tour(request: HttpRequest, tour_id: str) -> HttpResponse:
         f"&origin={stops[0]['lat']},{stops[0]['lon']}&destination={stops[-1]['lat']},{stops[-1]['lon']}"
         + (f"&waypoints={quote(waypoints, safe=',')}" if waypoints else "")
     )
-    meta = [city or publication.city, gettext("sestavil @%(nick)s") % {"nick": publication.plan.owner.nickname}]
+    meta = [place_name(city or publication.city), gettext("sestavil @%(nick)s") % {"nick": publication.plan.owner.nickname}]
     if people:
         meta.append(plural(people, gettext("prošel ji %(n)s člověk"), gettext("prošli ji %(n)s lidé"),
                            gettext("prošlo ji %(n)s lidí")) % {"n": thousands(people)})
@@ -372,7 +372,7 @@ def tour(request: HttpRequest, tour_id: str) -> HttpResponse:
             "app_url": f"/t/{quote(publication.token, safe='')}",
             "share_url": page_url,
             "nearby": nearby,
-            "city": city,
+            "city": place_name(city),
             "city_url": city_url,
             "structured_data": structured(crumb_graph, trip),
             "og_image": f"{origin}{web_reverse('tour-og', tour_id=publication.token)}?v={publication.revision}",
@@ -407,7 +407,7 @@ def tour_og(request: HttpRequest, tour_id: str, lang: str = "cs") -> HttpRespons
             if detail["avg"]:
                 figures.append((f"{detail['avg']} {gettext('Kč')}", gettext("průměrný půllitr")))
             return og_image(
-                kicker=" · ".join(part for part in (publication.city, f"@{publication.plan.owner.nickname}") if part),
+                kicker=" · ".join(part for part in (place_name(publication.city), f"@{publication.plan.owner.nickname}") if part),
                 title=publication.title,
                 hero=str(publication.stop_count),
                 hero_label=_pubs_word(publication.stop_count),

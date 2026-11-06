@@ -288,3 +288,52 @@ def test_every_navigation_has_its_own_name(client):
     for path in ("/o-appce", "/en/about", "/hospody"):
         names = re.findall(r'<nav[^>]*aria-label="([^"]+)"', client.get(path).content.decode())
         assert len(names) == len(set(names)), (path, names)
+
+
+def test_every_indexable_district_is_linked_from_its_city_and_the_other_districts(client):
+    for number in range(1, 11):
+        for index in range(3):
+            _place(f"Hospůdka {number}-{index}", lat=50.0 + number * 0.01 + index * 0.001, lng=14.42, city=f"Praha {number}")
+    _place("Jen jedna", lat=50.2, lng=14.5, city="Praha 11")
+
+    city = client.get("/hospody/praha").content.decode()
+    district = client.get("/hospody/praha-1").content.decode()
+
+    for number in range(1, 11):
+        assert f'href="/hospody/praha-{number}"' in city
+    assert all(f'href="/hospody/praha-{number}"' in district for number in range(2, 11))
+    # A district too small to be listed by search engines gets no tile.
+    assert 'href="/hospody/praha-11"' not in city
+
+
+def test_a_pub_named_after_its_kind_does_not_say_it_twice(client):
+    pub = _place("Hospoda Pod Tankem", city="Praha")
+    _menu(pub)
+
+    czech = _head(client.get(f"/hospoda/hospoda-pod-tankem-{pub.cache_key}").content.decode())[1]
+    english = _head(client.get(f"/en/pub/hospoda-pod-tankem-{pub.cache_key}").content.decode())[1]
+
+    assert czech.startswith("Co čepuje Hospoda Pod Tankem, Praha: 1 pivo")
+    assert "v hospodě Hospoda" not in czech
+    assert english.startswith("What Hospoda Pod Tankem in Prague pours: 1 beer")
+
+
+def test_a_brand_page_links_the_pubs_that_pour_it_and_its_cities(client):
+    _three_fresh_pubs()
+    _second_beer()
+    call_command("snapshot_beer_prices", stdout=StringIO())
+
+    html = client.get("/pivo/znacka/testovar").content.decode()
+
+    assert "Hospody, kde čepují Testovar" in html
+    for name in ("U Kalicha", "Pod Věží", "U Lípy"):
+        assert re.search(rf'<a class="rs-row__link" href="/hospoda/[a-z0-9-]+-\w{{8}}">{name}</a>', html), name
+    assert '<a href="/hospody/praha">Praha</a>' in html
+
+
+def test_footer_column_labels_stay_out_of_the_outline(client):
+    html = client.get("/o-appce").content.decode()
+    footer = html[html.index('<footer class="np-footer">'):]
+
+    assert "<h2" not in footer
+    assert 'aria-labelledby="np-foot-pubs"' in footer and '<p class="np-footer__title" id="np-foot-pubs">' in footer

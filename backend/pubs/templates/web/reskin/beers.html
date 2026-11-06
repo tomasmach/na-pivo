@@ -166,11 +166,43 @@
       <h2 class="np-title" id="brand-cities-title">{% blocktranslate with brand=beer.name %}Kde se {{ brand }} čepuje nejvíc{% endblocktranslate %}</h2>
     </div>
     <ol class="rs-strips" role="list">
-      {% for row in brand_cities %}<li class="rs-strip"><span class="rs-strip__who"><span class="rs-strip__name">{{ row.city }}</span></span><svg class="rs-strip__bar" aria-hidden="true" focusable="false"><rect class="rs-bar__track" width="100%" height="100%" rx="5"/><rect class="rs-bar__fill" width="{{ row.width }}" height="100%" rx="5"/></svg><span class="rs-strip__cost"><span class="rs-strip__median">{{ row.pubs }}</span><span class="rs-strip__meta">{{ row.pubs_label }}</span></span></li>{% endfor %}
+      {% for row in brand_cities %}<li class="rs-strip"><span class="rs-strip__who"><span class="rs-strip__name"><a href="{{ row.url }}">{{ row.city }}</a></span></span><svg class="rs-strip__bar" aria-hidden="true" focusable="false"><rect class="rs-bar__track" width="100%" height="100%" rx="5"/><rect class="rs-bar__fill" width="{{ row.width }}" height="100%" rx="5"/></svg><span class="rs-strip__cost"><span class="rs-strip__median">{{ row.pubs }}</span><span class="rs-strip__meta">{{ row.pubs_label }}</span></span></li>{% endfor %}
     </ol>
   </section>
   {% endif %}
 </div>
+
+{% if brand_pubs %}
+<section class="np-card rs-areas rs-section" aria-labelledby="brand-pubs-title" data-areas data-folded="{{ folded_rows }}">
+  <div class="np-card__head">
+    <h2 class="np-title" id="brand-pubs-title">{% blocktranslate with brand=beer.name %}Hospody, kde čepují {{ brand }}{% endblocktranslate %}</h2>
+    <span class="np-muted np-small">{% translate "cena za 0,5 l" %}</span>
+  </div>
+  {% if brand_pubs|length > folded_rows %}
+  {% translate "Najdi hospodu nebo město" as search_label %}
+  <div class="rs-tools" data-tools>
+    <label class="np-search rs-tools__search">{% icon "search" "np-icon--s" %}<input class="np-input" type="search" data-search placeholder="{{ search_label }}" aria-label="{{ search_label }}" autocomplete="off" spellcheck="false" enterkeyhint="search"></label>
+    <div class="np-segment" role="group" aria-label="{% translate "Seřadit" %}">
+      <button class="np-segment__item" type="button" data-sort="default" aria-pressed="true">{% translate "Naposledy potvrzené" %}</button>
+      <button class="np-segment__item" type="button" data-sort="cheap" aria-pressed="false">{% translate "Nejlevnější" %}</button>
+    </div>
+  </div>
+  {% endif %}
+  <ol class="rs-pubs" role="list" data-rows>
+    {% for pub in brand_pubs %}<li class="rs-pub{% if not pub.fresh %} is-old{% endif %}{% if not pub.on_map %} rs-row--link{% endif %}" data-find="{{ pub.name }} {{ pub.city }}" data-median="{{ pub.per_half_litre|default_if_none:"" }}"{% if not pub.fresh %} data-old{% endif %}>
+      <span class="rs-pub__who"><span class="rs-pub__name name"><a{% if not pub.on_map %} class="rs-row__link"{% endif %} href="{{ pub.url }}">{{ pub.name }}{% if pub.on_map %}<span class="np-sr-only">, {% translate "na mapě" %}</span>{% endif %}</a></span>{% if pub.city %}<span class="rs-pub__meta">{{ pub.city|place }}</span>{% endif %}<span class="rs-pub__meta">{{ pub.beer_names }}</span></span>
+      <span class="rs-pub__when"><span aria-hidden="true">{% translate "potvrzeno" %} </span><span class="np-sr-only">{% translate "naposledy potvrzeno" %} </span><time datetime="{{ pub.confirmed }}">{{ pub.date }}</time>{% if not pub.fresh %}<span class="np-sr-only">, {% translate "starší než 3 měsíce" %}</span>{% endif %}</span>
+      <span class="rs-pub__cost">{% if pub.per_half_litre %}<span class="rs-pub__price">{{ pub.per_half_litre }} {% translate "Kč" %}</span>{% else %}<span class="rs-pub__meta">{% translate "cena chybí" %}</span>{% endif %}</span>
+      {% if not pub.on_map %}<span class="rs-row__chevron">{% icon "chevron-right" "np-icon--s" %}</span>{% endif %}
+    </li>{% endfor %}
+  </ol>
+  <div class="rs-empty" data-empty role="status" hidden>
+    <p>{% translate "Takovou hospodu ani město tu s touhle značkou nemám." %}</p>
+    <button class="np-btn" type="button" data-clear>{% translate "Zrušit hledání" %}</button>
+  </div>
+  {% if brand_pubs|length > folded_rows %}{% blocktranslate with count=brand_pubs|length asvar more_label %}Ukázat všechny hospody ({{ count }}){% endblocktranslate %}<button class="np-btn rs-fold" type="button" data-more data-less="{% translate "Sbalit" %}" aria-expanded="false">{{ more_label }}</button>{% endif %}
+</section>
+{% endif %}
 
 {% if brands %}
 <section class="np-card rs-section" aria-labelledby="brands-title">

@@ -5556,3 +5556,12 @@ msgstr "Bottom bar"
 
 msgid "s lístkem"
 msgstr "with a menu"
+
+msgid "Takovou hospodu ani město tu s touhle značkou nemám."
+msgstr "I don't have a pub or town like that with this brand."
+
+msgid "Co čepuje %(name)s, %(place)s: %(beers)s"
+msgstr "What %(name)s in %(place)s pours: %(beers)s"
+
+msgid "Hospody, kde čepují %(brand)s"
+msgstr "Pubs pouring %(brand)s"

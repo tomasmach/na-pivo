@@ -971,13 +971,31 @@ def _beer_live(page: BeerPage) -> dict:
         live = {"ratings": _ratings(keys), "cities": []}
         if page.kind == BeerPage.Kind.BRAND:
             pubs: dict[str, set] = defaultdict(set)
+            listed: dict = {}
             for beer in BeerPage.objects.filter(kind=BeerPage.Kind.BEER, key__in=keys).values_list("data", flat=True):
                 for pub in beer["listed"]:
                     if pub["fresh"] and pub["city"]:
                         pubs[_city_of(pub["city"])].add((pub["name"], pub["lat"], pub["lng"]))
+                    _add_brand_pub(listed, pub, beer["name"])
             live["cities"] = sorted(((city, len(found)) for city, found in pubs.items()), key=lambda item: (-item[1], item[0]))[:6]
+            live["pubs"] = sorted(listed.values(), key=lambda pub: (not pub["fresh"], -date.fromisoformat(pub["confirmed"]).toordinal(), pub["name"]))
     cache.set(key, live, _LIVE_SECONDS)
     return live
+
+
+def _add_brand_pub(listed: dict, pub: dict, beer: str) -> None:
+    """One row per pub on a brand page: the brand's beers it pours, its latest confirmation, its cheapest half litre."""
+
+    row = listed.setdefault(pub.get("cache_key") or (pub["name"], pub["lat"], pub["lng"]), {
+        "cache_key": pub.get("cache_key"), "name": pub["name"], "city": pub["city"], "lat": pub["lat"], "lng": pub["lng"],
+        "confirmed": pub["confirmed"], "fresh": False, "beers": [], "per_half_litre": None,
+    })
+    row["beers"].append(beer)
+    row["confirmed"] = max(row["confirmed"], pub["confirmed"])
+    row["fresh"] = row["fresh"] or pub["fresh"]
+    if pub["fresh"] and pub["price_czk"]:
+        half = round(pub["price_czk"] * 500 / (pub["volume_ml"] or 500))
+        row["per_half_litre"] = half if row["per_half_litre"] is None else min(row["per_half_litre"], half)
 
 
 def _city_of(name: str) -> str:
@@ -1157,8 +1175,19 @@ def beer_pages(request: HttpRequest, kind: str = BeerPage.Kind.LIST, key: str = 
             "review_total": live.get("review_total", 0),
             "head_stats": head_stats,
             "brand_rating": brand_rating,
+            "brand_pubs": [
+                {
+                    **pub,
+                    "name": pub_name(pub["name"]),
+                    "url": _pub_url(pub) or f"https://www.google.com/maps/search/?api=1&query={pub['lat']},{pub['lng']}",
+                    "on_map": not pub.get("cache_key"),
+                    "date": _short_date(date.fromisoformat(pub["confirmed"]), today),
+                    "beer_names": ", ".join(pub["beers"]),
+                }
+                for pub in live.get("pubs", [])
+            ],
             "brand_cities": [
-                {"city": place_name(city), "pubs": pubs, "pubs_label": plural(
+                {"city": place_name(city), "url": web_reverse("web-pubs-city", lang, city=city_slug(city)), "pubs": pubs, "pubs_label": plural(
                     pubs, gettext("hospoda"), gettext("hospody"), gettext("hospod")
                 ), "width": f"{pubs * 100 / live['cities'][0][1]:.1f}%"}
                 for city, pubs in live.get("cities", [])

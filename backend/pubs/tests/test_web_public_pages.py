@@ -228,3 +228,21 @@ def test_sitemap_lists_the_new_pages_in_both_languages():
         assert not path.startswith("/en/") and f"{settings.PUBLIC_WEB_ORIGIN}{path}</loc>" in xml
     for path in ("/en/rankings", "/en/news", "/en/beer-index", "/hospody", "/en/pubs"):
         assert f'href="{settings.PUBLIC_WEB_ORIGIN}{path}"' in xml
+
+
+def test_english_news_and_tours_name_prague_in_english(client):
+    api = APIClient()
+    token, _ = _register(api, "klara_na_cepu")
+    (pilsner,) = _products(1)
+    _menu(api, token, [{"name": pilsner.name, "price_czk": 65, "volume_ml": 500}])
+    _, _, publication = published("pivni_vlk", pubs=(0, 1))
+    TourPublication.objects.filter(token=publication["token"]).update(city="Praha 1")
+
+    news = _page(client, "/en/news")
+    listing = _page(client, "/en/tours")
+    tour = _page(client, f"/en/tours/{publication['token']}")
+
+    assert "Prague 1" in news and "Praha 1" not in news
+    assert "Prague" in listing and "Praha" not in listing.replace("praha", "")
+    # The city in the crumbs and the meta line; a stop's street address stays as written.
+    assert ">Prague<" in tour or ">Prague 1<" in tour
