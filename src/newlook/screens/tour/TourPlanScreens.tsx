@@ -74,7 +74,7 @@ export function TourEditorScreen() {
   }, []);
   if (!draft) {
     return (
-      <Screen header={<EditorHeader title={tx.newTour} onClose={() => nvBack(router)} />}>
+      <Screen modal header={<EditorHeader title={tx.newTour} onClose={() => nvBack(router)} />}>
         {hydrated ? (
           <T s={15} c={C.text2}>
             {tourError(useToursStore.getState().error) ?? t.tours.loading}
@@ -178,6 +178,7 @@ function TourEditor() {
   const missing = count === 0 ? t.tours.needTwo : count === 1 ? t.tours.needOne : null;
   return (
     <Screen
+      modal
       header={<EditorHeader title={existing ? t.tours.editTour : tx.newTour} onClose={close} />}
       footer={
         <View style={{ gap: 10 }}>
