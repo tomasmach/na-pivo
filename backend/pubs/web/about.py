@@ -4,9 +4,10 @@ from __future__ import annotations
 
 from django.conf import settings
 from django.http import HttpRequest, HttpResponse
+from django.utils import translation
 from django.utils.translation import gettext
 
-from pubs.home_views import AUTHOR
+from pubs.home_views import AUTHOR, WEBSITE_ID, breadcrumb_list, ld_json, organization_ref
 from pubs.web.pages import render_page, web_page
 from pubs.web.public_common import home_og_image, public_cache
 from pubs.web.routes import web_reverse
@@ -25,8 +26,33 @@ def _report_text() -> str:
     ) % {"n": people}
 
 
+def _structured(title: str, description: str) -> str:
+    """The page about the publisher: it names the organisation the home page describes in full."""
+
+    origin = settings.PUBLIC_WEB_ORIGIN
+    url = f"{origin}{web_reverse('web-about')}"
+    return ld_json({"@graph": [
+        breadcrumb_list([("Na pivo", f"{origin}{web_reverse('home')}"), (gettext("O appce"), url)]),
+        {
+            "@type": "AboutPage",
+            "@id": f"{url}#page",
+            "url": url,
+            "name": title,
+            "description": description,
+            "inLanguage": translation.get_language(),
+            "isPartOf": {"@id": f"{origin}{WEBSITE_ID}"},
+            "about": organization_ref(origin),
+            "publisher": organization_ref(origin),
+        },
+    ]})
+
+
 @web_page
 def about(request: HttpRequest) -> HttpResponse:
+    title = gettext("O appce Na pivo a kdo ji dělá")
+    description = gettext(
+        "Na pivo dělá jeden člověk, Tomáš Mach. Odkud jsou hospody, lístky a ceny, jak je počítám a jak mi napsat."
+    )
     response = render_page(
         request,
         "web/public/about.html",
@@ -35,11 +61,12 @@ def about(request: HttpRequest) -> HttpResponse:
             "author_url": AUTHOR["url"],
             "report_text": _report_text(),
             "og_image_url": home_og_image(),
+            # The home page's picture, so the home page's words for it.
+            "og_image_alt": gettext("Pivní deníček Na pivo: piva za život, kalendář večerů a mapa hospod."),
+            "structured_data": _structured(title, description),
         },
-        title=gettext("O appce Na pivo a kdo ji dělá"),
-        description=gettext(
-            "Na pivo dělá jeden člověk, Tomáš Mach. Odkud jsou hospody, lístky a ceny, jak je počítám a jak mi napsat."
-        ),
+        title=title,
+        description=description,
         section="about",
     )
     return public_cache(response, 3600)

@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+import statistics
 import unicodedata
 from datetime import datetime
 from urllib.parse import quote, urlencode
@@ -595,7 +596,7 @@ def pubs_city(request: HttpRequest, city: str) -> HttpResponse:
             "other_cities": _others(8, skip=city_page),
             "crumbs": _crumbs(crumbs),
             "structured_data": ld_json(structured),
-            "og_image_url": f"{origin}{page_url}/og.png?v={_og_version(_city_og_payload(data, prices_area))}",
+            "og_image_url": f"{origin}{page_url}/og.png?v={_og_version(_list_og_payload(data, district, prices_area))}",
         },
         title=title,
         description=_city_description(name, rows, typical_price),
@@ -634,12 +635,36 @@ def _city_og_payload(data: dict, prices_area: dict | None) -> dict:
         figures.append((num(total), plural(total, gettext("hospoda"), gettext("hospody"), gettext("hospod"))))
     return {
         "kicker": _pubs_count(total) if prices_area else "",
-        "title": gettext("Hospody %(in_city)s") % {"in_city": _city_in(data["name"])},
+        "title": _pubs_title(data["name"]),
         "hero": _price_label(price),
         "hero_label": gettext("obvykle za 0,5 l") if price else "",
         "figures": figures,
         "address": settings.PUBLIC_WEB_ORIGIN.split("://", 1)[-1] + web_reverse("web-pubs-city", city=data["slug"]),
     }
+
+
+def _district_og_payload(data: dict, district: dict) -> dict:
+    """The district's share image: its own pubs and what a half litre costs in them, never the whole city."""
+
+    pubs = [pub for pub in data["list"] if pub["district"] == district["name"]]
+    priced = [pubs_data.half_litre(pub["price"], pub["volume"]) for pub in pubs if pub["price"]]
+    price = round(statistics.median(priced)) if len(priced) >= pubs_data.MIN_RATERS else None
+    figures = [(num(len(pubs)), plural(len(pubs), gettext("hospoda"), gettext("hospody"), gettext("hospod")))]
+    with_menu = sum(1 for pub in pubs if pub["beers"])
+    if with_menu:
+        figures.append((num(with_menu), gettext("s lístkem")))
+    return {
+        "kicker": place_name(data["name"]),
+        "title": _pubs_title(district["name"]),
+        "hero": _price_label(price),
+        "hero_label": gettext("obvykle za 0,5 l") if price else "",
+        "figures": figures,
+        "address": settings.PUBLIC_WEB_ORIGIN.split("://", 1)[-1] + web_reverse("web-pubs-city", city=district["slug"]),
+    }
+
+
+def _list_og_payload(data: dict, district: dict | None, prices_area: dict | None) -> dict:
+    return _district_og_payload(data, district) if district else _city_og_payload(data, prices_area)
 
 
 @web_page
@@ -649,11 +674,15 @@ def pubs_city_og_image(request: HttpRequest, city: str) -> HttpResponse:
         response = HttpResponse(status=429)
         response["Retry-After"] = str(wait)
         return response
+    district = None
     data = pubs_data.city_pubs(city)
     if data is None:
-        raise Http404
+        district = _district(city)
+        if district is None:
+            raise Http404
+        data = pubs_data.city_pubs(district["city"]["slug"])
     with translation.override(getattr(request, "web_lang", "cs")):
-        payload = _city_og_payload(data, _prices_area(city))
+        payload = _list_og_payload(data, district, None if district else _prices_area(city))
     image = cache.get_or_set(f"web:pubs:city-og:{_og_version(payload)}", lambda: og_image(**payload), 24 * 60 * 60)
     response = HttpResponse(image, content_type="image/png")
     response["Cache-Control"] = "public, max-age=86400"

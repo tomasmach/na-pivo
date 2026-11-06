@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import re
 from io import StringIO
 
@@ -238,3 +239,52 @@ def test_districts_with_a_page_are_linked_from_prices_and_from_their_pubs(client
 
     assert '<a href="/hospody/praha-4">Praha 4</a>' in prices
     assert 'href="/hospody/praha-4">Hospody v Praze 4 ›</a>' in detail
+
+
+def _graph(html: str) -> list[dict]:
+    blocks = re.findall(r'<script type="application/ld\+json">(.*?)</script>', html, re.S)
+    return [node for block in blocks for node in json.loads(block).get("@graph", [])]
+
+
+def test_a_district_shares_a_card_of_its_own(client, monkeypatch):
+    from pubs.web import pubs_views
+
+    drawn = []
+    monkeypatch.setattr(pubs_views, "og_image", lambda **payload: drawn.append(payload) or b"png")
+    for index in range(3):
+        pub = _place(f"Sedmička {index}", lat=50.1000 + index * 0.001, lng=14.4300, city="Praha 7")
+        _menu(pub, beers=[{"name": "Kozel 11°", "price_czk": 40 + index, "volume_ml": 500}])
+    for index in range(4):
+        _place(f"Jinde {index}", lat=50.0800 + index * 0.001, lng=14.4200, city="Praha")
+
+    html = client.get("/hospody/praha-7").content.decode()
+    card = re.search(r'<meta property="og:image" content="https://na-pivo.cz(/hospody/praha-7/og\.png\?v=\w+)">', html)
+    response = client.get(card.group(1))
+    english = client.get("/en/pubs/praha-7/og.png")
+
+    assert response.status_code == english.status_code == 200
+    assert response["Content-Type"] == "image/png"
+    czech, in_english = drawn
+    assert czech["title"] == "Hospody v Praze 7" and czech["kicker"] == "Praha"
+    # Three pubs of Praha 7, not the seven of the whole city.
+    assert czech["figures"][0] == ("3", "hospody") and czech["hero"] == "41 Kč"
+    assert czech["address"].endswith("/hospody/praha-7")
+    assert in_english["title"] == "Pubs in Prague 7"
+    assert client.get("/hospody/praha-99/og.png").status_code == 404
+
+
+def test_the_about_page_describes_itself_for_search_and_link_previews(client):
+    for path, lang in (("/o-appce", "cs"), ("/en/about", "en")):
+        html = client.get(path).content.decode()
+        about = next(node for node in _graph(html) if node["@type"] == "AboutPage")
+        assert about["url"] == f"https://na-pivo.cz{path}" and about["inLanguage"] == lang
+        assert about["publisher"]["@id"] == about["about"]["@id"] == "https://na-pivo.cz/#org"
+        assert any(node["@type"] == "BreadcrumbList" for node in _graph(html))
+        assert '<meta name="twitter:card" content="summary_large_image">' in html
+        assert '<meta property="og:image:alt"' in html
+
+
+def test_every_navigation_has_its_own_name(client):
+    for path in ("/o-appce", "/en/about", "/hospody"):
+        names = re.findall(r'<nav[^>]*aria-label="([^"]+)"', client.get(path).content.decode())
+        assert len(names) == len(set(names)), (path, names)

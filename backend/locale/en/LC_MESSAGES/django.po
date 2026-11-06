@@ -5550,3 +5550,9 @@ msgstr "Report a closed pub or a place that is not a pub in the app. It disappea
 
 msgid "Seznam hospod skládám z veřejných zdrojů a z hospod, které do appky přidali lidi."
 msgstr "I put the list of pubs together from public sources and from pubs people added in the app."
+
+msgid "Spodní lišta"
+msgstr "Bottom bar"
+
+msgid "s lístkem"
+msgstr "with a menu"
