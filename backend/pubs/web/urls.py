@@ -10,6 +10,7 @@ from __future__ import annotations
 from django.conf import settings
 from django.urls import path
 
+from pubs.web.about import about
 from pubs.web.account_views import (
     account_deleted,
     add_pub,
@@ -34,32 +35,48 @@ from pubs.web.beer_index import beer_index, beer_index_og
 from pubs.web.delete_account_views import delete_account, delete_account_confirm
 from pubs.web.diary_views import diary, log_beer, night, profile
 from pubs.web.invite_views import plan_invite, plan_invite_calendar, plan_invite_og
-from pubs.web.news import news
+from pubs.web.news import news, news_og
 from pubs.web.pages import component_gallery
-from pubs.web.pubs_views import pub_og_image, pub_page, pubs_city, pubs_index, search_page
-from pubs.web.rankings import rankings
+from pubs.web.pubs_views import (
+    pub_og_image,
+    pub_page,
+    pubs_city,
+    pubs_city_og_image,
+    pubs_index,
+    search_page,
+)
+from pubs.web.rankings import rankings, rankings_og
+from pubs.web.reach_views import web_reach
 from pubs.web.routes import bilingual
 from pubs.web.tours import tour, tour_og, tours
 
 urlpatterns = [
+    path("web/reach", web_reach, name="reach-beacon"),
     path("web/<str:filename>", web_asset, name="web-asset"),
 
     *bilingual("hospody", "en/pubs", pubs_index, "web-pubs"),
     *bilingual("hospody/<slug:city>", "en/pubs/<slug:city>", pubs_city, "web-pubs-city"),
+    *bilingual("hospody/<slug:city>/og.png", "en/pubs/<slug:city>/og.png", pubs_city_og_image, "pubs-city-og"),
     *bilingual("hospoda/<str:key>", "en/pub/<str:key>", pub_page, "web-pub"),
     *bilingual("hospoda/<str:key>/og.png", "en/pub/<str:key>/og.png", pub_og_image, "pub-og-image"),
 
     *bilingual("hledat", "en/search", search_page, "web-search"),
 
     *bilingual("zebricky", "en/rankings", rankings, "web-rankings"),
+    *bilingual("zebricky/og.png", "en/rankings/og.png", rankings_og, "rankings-og"),
+    *bilingual("zebricky/<slug:kraj>", "en/rankings/<slug:kraj>", rankings, "web-rankings-region"),
+    *bilingual("zebricky/<slug:kraj>/og.png", "en/rankings/<slug:kraj>/og.png", rankings_og, "rankings-region-og"),
 
     *bilingual("novinky", "en/news", news, "web-news"),
+    *bilingual("novinky/og.png", "en/news/og.png", news_og, "news-og"),
 
     *bilingual("trasy", "en/tours", tours, "web-tours"),
     *bilingual("trasy/<str:tour_id>", "en/tours/<str:tour_id>", tour, "web-tour"),
     *bilingual("trasy/<str:tour_id>/og.png", "en/tours/<str:tour_id>/og.png", tour_og, "tour-og"),
 
     *bilingual("pivni-index", "en/beer-index", beer_index, "web-beer-index"),
+
+    *bilingual("o-appce", "en/about", about, "web-about"),
     *bilingual("pivni-index/og.png", "en/beer-index/og.png", beer_index_og, "beer-index-og"),
 
     *bilingual("smazat-ucet", "en/delete-account", delete_account, "web-delete-account"),

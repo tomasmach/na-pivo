@@ -5,9 +5,10 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+import statistics
 import unicodedata
 from datetime import datetime
-from urllib.parse import quote, urlencode
+from urllib.parse import parse_qs, quote, urlencode, urlsplit
 
 from django.conf import settings
 from django.core.cache import cache
@@ -16,21 +17,25 @@ from django.http import (
     HttpRequest,
     HttpResponse,
     HttpResponsePermanentRedirect,
-    HttpResponseRedirect,
 )
-from django.utils import formats, timezone
+from django.utils import formats, timezone, translation
 from django.utils.text import slugify
 from django.utils.translation import gettext, pgettext
 from rest_framework.request import Request
 
+from pubs.api.pub_beers_views import CITIES_WITH_DISTRICTS
 from pubs.api.throttling import SharedScopedRateThrottle
-from pubs.home_views import HOME_OG_PATH, ld_json
+from pubs.beer_pages import page_path
+from pubs.home_views import HOME_OG_PATH, breadcrumb_list, ld_json
 from pubs.i18n import current_locale
-from pubs.models import PubPriceSnapshot
+from pubs.models import BeerPage, PubPriceSnapshot
 from pubs.price_map import city_slug
 from pubs.web import pubs_data
+from pubs.web.dates import time_tag, with_times
 from pubs.web.pages import render_page, web_page
+from pubs.web.places import has_pub_name, in_place, municipality, place_name, pub_name
 from pubs.web.pub_map import live_map, pub_map
+from pubs.web.public_common import og_image
 from pubs.web.pubs_og import render_pub_og
 from pubs.web.routes import web_reverse
 from pubs.web.words import plural
@@ -38,6 +43,8 @@ from pubs.web_views import _short_date
 
 PAGE_SIZE = 20
 MAX_PAGES = 50
+# A list of fewer pubs says too little to be worth a search result; the sitemap uses the same bar.
+MIN_LISTED = 3
 CHEAP_CZK = 55
 SORTS = ("", "price", "name")
 SEARCH_TYPES = ("all", "pubs", "beers", "cities")
@@ -138,8 +145,9 @@ def status_line(week: dict | None, now: datetime | None = None) -> dict | None:
 def _pub_row(pub: dict, now: datetime, city: str = "") -> dict:
     return {
         **pub,
+        "name": pub_name(pub["name"]),
         "url": web_reverse("web-pub", key=pub["key"]),
-        "place": pub["address"] or pub["district"] or city,
+        "place": pub["address"] or place_name(pub["district"]) or city,
         "tap": ", ".join(pub["beers"][:3]),
         "status": status_line(pub["hours"], now),
         "price_label": _price_label(pub["price"]),
@@ -155,31 +163,93 @@ def _crumbs(crumbs: list[tuple[str, str]]) -> list[dict]:
 
 
 def _breadcrumb_data(crumbs: list[tuple[str, str]]) -> dict:
-    origin = settings.PUBLIC_WEB_ORIGIN
-    return {
-        "@type": "BreadcrumbList",
-        "itemListElement": [
-            {"@type": "ListItem", "position": index, "name": name, "item": f"{origin}{url}"}
-            for index, (name, url) in enumerate(crumbs, start=1)
-        ],
-    }
+    return breadcrumb_list([(name, f"{settings.PUBLIC_WEB_ORIGIN}{url}") for name, url in crumbs])
 
 
 def _city_in(name: str) -> str:
-    """"v Praze": Czech bends city names, so the big ones have their own text."""
+    return in_place(name) or gettext("ve městě %(city)s") % {"city": place_name(name)}
 
-    forms = {
-        "Praha": gettext("v Praze"), "Brno": gettext("v Brně"), "Ostrava": gettext("v Ostravě"),
-        "Plzeň": gettext("v Plzni"), "Olomouc": gettext("v Olomouci"), "Liberec": gettext("v Liberci"),
-        "České Budějovice": gettext("v Českých Budějovicích"), "Hradec Králové": gettext("v Hradci Králové"),
-        "Pardubice": gettext("v Pardubicích"), "Zlín": gettext("ve Zlíně"),
-    }
-    return forms.get(name) or gettext("ve městě %(city)s") % {"city": name}
+
+def _pubs_title(name: str) -> str:
+    """"Hospody v Praze 7", or "Hospody: Žitenice" where Czech would need a declension it does not have."""
+
+    where = in_place(name)
+    if where:
+        return gettext("Hospody %(in_city)s") % {"in_city": where}
+    return gettext("Hospody: %(city)s") % {"city": place_name(name)}
+
+
+def prices_label(name: str) -> str:
+    where = in_place(name)
+    if where:
+        return gettext("Kolik stojí pivo %(in_city)s") % {"in_city": where}
+    return gettext("Kolik stojí pivo: %(city)s") % {"city": place_name(name)}
+
+
+def _names(names: list[str]) -> str:
+    if len(names) < 2:
+        return "".join(names)
+    return gettext("%(first)s a %(last)s") % {"first": ", ".join(names[:-1]), "last": names[-1]}
+
+
+def prices_page_slugs() -> set[str]:
+    snapshot = PubPriceSnapshot.objects.only("data").first()
+    return {city_slug(area["name"]) for area in snapshot.data.get("cities", [])} if snapshot else set()
+
+
+# ---------- districts ----------
+
+
+def _is_district(city: str, district: str) -> bool:
+    """Praha 7, Plzeň 3 or Brno-střed; not Brno-město, which is the county of the whole city,
+    nor Brno 2, which is a post office."""
+
+    return district != city and not district.endswith("-město") and municipality(district) == district
+
+
+def districts_with_pages() -> list[dict]:
+    """Every district of the big cities the catalogue knows, with its city."""
+
+    cities = pubs_data.catalogue()["cities"]
+    found = []
+    for city_name in CITIES_WITH_DISTRICTS:
+        city = cities.get(city_slug(city_name))
+        for name, pubs in (city["districts"] if city else {}).items():
+            if _is_district(city["name"], name):
+                found.append({"slug": slugify(name), "name": name, "pubs": pubs, "city": city})
+    return found
+
+
+def _district(slug: str) -> dict | None:
+    return next((district for district in districts_with_pages() if district["slug"] == slug), None)
+
+
+def district_url(city: str, district: str) -> str:
+    """The district's own page, or the city filtered to it when the district has none."""
+
+    if _district(slugify(district)):
+        return web_reverse("web-pubs-city", city=slugify(district))
+    return web_reverse("web-pubs-city", city=city) + f"?district={slugify(district)}"
+
+
+def indexed_district_url(district: str) -> str:
+    """The district's own page when search engines may list it, else nothing."""
+
+    found = _district(slugify(district)) if district else None
+    return web_reverse("web-pubs-city", city=found["slug"]) if found and found["pubs"] >= MIN_LISTED else ""
+
+
+def district_sitemap_paths() -> list[str]:
+    return [
+        web_reverse("web-pubs-city", "cs", city=district["slug"])
+        for district in districts_with_pages()
+        if district["pubs"] >= MIN_LISTED
+    ]
 
 
 def _others(limit: int = 8, skip: str = "") -> list[dict]:
     return [
-        {"label": city["name"], "url": web_reverse("web-pubs-city", city=city["slug"])}
+        {"label": place_name(city["name"]), "url": web_reverse("web-pubs-city", city=city["slug"])}
         for city in pubs_data.cities_by_size()[: limit + 1]
         if city["slug"] != skip
     ][:limit]
@@ -237,7 +307,7 @@ def pubs_index(request: HttpRequest) -> HttpResponse:
     cities = pubs_data.cities_by_size()
     total = sum(city["pubs"] for city in cities)
     shown = [
-        {"label": city["name"], "url": web_reverse("web-pubs-city", city=city["slug"]), "pubs": _pubs_count(city["pubs"]), "count": city["pubs"]}
+        {"label": place_name(city["name"]), "url": web_reverse("web-pubs-city", city=city["slug"]), "pubs": _pubs_count(city["pubs"]), "count": city["pubs"]}
         for city in cities[:120]
     ]
     crumbs = [("Na pivo", web_reverse("home")), (gettext("Hospody"), web_reverse("web-pubs"))]
@@ -275,6 +345,14 @@ def _query(params: dict, **changes) -> str:
         merged.pop("page", None)
     merged = {key: value for key, value in merged.items() if value}
     return f"?{urlencode(merged)}" if merged else "?"
+
+
+# Filters that only narrow or reorder the city's list. Crawlers need not follow them; a district is a page to find.
+_FACETS = ("open", "beer", "max55", "tank", "garden", "sort")
+
+
+def _facet(url: str) -> bool:
+    return any(key in _FACETS for key in parse_qs(urlsplit(url).query))
 
 
 def _filters(request: HttpRequest, data: dict) -> dict:
@@ -338,30 +416,83 @@ def _menu(label: str, current: bool, items: list[dict]) -> dict:
     return {"label": label, "current": current, "items": items}
 
 
+def _one_full_stop(text: str) -> str:
+    """"lístek z 6. 11.." and "U Pepy a spol.." end a sentence with the date's or the name's own full stop."""
+
+    return re.sub(r"\.\.(?=\s|$)", ".", text)
+
+
+def _city_description(name: str, rows: list[dict], typical_price: int | None) -> str:
+    """What the search result says: only numbers and names that stay true until the next visit."""
+
+    total = len(rows)
+    text = gettext("%(city)s: %(pubs)s") % {"city": place_name(name), "pubs": _pubs_count(total)}
+    if typical_price:
+        text += ", " + gettext("půllitr kolem %(price)s") % {"price": _price_label(typical_price)}
+    text += "."
+    with_menu = sum(1 for row in rows if row["beers"])
+    if with_menu and total > 1:
+        text += " " + gettext("Lístek mám u %(count)s z nich.") % {"count": num(with_menu)}
+    names = [pub_name(row["name"]) for row in _sorted(rows, "")[:3]]
+    if total <= 3:
+        text += " " + plural(total, gettext("Je tu %(names)s."), gettext("Jsou tu %(names)s."),
+                             gettext("Jsou tu %(names)s.")) % {"names": _names(names)}
+    else:
+        text += " " + gettext("Třeba %(names)s.") % {"names": _names(names)}
+    return _one_full_stop(text)
+
+
 @web_page
 def pubs_city(request: HttpRequest, city: str) -> HttpResponse:
     wait = _wait(request, "web_pages")
     if wait:
         return _slow_down(request, wait, "pubs")
+    district = None
     data = pubs_data.city_pubs(city)
     if data is None:
-        return _missing(request, "city")
+        district = _district(city)
+        if district is None:
+            if town := pubs_data.merged_city(city):
+                query = request.META.get("QUERY_STRING", "")
+                return HttpResponsePermanentRedirect(web_reverse("web-pubs-city", city=town) + (f"?{query}" if query else ""))
+            return _missing(request, "city")
+        data = pubs_data.city_pubs(district["city"]["slug"])
+    city_page = data["slug"]
 
     now = timezone.now()
     chosen = _filters(request, data)
-    params = {key: ("1" if chosen[key] is True else chosen[key]) for key in _FILTERS if chosen[key]}
-    # Filters and sorting need only the opening state; the full row is built for the pubs on the page.
-    rows = [{**pub, "status": status_line(pub["hours"], now)} for pub in data["list"]]
+    if district:
+        chosen.update(district=district["slug"], district_name=district["name"])
+    elif chosen["district"] and _district(chosen["district"]):
+        # The filter came before the districts had pages of their own.
+        rest = {key: ("1" if chosen[key] is True else chosen[key]) for key in _FILTERS if chosen[key] and key != "district"}
+        target = web_reverse("web-pubs-city", city=chosen["district"])
+        return HttpResponsePermanentRedirect(target + (_query(rest) if rest else ""))
+    params = {
+        key: ("1" if chosen[key] is True else chosen[key])
+        for key in _FILTERS if chosen[key] and not (district and key == "district")
+    }
+    # The opening state for the filters; the full row is built only for the pubs this page shows.
+    rows = [
+        {**pub, "status": status_line(pub["hours"], now)}
+        for pub in data["list"] if not district or pub["district"] == district["name"]
+    ]
     known_hours = [row for row in rows if row["status"]]
     open_now = [row for row in known_hours if row["status"]["open"]]
     visible = _apply(rows, chosen)
+    last_page = max(1, -(-len(visible) // PAGE_SIZE))
     try:
-        page = min(max(int(request.GET.get("page", "1")), 1), MAX_PAGES)
+        page = min(max(int(request.GET.get("page", "1")), 1), last_page)
     except ValueError:
         page = 1
-    shown = [_pub_row(row, now, data["name"]) for row in visible[: page * PAGE_SIZE]]
-    for index, row in enumerate(shown, start=1):
+    # Each page lists only its own pubs, so a crawler reaches every pub; "Načíst další" appends the next page.
+    start = (page - 1) * PAGE_SIZE
+    shown = [_pub_row(row, now, place_name(data["name"])) for row in visible[start:start + PAGE_SIZE]]
+    for index, row in enumerate(shown, start=start + 1):
         row["anchor"] = f"h{index}"
+        if district:
+            # Every pub here is in the district, so the line under the name says the street or nothing.
+            row["place"] = row["address"]
 
     def chip(label: str, key: str) -> dict:
         active = key in params
@@ -373,13 +504,16 @@ def pubs_city(request: HttpRequest, city: str) -> HttpResponse:
         key=lambda item: (-item[1], item[0]),
     )
     menu_district = None
-    if len(districts) >= 2:
+    if len(districts) >= 2 and not district:
         menu_district = _menu(
             chosen["district_name"] or gettext("Všechny čtvrti"),
             bool(chosen["district"]),
             [{"label": gettext("Všechny čtvrti"), "url": _query(params, district=""), "current": not chosen["district"]}]
             + [
-                {"label": name, "url": _query(params, district=slugify(name)), "current": chosen["district"] == slugify(name)}
+                {"label": place_name(name), "url": (
+                    web_reverse("web-pubs-city", city=slugify(name)) if _district(slugify(name))
+                    else _query(params, district=slugify(name))
+                ), "current": chosen["district"] == slugify(name)}
                 for name, _ in sorted(districts, key=lambda item: _natural(item[0]))
             ],
         )
@@ -408,7 +542,7 @@ def pubs_city(request: HttpRequest, city: str) -> HttpResponse:
         [{"label": label, "url": _query(params, sort=key), "current": chosen["sort"] == key} for key, label in sort_labels.items()],
     )
 
-    name = data["name"]
+    name = district["name"] if district else data["name"]
     total = len(rows)
     if len(known_hours) >= 3:
         lead = gettext("%(pubs)s, právě teď má otevřeno %(open)s z těch, u kterých znám otevírací dobu.") % {
@@ -416,14 +550,17 @@ def pubs_city(request: HttpRequest, city: str) -> HttpResponse:
         }
     else:
         lead = f"{_pubs_count(total)}."
-    if data["typical_price"]:
-        lead += " " + gettext("Půllitr tu stojí kolem %(price)s.") % {"price": _price_label(data["typical_price"])}
-    snapshot = PubPriceSnapshot.objects.only("data").first()
-    has_prices_page = bool(snapshot) and any(city_slug(area["name"]) == city for area in snapshot.data.get("cities", []))
+    prices_area = None if district else _prices_area(city_page)
+    typical_price = _typical_price(data, prices_area) if not district else None
+    if typical_price:
+        lead += " " + gettext("Půllitr tu stojí kolem %(price)s.") % {"price": _price_label(typical_price)}
 
-    title = gettext("Hospody %(in_city)s") % {"in_city": _city_in(name)}
+    title = _pubs_title(name)
     page_url = web_reverse("web-pubs-city", city=city)
-    crumbs = [("Na pivo", web_reverse("home")), (gettext("Hospody"), web_reverse("web-pubs")), (name, page_url)]
+    crumbs = [("Na pivo", web_reverse("home")), (gettext("Hospody"), web_reverse("web-pubs"))]
+    if district:
+        crumbs.append((place_name(data["name"]), web_reverse("web-pubs-city", city=city_page)))
+    crumbs.append((place_name(name), page_url))
     origin = settings.PUBLIC_WEB_ORIGIN
     top = [_pub_row(row, now, name) for row in _sorted(rows, "")[:PAGE_SIZE]]
     structured = {"@graph": [
@@ -433,7 +570,8 @@ def pubs_city(request: HttpRequest, city: str) -> HttpResponse:
             "name": title,
             "numberOfItems": total,
             "itemListElement": [
-                {"@type": "ListItem", "position": index, "url": f"{origin}{row['url']}", "name": row["name"]}
+                {"@type": "ListItem", "position": index, "url": f"{origin}{web_reverse('web-pub', key=row['key'])}",
+                 "name": pub_name(row["name"])}
                 for index, row in enumerate(top, start=1)
             ],
         },
@@ -443,6 +581,14 @@ def pubs_city(request: HttpRequest, city: str) -> HttpResponse:
          "selected": index == 0}
         for index, row in enumerate(shown[:PAGE_SIZE])
     ]
+    # Every district search engines may list gets a link from its city and its neighbours.
+    district_tiles = [
+        {"label": place_name(other["name"]), "url": web_reverse("web-pubs-city", city=other["slug"])}
+        for other in sorted(districts_with_pages(), key=lambda other: _natural(other["name"]))
+        if other["city"]["slug"] == city_page and other["pubs"] >= MIN_LISTED and other["name"] != name
+    ]
+    for item in [*chips, *extra_chips, *(item for menu in (menu_district, menu_beer, menu_sort) if menu for item in menu["items"])]:
+        item["nofollow"] = _facet(item["url"])
     response = render_page(
         request,
         "web/pubs/city.html",
@@ -450,38 +596,123 @@ def pubs_city(request: HttpRequest, city: str) -> HttpResponse:
             "city": data,
             "h1": title,
             "lead": lead,
-            "prices_url": web_reverse("beer-prices-city", city=city) if has_prices_page else "",
-            "prices_label": gettext("Kolik stojí pivo %(in_city)s") % {"in_city": _city_in(name)},
+            "prices_url": web_reverse("beer-prices-city", city=city_page) if prices_area else "",
+            "prices_label": prices_label(data["name"]),
             "chips": chips,
             "extra_chips": extra_chips,
             "menu_district": menu_district,
             "menu_beer": menu_beer,
             "menu_sort": menu_sort,
             "rows": shown,
-            "count_label": gettext("%(shown)s z %(total)s") % {"shown": num(len(shown)), "total": num(len(visible))},
-            "more_url": (
-                _query(params, page=str(page + 1)) + f"#h{len(shown) + 1}"
-                if len(visible) > len(shown) and page < MAX_PAGES
-                else ""
-            ),
+            "count_label": gettext("%(shown)s z %(total)s") % {"shown": num(start + len(shown)), "total": num(len(visible))},
+            "more_url": _query(params, page=str(page + 1)) + f"#h{start + len(shown) + 1}" if page < last_page else "",
+            "more_nofollow": _facet(_query(params)),
             "filtered": bool(params),
-            "map": pub_map(map_points, [(pub["lat"], pub["lng"]) for pub in data["list"]]),
+            "map": pub_map(map_points, [(row["lat"], row["lng"]) for row in rows]),
             "live_map": live_map(map_points),
-            "district_tiles": [
-                {"label": district, "url": _query({}, district=slugify(district))}
-                for district, _ in sorted(districts[:8], key=lambda item: _natural(item[0]))
-            ] if len(districts) >= 2 else [],
-            "other_cities": _others(8, skip=city),
+            "district_tiles": district_tiles,
+            "district_title": gettext("Další čtvrti") if district else gettext("Hospody podle čtvrtí"),
+            "other_cities": _others(8, skip=city_page),
             "crumbs": _crumbs(crumbs),
             "structured_data": ld_json(structured),
-            "og_image_url": f"{origin}{HOME_OG_PATH}",
+            "og_image_url": f"{origin}{page_url}/og.png?v={_og_version(_list_og_payload(data, district, prices_area))}",
         },
-        title=title,
-        description=f"{lead} {gettext('Podívej se, kde mají otevřeno a co čepují.')}",
+        # Every page of the list is its own in search results, so each says which one it is.
+        title=gettext("%(title)s, strana %(page)s") % {"title": title, "page": page} if page > 1 else title,
+        description=(
+            (gettext("Strana %(page)s z %(pages)s.") % {"page": page, "pages": last_page} + " " if page > 1 else "")
+            + _city_description(name, rows, typical_price)
+        ),
         section="pubs",
+        indexable=total >= MIN_LISTED if district else pubs_data.city_indexed(data),
+        follow=True,
+        # A filtered list stays the city's page; an unfiltered next page is a page of its own.
+        canonical_params={"page": page} if page > 1 and not params else None,
         with_map=True,
     )
     return _public(response)
+
+
+def _prices_area(city: str) -> dict | None:
+    """The city on today's /ceny, when it has its own prices page there."""
+
+    snapshot = PubPriceSnapshot.objects.only("data").first()
+    cities = snapshot.data.get("cities", []) if snapshot else []
+    return next((area for area in cities if city_slug(area["name"]) == city), None)
+
+
+def _typical_price(data: dict, prices_area: dict | None) -> int | None:
+    # A city with its own /ceny page shows that page's median, so the two never disagree.
+    return prices_area["median"] if prices_area else data["typical_price"]
+
+
+def _city_og_payload(data: dict, prices_area: dict | None) -> dict:
+    """What the city's share image draws: its size and, once /ceny knows it, what beer costs there."""
+
+    price = _typical_price(data, prices_area)
+    figures = []
+    if prices_area:
+        figures.append((num(prices_area["pubs"]), gettext("hospod s cenou")))
+        figures.append((f"{prices_area['p25']}–{_price_label(prices_area['p75'])}", gettext("polovina hospod")))
+        if prices_area.get("cheapest"):
+            figures.append((_price_label(prices_area["cheapest"][0]["price_czk"]), gettext("nejlevněji")))
+    total = len(data["list"])
+    if not figures:
+        figures.append((num(total), plural(total, gettext("hospoda"), gettext("hospody"), gettext("hospod"))))
+    return {
+        "kicker": _pubs_count(total) if prices_area else "",
+        "title": _pubs_title(data["name"]),
+        "hero": _price_label(price),
+        "hero_label": gettext("obvykle za 0,5 l") if price else "",
+        "figures": figures,
+        "address": settings.PUBLIC_WEB_ORIGIN.split("://", 1)[-1] + web_reverse("web-pubs-city", city=data["slug"]),
+    }
+
+
+def _district_og_payload(data: dict, district: dict) -> dict:
+    """The district's share image: its own pubs and what a half litre costs in them, never the whole city."""
+
+    pubs = [pub for pub in data["list"] if pub["district"] == district["name"]]
+    priced = [pubs_data.half_litre(pub["price"], pub["volume"]) for pub in pubs if pub["price"]]
+    price = round(statistics.median(priced)) if len(priced) >= pubs_data.MIN_RATERS else None
+    figures = [(num(len(pubs)), plural(len(pubs), gettext("hospoda"), gettext("hospody"), gettext("hospod")))]
+    with_menu = sum(1 for pub in pubs if pub["beers"])
+    if with_menu:
+        figures.append((num(with_menu), gettext("s lístkem")))
+    return {
+        "kicker": place_name(data["name"]),
+        "title": _pubs_title(district["name"]),
+        "hero": _price_label(price),
+        "hero_label": gettext("obvykle za 0,5 l") if price else "",
+        "figures": figures,
+        "address": settings.PUBLIC_WEB_ORIGIN.split("://", 1)[-1] + web_reverse("web-pubs-city", city=district["slug"]),
+    }
+
+
+def _list_og_payload(data: dict, district: dict | None, prices_area: dict | None) -> dict:
+    return _district_og_payload(data, district) if district else _city_og_payload(data, prices_area)
+
+
+@web_page
+def pubs_city_og_image(request: HttpRequest, city: str) -> HttpResponse:
+    wait = _wait(request, "web_og")
+    if wait:
+        response = HttpResponse(status=429)
+        response["Retry-After"] = str(wait)
+        return response
+    district = None
+    data = pubs_data.city_pubs(city)
+    if data is None:
+        district = _district(city)
+        if district is None:
+            raise Http404
+        data = pubs_data.city_pubs(district["city"]["slug"])
+    with translation.override(getattr(request, "web_lang", "cs")):
+        payload = _list_og_payload(data, district, None if district else _prices_area(city))
+    image = cache.get_or_set(f"web:pubs:city-og:{_og_version(payload)}", lambda: og_image(**payload), 24 * 60 * 60)
+    response = HttpResponse(image, content_type="image/png")
+    response["Cache-Control"] = "public, max-age=86400"
+    return response
 
 
 # ---------- /hospoda/<klíč> ----------
@@ -513,7 +744,7 @@ def _og_payload(pub: dict, lang: str) -> dict:
         None,
     )
     return {
-        "name": pub["name"],
+        "name": pub_name(pub["name"]),
         "place": pub["district"] or pub["city"],
         "rating": pub["rating"],
         "price": pub["price"],
@@ -530,20 +761,39 @@ def _og_version(payload: dict) -> str:
     return hashlib.sha256(json.dumps(payload, sort_keys=True, default=str).encode()).hexdigest()[:10]
 
 
-def _pub_structured(pub: dict, url: str, crumbs: list[tuple[str, str]]) -> dict:
+def _price_range(pub: dict) -> str:
+    """Cheapest to dearest beer on the menu the page lists, as the page writes prices."""
+
+    prices = sorted({beer["price"] for beer in pub["menu"] if beer["price"]})
+    if not prices:
+        return ""
+    if len(prices) == 1:
+        return _price_label(prices[0])
+    return f"{prices[0]}–{_price_label(prices[-1])}"
+
+
+def _pub_structured(pub: dict, url: str, crumbs: list[tuple[str, str]], map_url: str) -> dict:
+    """Only what the page itself shows: no visitors, no ratings from elsewhere, nothing guessed."""
+
     origin = settings.PUBLIC_WEB_ORIGIN
-    place = {
+    place: dict = {
         "@type": "BarOrPub",
-        "name": pub["name"],
+        "@id": f"{origin}{url}#pub",
+        "name": pub_name(pub["name"]),
         "url": f"{origin}{url}",
         "geo": {"@type": "GeoCoordinates", "latitude": round(pub["lat"], 5), "longitude": round(pub["lng"], 5)},
-        "address": {
-            "@type": "PostalAddress",
-            **({"streetAddress": pub["address"]} if pub["address"] else {}),
-            "addressLocality": pub["district"] or pub["city"],
-            "addressCountry": "CZ",
-        },
+        "hasMap": map_url,
     }
+    locality = pub["district"] or pub["city"]
+    address = {
+        **({"streetAddress": pub["address"]} if pub["address"] and pub["address"] != locality else {}),
+        **({"addressLocality": locality} if locality else {}),
+        **({"addressCountry": pub["country"]} if pub["country"] else {}),
+    }
+    if address:
+        place["address"] = {"@type": "PostalAddress", **address}
+    if price_range := _price_range(pub):
+        place["priceRange"] = price_range
     if pub["hours"]:
         names = ("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday")
         place["openingHoursSpecification"] = [
@@ -551,7 +801,8 @@ def _pub_structured(pub: dict, url: str, crumbs: list[tuple[str, str]]) -> dict:
                 "@type": "OpeningHoursSpecification",
                 "dayOfWeek": f"https://schema.org/{names[index]}",
                 "opens": _hhmm(start),
-                "closes": _hhmm(end % (24 * 60)),
+                # Google reads round the clock as 00:00 to 23:59.
+                "closes": "23:59" if end - start >= 24 * 60 else _hhmm(end % (24 * 60)),
             }
             for index, day in enumerate(pubs_data.DAY_KEYS)
             for start, end in pub["hours"][day]
@@ -572,12 +823,13 @@ def _menu_updated(updated: datetime | None, now: datetime) -> str:
     if not updated:
         return ""
     days = (timezone.localdate(now, pubs_data.PRAGUE) - timezone.localdate(updated, pubs_data.PRAGUE)).days
+    day = timezone.localdate(updated, pubs_data.PRAGUE)
     if days <= 0:
-        return gettext("ověřeno dnes")
+        return time_tag(day, gettext("ověřeno dnes"))
     if days == 1:
-        return gettext("ověřeno včera")
+        return time_tag(day, gettext("ověřeno včera"))
     today = timezone.localdate(now, pubs_data.PRAGUE)
-    return gettext("ověřeno %(date)s") % {"date": _short_date(timezone.localdate(updated, pubs_data.PRAGUE), today)}
+    return with_times(gettext("ověřeno %(date)s"), date=time_tag(day, _short_date(day, today)))
 
 
 def _pub_stats(pub: dict, now: datetime) -> list[dict]:
@@ -611,6 +863,57 @@ def _pub_stats(pub: dict, now: datetime) -> list[dict]:
     return stats[:3]
 
 
+_KIND_WORDS = {
+    "hospoda", "hospudka", "hostinec", "pivnice", "restaurace", "restaurant", "vycep", "pivovar", "pivovarsky",
+    "krcma", "putyka", "pub", "bar", "pivni", "kavarna", "bistro", "pohostinstvi",
+}
+
+
+def _names_its_kind(name: str) -> bool:
+    """"Hospoda Pod Tankem", "Pivnice U Kocoura": the name already says what kind of place it is."""
+
+    words = pubs_data.fold(name).split()
+    return bool(words) and words[0] in _KIND_WORDS
+
+
+def _pub_description(pub: dict, where: str, has_ratings: bool, today) -> str:
+    """Only what the page shows: the menu, its date, the cheapest beer, the hours if known."""
+
+    values = {"name": pub_name(pub["name"]), "place": where, "price": pub["price"]}
+    if pub["menu"]:
+        values["beers"] = counted(len(pub["menu"]), gettext("pivo"), gettext("piva"), gettext("piv"))
+        if not has_pub_name(pub["name"]):
+            sentence = gettext("Co čepují v hospodě bez jména, %(place)s: %(beers)s")
+        elif _names_its_kind(values["name"]):
+            # "v hospodě Hospoda Pod Tankem" says it twice, so the pub itself pours.
+            sentence = gettext("Co čepuje %(name)s, %(place)s: %(beers)s")
+        else:
+            sentence = gettext("Co čepují v hospodě %(name)s, %(place)s: %(beers)s")
+        text = sentence % values
+        if pub["price"]:
+            text += " " + gettext("od %(price)s Kč") % values
+        if pub["menu_updated_at"]:
+            text += ", " + gettext("lístek z %(date)s") % {
+                "date": _short_date(timezone.localdate(pub["menu_updated_at"], pubs_data.PRAGUE), today),
+            }
+        text += "."
+    elif pub["price"]:
+        text = gettext("%(name)s, %(place)s: pivo od %(price)s Kč podle zápisů v Na pivo.") % values
+    else:
+        text = gettext("%(name)s, %(place)s. Co tu čepují, zatím nevím. Lístek může doplnit každý, kdo tu sedí.") % values
+    if has_ratings:
+        text += " " + gettext("Hodnocení piv od lidí z Na pivo.")
+    if pub["hours"]:
+        text += " " + gettext("Najdeš tu i otevírací dobu.")
+    return _one_full_stop(text)
+
+
+def _distance_label(metres: int) -> str:
+    if metres < 1000:
+        return f"{max(round(metres, -1), 10)}\u00a0m"
+    return f"{dec(metres / 1000)}\u00a0km"
+
+
 @web_page
 def pub_page(request: HttpRequest, key: str) -> HttpResponse:
     wait = _wait(request, "web_pages")
@@ -633,64 +936,91 @@ def pub_page(request: HttpRequest, key: str) -> HttpResponse:
                 _volume_label(beer["volume"]),
             ) if part),
             "price": _price_label(beer["price"]),
+            "url": page_path(BeerPage.Kind.BEER, beer["beer_page"], lang) if beer.get("beer_page") else "",
         }
         for beer in pub["menu"]
     ]
     city_url = web_reverse("web-pubs-city", city=pub["city_slug"]) if pub["city_slug"] else ""
     crumbs = [(gettext("Hospody"), web_reverse("web-pubs"))]
     if city_url:
-        crumbs.append((pub["city"], city_url))
-        if pub["district"] and pub["district"] != pub["city"]:
-            crumbs.append((pub["district"], f"{city_url}?district={slugify(pub['district'])}"))
-    crumbs.append((pub["name"], url))
+        crumbs.append((place_name(pub["city"]), city_url))
+        if pub["district"] and place_name(pub["district"]) != place_name(pub["city"]):
+            crumbs.append((place_name(pub["district"]), district_url(pub["city_slug"], pub["district"])))
+    name = pub_name(pub["name"])
+    crumbs.append((name, url))
 
-    place = pub["address"] or pub["district"] or pub["city"]
+    city_place = place_name(pub["city"])
+    district_place = place_name(pub["district"])
+    place = pub["address"] or district_place or city_place
     # "Praha 1" already says Praha.
-    city = "" if pub["district"].startswith(pub["city"]) else pub["city"]
-    place_sub = ", ".join(part for part in dict.fromkeys((pub["district"], city)) if part and part != place)
+    city = "" if pub["district"].startswith(pub["city"]) else city_place
+    place_sub = ", ".join(part for part in dict.fromkeys((district_place, city)) if part and part != place)
     og = _og_payload(pub, lang)
-    where = pub["district"] or pub["city"]
-    title = gettext("%(name)s, %(place)s") % {"name": pub["name"], "place": where} if where else pub["name"]
-    description = gettext("Co čepují v hospodě %(name)s") % {"name": pub["name"]}
-    if pub["price"]:
-        description += ", " + gettext("pivo od %(price)s Kč") % {"price": pub["price"]}
-    description += ". " + gettext("Lístek s cenami, otevírací doba a hodnocení piv od lidí z Na pivo.")
+    navigation_url = "https://www.google.com/maps/dir/?api=1&destination=" + quote(
+        f"{pub['lat']:.6f},{pub['lng']:.6f}", safe=","
+    )
+    where = district_place or city_place
+    if has_pub_name(pub["name"]):
+        title = gettext("%(name)s, %(place)s") % {"name": name, "place": where} if where else name
+    else:
+        title = ", ".join(part for part in (gettext("Hospoda"), pub["address"], where) if part)
+    beer_ratings = [
+        {**beer, "rating_label": dec(beer["rating"]), "count_label": _ratings_count(beer["count"])}
+        for beer in pub["beer_ratings"]
+    ]
+    nearby = [
+        {
+            "title": pub_name(row["name"]),
+            "url": web_reverse("web-pub", key=row["key"]),
+            "meta": " · ".join(part for part in (_distance_label(row["metres"]), ", ".join(row["beers"][:2])) if part),
+            "value": _price_label(row["price"]),
+        }
+        for row in pub.get("nearby", [])
+    ]
+    has_prices_page = bool(pub["city_slug"]) and pub["city_slug"] in prices_page_slugs()
+    nearby_url = indexed_district_url(pub["district"])
     response = render_page(
         request,
         "web/pubs/pub.html",
         {
             "pub": pub,
+            "name": name,
             "status": status_line(pub["hours"], now),
             "place": place,
             "place_sub": place_sub,
             "stats": _pub_stats(pub, now),
             "menu": menu,
             "menu_updated": _menu_updated(pub["menu_updated_at"], now),
-            "beer_ratings": [
-                {**beer, "rating_label": dec(beer["rating"]), "count_label": _ratings_count(beer["count"])}
-                for beer in pub["beer_ratings"]
-            ],
+            "beer_ratings": beer_ratings,
             "days": _day_rows(pub["hours"], now),
+            "nearby": nearby,
+            "prices_url": web_reverse("beer-prices-city", city=pub["city_slug"]) if has_prices_page else "",
+            "prices_label": prices_label(pub["city"]) if has_prices_page else "",
+            "city_url": nearby_url or city_url,
+            "city_label": _pubs_title(pub["district"] if nearby_url else pub["city"]) if city_url else "",
             "map": pub_map(
-                [{"lat": pub["lat"], "lng": pub["lng"], "label": "", "url": "", "name": pub["name"]}],
+                [{"lat": pub["lat"], "lng": pub["lng"], "label": "", "url": "", "name": name}],
                 pub["neighbours"],
                 focus=True,
                 size=(862, 340),
             ),
-            "live_map": live_map([{"lat": pub["lat"], "lng": pub["lng"], "name": pub["name"]}], kind="focus"),
+            "live_map": live_map([{"lat": pub["lat"], "lng": pub["lng"], "name": name}], kind="focus"),
             "deep_link": f"napivo://h/{pub['cache_key']}?{urlencode({'n': pub['name']})}",
-            "navigation_url": (
-                "https://www.google.com/maps/dir/?api=1&destination="
-                + quote(f"{pub['lat']:.6f},{pub['lng']:.6f}", safe=",")
-            ),
+            "navigation_url": navigation_url,
             "login_url": f"{web_reverse('web-login')}?next={quote(url)}",
             "crumbs": _crumbs(crumbs),
-            "structured_data": ld_json(_pub_structured(pub, url, [("Na pivo", web_reverse("home")), *crumbs])),
+            "structured_data": ld_json(
+                _pub_structured(pub, url, [("Na pivo", web_reverse("home")), *crumbs], navigation_url)
+            ),
             "og_image_url": f"{settings.PUBLIC_WEB_ORIGIN}{url}/og.png?v={_og_version(og)}",
         },
         title=title,
-        description=description,
+        description=_pub_description(
+            pub, where, bool(beer_ratings), timezone.localdate(now, pubs_data.PRAGUE)
+        ),
         section="pubs",
+        indexable=pubs_data.has_content(pub),
+        follow=True,
         with_map=True,
     )
     return _public(response)
@@ -728,7 +1058,10 @@ def pub_share_redirect(request: HttpRequest, key: str) -> HttpResponse | None:
     target = pubs_data.pub_key_for_hint(cache_key, request.GET.get("n", "")[:120])
     if target is None:
         return None
-    return HttpResponseRedirect(web_reverse("web-pub", current_locale(), key=target))
+    response = HttpResponsePermanentRedirect(web_reverse("web-pub", current_locale(), key=target))
+    # A renamed pub gets a new address, so browsers must ask again now and then.
+    response["Cache-Control"] = "public, max-age=86400"
+    return response
 
 
 # ---------- /hledat ----------
@@ -774,8 +1107,9 @@ def _city_rows(cities: list[dict]) -> list[dict]:
     return [
         {
             **city,
-            "url": web_reverse("web-pubs-city", city=city["slug"])
-            + (f"?district={slugify(city['district'])}" if city["district"] else ""),
+            "name": place_name(city["name"]),
+            "url": district_url(city["slug"], city["district"]) if city["district"]
+            else web_reverse("web-pubs-city", city=city["slug"]),
             "meta": _pubs_count(city["pubs"]),
             "median_label": _price_label(city["median"]),
         }
@@ -858,6 +1192,8 @@ def search_page(request: HttpRequest) -> HttpResponse:
 
 def sitemap_paths() -> list[str]:
     paths = [web_reverse("web-pubs", "cs")]
-    paths += [web_reverse("web-pubs-city", "cs", city=city["slug"]) for city in pubs_data.cities_by_size() if city["pubs"] >= 3]
-    paths += [web_reverse("web-pub", "cs", key=key) for key in pubs_data.sitemap_pub_keys()]
+    paths += [
+        web_reverse("web-pubs-city", "cs", city=city["slug"]) for city in pubs_data.cities_by_size() if pubs_data.city_indexed(city)
+    ]
+    paths += district_sitemap_paths()
     return paths

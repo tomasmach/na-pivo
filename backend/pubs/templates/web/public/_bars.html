@@ -1,6 +1,6 @@
-{% load i18n %}<ul class="pi-bars">
+{% load i18n web %}<ul class="pi-bars">
   {% for row in rows %}<li>
-    <span class="pi-bars__name"><strong>{{ row.name }}</strong><span>{% if beer %}{{ row.pubs_label }}{% else %}{{ row.region }}{% endif %}</span></span>
+    <span class="pi-bars__name"><strong>{% if beer %}{{ row.name }}{% else %}{{ row.name|place }}{% endif %}</strong><span>{% if beer %}{{ row.pubs_label }}{% else %}{{ row.region }}{% endif %}</span></span>
     <svg class="pi-bars__bar" viewBox="0 0 100 8" preserveAspectRatio="none" aria-hidden="true"><rect width="{{ row.width }}" height="8" rx="4"{% if forloop.first and not beer %} class="is-top"{% endif %}/></svg>
     <b>{{ row.median }} {% translate "Kč" %}</b>
   </li>{% endfor %}

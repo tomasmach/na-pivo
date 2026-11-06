@@ -15,7 +15,7 @@ from rest_framework.test import APIClient
 
 import pubs.emailer as emailer
 from pubs.models import Account, AuthToken, EmailCredential
-from pubs.web.delete_account_views import sitemap_paths
+from pubs.tests.sitemaps import sitemap_xml
 
 pytestmark = pytest.mark.django_db
 
@@ -109,7 +109,8 @@ def test_invalid_link_and_page_basics(account_token):
     assert page.status_code == 200
     assert "Přihlásit se a smazat účet" in html and "/prihlaseni?next=/nastaveni" in html
     assert Client().get("/en/delete-account").status_code == 200
-    assert sitemap_paths() == ["/smazat-ucet"]
+    # The stores link here; search results need not.
+    assert "smazat-ucet" not in sitemap_xml(Client()) and "delete-account" not in sitemap_xml(Client())
 
 
 def test_google_only_account_gets_the_link_too(mails):

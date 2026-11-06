@@ -18,11 +18,16 @@ from django.conf import settings
 from django.core.cache import cache
 from django.db.models import Count, Max, Q, Sum
 from django.db.models.functions import TruncMonth
-from django.http import FileResponse, Http404, HttpRequest, HttpResponse, JsonResponse
-from django.shortcuts import render
-from django.urls import resolve
+from django.http import (
+    FileResponse,
+    Http404,
+    HttpRequest,
+    HttpResponse,
+    HttpResponsePermanentRedirect,
+    JsonResponse,
+)
 from django.utils import formats, timezone, translation
-from django.utils.translation import gettext, pgettext_lazy
+from django.utils.translation import gettext, pgettext, pgettext_lazy
 
 from pubs.beer_pages import PATHS as BEER_PATHS
 from pubs.beer_pages import counted, page_path
@@ -34,9 +39,14 @@ from pubs.home_views import (
     AUTHOR,
     DATA_LICENSE_PATH,
     HOME_OG_PATH,
+    INVITE_OG_PATH,
     PLAY_STORE_URL,
+    WEBSITE_ID,
     app_store_url,
+    breadcrumb_list,
     ld_json,
+    organization,
+    organization_ref,
     play_store_url,
 )
 from pubs.home_views import PATHS as HOME_PATHS
@@ -52,8 +62,11 @@ from pubs.models import (
 )
 from pubs.price_map import PATHS as PRICE_PATHS
 from pubs.price_map import city_slug, headline_prices, render_city_og_image
+from pubs.web.dates import time_tag, with_times
 from pubs.web.pages import login_url, render_page, web_page
+from pubs.web.places import in_place, place_name, pub_name
 from pubs.web.routes import web_reverse
+from pubs.web.words import plural
 
 # Lists longer than this get search and sorting, and start folded to this many rows.
 _FOLDED_ROWS = 12
@@ -86,7 +99,7 @@ def _invite(
         "web/reskin/invite.html",
         {
             "og_url": f"{settings.PUBLIC_WEB_ORIGIN}{path}",
-            "og_image_url": f"{settings.PUBLIC_WEB_ORIGIN}/og/invite.png",
+            "og_image_url": f"{settings.PUBLIC_WEB_ORIGIN}{INVITE_OG_PATH}",
             "deep_link": deep_link,
             "headline": texts["headline"],
             "body": texts["body"],
@@ -206,8 +219,11 @@ def android_asset_statements(_request: HttpRequest) -> JsonResponse:
     return response
 
 
-def invite_asset(_request: HttpRequest, filename: str) -> FileResponse:
-    """Serve the tiny public invite asset set without relying on Caddy paths."""
+def invite_asset(request: HttpRequest, filename: str) -> FileResponse:
+    """Serve the tiny public invite asset set without relying on Caddy paths.
+
+    Only an address with ``?v=`` names one version of the file, so only that one is immutable.
+    """
 
     asset = _ASSETS.get(filename)
     if asset is None:
@@ -217,7 +233,7 @@ def invite_asset(_request: HttpRequest, filename: str) -> FileResponse:
     if not path.is_file():
         raise Http404
     response = FileResponse(path.open("rb"), content_type=content_type)
-    response.headers["Cache-Control"] = "public, max-age=604800, immutable"
+    response.headers["Cache-Control"] = "public, max-age=604800" + (", immutable" if request.GET.get("v") else "")
     response.headers["X-Content-Type-Options"] = "nosniff"
     return response
 
@@ -319,13 +335,15 @@ def _home_structured_data(origin: str, lang: str) -> str:
 
     return ld_json({
         "@graph": [
+            organization(origin),
             {
                 "@type": "WebSite",
-                "@id": f"{origin}/#website",
+                "@id": f"{origin}{WEBSITE_ID}",
                 "url": f"{origin}/",
                 "name": "Na pivo",
                 "alternateName": ["Na Pivo", "na-pivo.cz"],
                 "inLanguage": ["cs", "en"],
+                "publisher": organization_ref(origin),
             },
             {
                 "@type": "MobileApplication",
@@ -343,6 +361,7 @@ def _home_structured_data(origin: str, lang: str) -> str:
                 "sameAs": [APP_STORE_URL, PLAY_STORE_URL],
                 "offers": {"@type": "Offer", "price": "0", "priceCurrency": "CZK"},
                 "author": AUTHOR,
+                "publisher": organization_ref(origin),
             },
         ],
     })
@@ -443,13 +462,7 @@ def _prices_structured_data(
     ]
     if area:
         crumbs.append((area["name"], url))
-    graph: list[dict] = [{
-        "@type": "BreadcrumbList",
-        "itemListElement": [
-            {"@type": "ListItem", "position": position, "name": name, "item": item}
-            for position, (name, item) in enumerate(crumbs, start=1)
-        ],
-    }]
+    graph: list[dict] = [breadcrumb_list(crumbs)]
     if snapshot and snapshot.data.get("country"):
         since = snapshot.day - timedelta(days=snapshot.data.get("window_days", 365))
         graph.append({
@@ -464,6 +477,7 @@ def _prices_structured_data(
             ),
             "url": url,
             "creator": AUTHOR,
+            "publisher": organization_ref(origin),
             "dateModified": snapshot.day.isoformat(),
             "temporalCoverage": f"{since.isoformat()}/{snapshot.day.isoformat()}",
             "spatialCoverage": {"@type": "Place", "name": area["name"] if area else gettext("Česko")},
@@ -478,9 +492,11 @@ def _texts(snapshot: PubPriceSnapshot | None, country: dict | None, area: dict |
     """Heading, title and description. The year answers "cena piva 2026", the median earns the click."""
 
     if area:
-        values = {"city": area["name"], "price": area["median"], "low": area["p25"], "high": area["p75"]}
+        values = {"city": place_name(area["name"]), "price": area["median"], "low": area["p25"], "high": area["p75"]}
+        where = in_place(area["name"])
         return {
-            "h1": gettext("Kolik stojí pivo: %(city)s") % values,
+            "h1": pgettext("heading", "Kolik stojí pivo %(in_city)s") % {"in_city": where} if where
+            else gettext("Kolik stojí pivo: %(city)s") % values,
             "page_title": gettext("Cena piva %(city)s %(year)s: medián %(price)s Kč")
             % {**values, "year": snapshot.day.year},
             "description": gettext(
@@ -490,7 +506,7 @@ def _texts(snapshot: PubPriceSnapshot | None, country: dict | None, area: dict |
     return {
         "h1": gettext("Kolik stojí pivo v hospodě"),
         "page_title": (
-            gettext("Cena piva %(year)s: kolik stojí pivo v hospodě") % {"year": snapshot.day.year}
+            gettext("Cena piva %(year)s po městech: kolik stojí pivo v hospodě") % {"year": snapshot.day.year}
             if snapshot
             else gettext("Kolik stojí pivo v hospodě")
         ),
@@ -569,13 +585,7 @@ def _beer_structured_data(origin: str, lang: str, page: BeerPage | None, url: st
         crumbs.append((data["brand_name"], f"{origin}{page_path(BeerPage.Kind.BRAND, data['brand_key'], lang)}"))
     if page and page.kind != BeerPage.Kind.LIST:
         crumbs.append((data["name"], url))
-    graph: list[dict] = [{
-        "@type": "BreadcrumbList",
-        "itemListElement": [
-            {"@type": "ListItem", "position": position, "name": name, "item": item}
-            for position, (name, item) in enumerate(crumbs, start=1)
-        ],
-    }]
+    graph: list[dict] = [breadcrumb_list(crumbs)]
     if page and page.kind != BeerPage.Kind.BEER and data["beers"]:
         graph.append({
             "@type": "ItemList",
@@ -600,6 +610,8 @@ def _beer_structured_data(origin: str, lang: str, page: BeerPage | None, url: st
         product: dict = {
             "@type": "Product",
             "name": data["name"],
+            # The page's own summary: where it is on tap and what it usually costs.
+            "description": _beer_texts(page.kind, page, page.key)["description"],
             "brand": {"@type": "Brand", "name": data["brand_name"]},
             "url": url,
         }
@@ -665,8 +677,8 @@ def _beer_texts(kind: str, page: BeerPage | None, key: str) -> dict:
             "h1": gettext("Kde se čepuje %(beer)s") % values,
             "page_title": gettext("Piva značky %(brand)s a kde se čepují") % {"brand": name},
             "description": gettext(
-                "Piva značky %(brand)s a hospody, kde se čepují. U každé hospody cena a datum posledního potvrzení."
-            ) % {"brand": name},
+                "Kde se čepuje %(brand)s: %(pubs)s, %(beers)s s vlastní stránkou. U každé hospody cena a datum posledního potvrzení."
+            ) % {"brand": name, "beers": _beers_label(len(data["beers"])), "pubs": _pubs_label(data["pubs"])},
             "known": True,
         }
     values.update(pubs=_pubs_label(data["pubs"]), price=data["median"])
@@ -693,10 +705,11 @@ def _snapshot_texts(snapshot: PubPriceSnapshot | None, area: dict | None) -> dic
     if not stats:
         return {}
     return {
-        "basis": gettext("Z nejlevnějších piv v %(pubs)s hospodách za poslední rok. Stav k %(date)s.") % {
-            "pubs": stats["pubs"],
-            "date": formats.date_format(snapshot.day, "DATE_FORMAT"),
-        },
+        "basis": with_times(
+            gettext("Z nejlevnějších piv v %(pubs)s hospodách za poslední rok. Stav k %(date)s."),
+            pubs=stats["pubs"],
+            date=time_tag(snapshot.day, formats.date_format(snapshot.day, "DATE_FORMAT")),
+        ),
     }
 
 
@@ -711,7 +724,8 @@ def _price_facts(data: dict, area: dict | None, country: dict | None, city_urls:
         pub = cheapest[0]
         facts.append({
             "title": gettext("Nejlevněji"),
-            "meta": ", ".join(part for part in (pub["name"], pub["city"]) if part),
+            "meta": ", ".join(part for part in (pub_name(pub["name"]), place_name(pub["city"])) if part),
+            "url": _pub_url(pub),
             "value": f"{pub['price_czk']} {unit}",
             "value_meta": "" if pub["volume_ml"] == 500 else gettext("za %(litres)s l") % {
                 "litres": _litres(pub["volume_ml"])
@@ -729,13 +743,21 @@ def _price_facts(data: dict, area: dict | None, country: dict | None, city_urls:
     else:
         for label, city_stats in headline_prices(data)[1:]:
             facts.append({
-                "title": label,
+                "title": place_name(label),
                 "meta": gettext("medián"),
                 "url": city_urls.get(label, ""),
                 "value": f"{city_stats['median']} {unit}" if city_stats else "–",
                 "value_meta": "" if city_stats else gettext("zatím málo cen"),
             })
     return facts
+
+
+def _pub_url(pub: dict) -> str:
+    """The pub's own page; older snapshots did not keep the pub's cell, so they link nowhere."""
+
+    from pubs.web.pubs_data import pub_key
+
+    return web_reverse("web-pub", key=pub_key(pub["name"], pub["cache_key"])) if pub.get("cache_key") else ""
 
 
 def _elsewhere(data: dict, area: dict, city_urls: dict) -> list[dict]:
@@ -747,7 +769,7 @@ def _elsewhere(data: dict, area: dict, city_urls: dict) -> list[dict]:
             continue
         gap = other["median"] - area["median"]
         tiles.append({
-            "name": other["name"],
+            "name": place_name(other["name"]),
             "median": other["median"],
             "url": city_urls[other["name"]],
             "note": (
@@ -773,6 +795,10 @@ def beer_prices(request: HttpRequest, city: str = "") -> HttpResponse:
     missing = False
     if city and not wait:
         area = next((area for area in data.get("cities", []) if city_slug(area["name"]) == city), None)
+        town = data.get("merged", {}).get(city, "")
+        if area is None and any(city_slug(other["name"]) == town for other in data.get("cities", [])):
+            query = request.META.get("QUERY_STRING", "")
+            return HttpResponsePermanentRedirect(f"{PRICE_PATHS[lang]}/{town}" + (f"?{query}" if query else ""))
         # A city drops out once it has fewer than five priced pubs. Its old links get a 404
         # that still leads to the other cities.
         if area is None:
@@ -790,10 +816,12 @@ def beer_prices(request: HttpRequest, city: str = "") -> HttpResponse:
         ],
         country,
     )
+    from pubs.web.pubs_views import indexed_district_url
+
     texts = _texts(snapshot, country, area)
     crumbs = [{"label": "Na pivo", "url": web_reverse("home")}, {"label": gettext("Ceny piva"), "url": PRICE_PATHS[lang]}]
     if area:
-        crumbs.append({"label": area["name"]})
+        crumbs.append({"label": place_name(area["name"])})
     elif city:
         crumbs.append({"label": city})
     else:
@@ -821,12 +849,17 @@ def beer_prices(request: HttpRequest, city: str = "") -> HttpResponse:
             "country": country,
             "missing": missing,
             "facts": _price_facts(data, area, country, city_urls) if stats else [],
-            "cities": cities,
-            "districts": districts,
+            "cities": [{**row, "name": place_name(row["name"])} for row in cities],
+            "districts": [
+                {**row, "name": place_name(row["name"]), "url": indexed_district_url(row["name"])} for row in districts
+            ],
             "axis": axis,
             "folded_rows": _FOLDED_ROWS,
+            "area_name": place_name(area["name"]) if area else "",
+            "beer_index_url": web_reverse("web-beer-index"),
+            "about_url": web_reverse("web-about") + "#ceny",
             "cheapest": [
-                {**pub, "litres": _litres(pub["volume_ml"])}
+                {**pub, "litres": _litres(pub["volume_ml"]), "url": _pub_url(pub), "name": pub_name(pub["name"])}
                 for pub in (area.get("cheapest", []) if area else data.get("cheapest", []))
             ],
             "elsewhere": _elsewhere(data, area, city_urls) if area else [],
@@ -924,7 +957,7 @@ def _public_reviews(product_key: str) -> tuple[int, list[dict]]:
     return rows.count(), [
         {
             "nickname": row.account.nickname,
-            "pub": row.pub_name,
+            "pub": pub_name(row.pub_name) if row.pub_name else "",
             "day": timezone.localtime(row.checked_in_at).date(),
             "rating": float(row.rating) if row.rating is not None else None,
             "note": row.note,
@@ -955,13 +988,31 @@ def _beer_live(page: BeerPage) -> dict:
         live = {"ratings": _ratings(keys), "cities": []}
         if page.kind == BeerPage.Kind.BRAND:
             pubs: dict[str, set] = defaultdict(set)
+            listed: dict = {}
             for beer in BeerPage.objects.filter(kind=BeerPage.Kind.BEER, key__in=keys).values_list("data", flat=True):
                 for pub in beer["listed"]:
                     if pub["fresh"] and pub["city"]:
                         pubs[_city_of(pub["city"])].add((pub["name"], pub["lat"], pub["lng"]))
+                    _add_brand_pub(listed, pub, beer["name"])
             live["cities"] = sorted(((city, len(found)) for city, found in pubs.items()), key=lambda item: (-item[1], item[0]))[:6]
+            live["pubs"] = sorted(listed.values(), key=lambda pub: (not pub["fresh"], -date.fromisoformat(pub["confirmed"]).toordinal(), pub["name"]))
     cache.set(key, live, _LIVE_SECONDS)
     return live
+
+
+def _add_brand_pub(listed: dict, pub: dict, beer: str) -> None:
+    """One row per pub on a brand page: the brand's beers it pours, its latest confirmation, its cheapest half litre."""
+
+    row = listed.setdefault(pub.get("cache_key") or (pub["name"], pub["lat"], pub["lng"]), {
+        "cache_key": pub.get("cache_key"), "name": pub["name"], "city": pub["city"], "lat": pub["lat"], "lng": pub["lng"],
+        "confirmed": pub["confirmed"], "fresh": False, "beers": [], "per_half_litre": None,
+    })
+    row["beers"].append(beer)
+    row["confirmed"] = max(row["confirmed"], pub["confirmed"])
+    row["fresh"] = row["fresh"] or pub["fresh"]
+    if pub["fresh"] and pub["price_czk"]:
+        half = round(pub["price_czk"] * 500 / (pub["volume_ml"] or 500))
+        row["per_half_litre"] = half if row["per_half_litre"] is None else min(row["per_half_litre"], half)
 
 
 def _city_of(name: str) -> str:
@@ -970,16 +1021,20 @@ def _city_of(name: str) -> str:
     return "Praha" if name.startswith("Praha") else name
 
 
-def _by_city(listed: list[dict]) -> list[dict]:
-    """Median half litre in each city with at least three fresh priced pubs, the most pubs first."""
+def _by_city(listed: list[dict], lang: str) -> list[dict]:
+    """Median half litre in each city with at least three fresh priced pubs, the most pubs first.
+
+    Three pubs of a city on a menu put the city in the pub catalogue too, so its pub list exists.
+    """
 
     prices: dict[str, list[int]] = defaultdict(list)
     for pub in listed:
         if pub["fresh"] and pub["volume_ml"] == 500 and pub["price_czk"] and pub["city"]:
             prices[_city_of(pub["city"])].append(pub["price_czk"])
     rows = [
-        {"city": city, "median": f"{round(statistics.median(values))}\u00a0{gettext('Kč')}", "pubs": len(values),
-         "pubs_label": _pubs_label(len(values))}
+        {"city": place_name(city), "median": f"{round(statistics.median(values))}\u00a0{gettext('Kč')}",
+         "pubs": len(values), "pubs_label": _pubs_label(len(values)),
+         "url": web_reverse("web-pubs-city", lang, city=city_slug(city))}
         for city, values in prices.items() if len(values) >= 3
     ]
     return sorted(rows, key=lambda row: (-row["pubs"], row["city"]))[:5]
@@ -1030,11 +1085,13 @@ def beer_pages(request: HttpRequest, kind: str = BeerPage.Kind.LIST, key: str = 
     listed = [
         {
             **pub,
+            "name": pub_name(pub["name"]),
             "date": _short_date(date.fromisoformat(pub["confirmed"]), today),
             "litres": _litres(pub["volume_ml"]) if pub["volume_ml"] else None,
             # Sorted per half litre, so 41 Kč for 0,3 l is not the cheapest.
             "per_half_litre": round(pub["price_czk"] * 500 / (pub["volume_ml"] or 500)) if pub["price_czk"] else "",
-            "map_url": f"https://www.google.com/maps/search/?api=1&query={pub['lat']},{pub['lng']}",
+            "url": _pub_url(pub) or f"https://www.google.com/maps/search/?api=1&query={pub['lat']},{pub['lng']}",
+            "on_map": not pub.get("cache_key"),
             "first_old": index == first_old,
         }
         for index, pub in enumerate(data.get("listed", []))
@@ -1079,12 +1136,19 @@ def beer_pages(request: HttpRequest, kind: str = BeerPage.Kind.LIST, key: str = 
             head_stats.append({
                 "value": f"{data['cheapest']['price_czk']}\u00a0{unit}",
                 "label": gettext("nejlevněji za 0,5 l"),
-                "sub": ", ".join(part for part in (data["cheapest"]["name"], data["cheapest"]["city"]) if part),
+                "sub": ", ".join(part for part in (pub_name(data["cheapest"]["name"]), place_name(data["cheapest"]["city"])) if part),
             })
-        head_stats.append({"value": data["pubs"], "label": gettext("hospod za 3 měsíce")})
+        head_stats.append({"value": data["pubs"], "label": plural(
+            data["pubs"], gettext("hospoda za 3 měsíce"), gettext("hospody za 3 měsíce"), gettext("hospod za 3 měsíce")
+        )})
     elif page:
-        head_stats.append({"value": data["pubs"], "label": gettext("hospod čepuje")})
-        head_stats.append({"value": len(data["beers"]), "label": gettext("piv s vlastní stránkou")})
+        head_stats.append({"value": data["pubs"], "label": plural(
+            data["pubs"], gettext("hospoda čepuje"), gettext("hospody čepují"), gettext("hospod čepuje")
+        )})
+        head_stats.append({"value": len(data["beers"]), "label": plural(
+            len(data["beers"]), gettext("pivo s vlastní stránkou"), gettext("piva s vlastní stránkou"),
+            gettext("piv s vlastní stránkou"),
+        )})
     brand_rating = None
     rated = [rating for rating in (ratings.get(beer["key"]) for beer in data.get("beers", [])) if rating and rating["avg"] is not None]
     if kind == BeerPage.Kind.BRAND and rated:
@@ -1122,14 +1186,27 @@ def beer_pages(request: HttpRequest, kind: str = BeerPage.Kind.LIST, key: str = 
             "crumbs": crumbs,
             "rating": _rating_view(live.get("ranking")),
             "about": _about(live.get("ranking")),
-            "by_city": _by_city(data.get("listed", [])) if kind == BeerPage.Kind.BEER else [],
+            "by_city": _by_city(data.get("listed", []), lang) if kind == BeerPage.Kind.BEER else [],
             "siblings": siblings,
             "reviews": reviews,
             "review_total": live.get("review_total", 0),
             "head_stats": head_stats,
             "brand_rating": brand_rating,
+            "brand_pubs": [
+                {
+                    **pub,
+                    "name": pub_name(pub["name"]),
+                    "url": _pub_url(pub) or f"https://www.google.com/maps/search/?api=1&query={pub['lat']},{pub['lng']}",
+                    "on_map": not pub.get("cache_key"),
+                    "date": _short_date(date.fromisoformat(pub["confirmed"]), today),
+                    "beer_names": ", ".join(pub["beers"]),
+                }
+                for pub in live.get("pubs", [])
+            ],
             "brand_cities": [
-                {"city": city, "pubs": pubs, "width": f"{pubs * 100 / live['cities'][0][1]:.1f}%"}
+                {"city": place_name(city), "url": web_reverse("web-pubs-city", lang, city=city_slug(city)), "pubs": pubs, "pubs_label": plural(
+                    pubs, gettext("hospoda"), gettext("hospody"), gettext("hospod")
+                ), "width": f"{pubs * 100 / live['cities'][0][1]:.1f}%"}
                 for city, pubs in live.get("cities", [])
             ],
             "structured_data": _beer_structured_data(origin, lang, page, f"{origin}{path}", live),
@@ -1178,17 +1255,22 @@ def beer_pages_og_image(
 
 
 
-# Crawlers that collect pages for AI models or datasets. The prices and menus are ours to keep.
+# AI search and the fetchers a person sends to one page read the site like a search engine.
+# Amzn-SearchBot answers Alexa; Amazonbot below also collects for Amazon's model training.
+AI_SEARCH_CRAWLERS = (
+    "OAI-SearchBot", "ChatGPT-User", "Claude-SearchBot", "Claude-User", "PerplexityBot", "Perplexity-User",
+    "YouBot", "Amzn-SearchBot", "Amzn-User",
+)
+# Crawlers that collect pages to train AI models, fill datasets or feed SEO tools. The prices and menus are ours to keep.
 DATA_CRAWLERS = (
-    "GPTBot", "ChatGPT-User", "OAI-SearchBot", "ClaudeBot", "Claude-User", "Claude-SearchBot", "anthropic-ai",
-    "CCBot", "Google-Extended", "Applebot-Extended", "PerplexityBot", "Perplexity-User", "Bytespider",
+    "GPTBot", "ClaudeBot", "anthropic-ai", "CCBot", "Google-Extended", "Applebot-Extended", "Bytespider",
     "Amazonbot", "meta-externalagent", "FacebookBot", "cohere-ai", "Diffbot", "Omgilibot", "Timpibot",
-    "YouBot", "ImagesiftBot", "DataForSeoBot", "AhrefsBot", "SemrushBot", "MJ12bot", "DotBot",
+    "ImagesiftBot", "DataForSeoBot", "AhrefsBot", "SemrushBot", "MJ12bot", "DotBot",
 )
 
 
 def robots_txt(_request: HttpRequest) -> HttpResponse:
-    """Search engines may read every page; AI and data crawlers none; the API only answers the app."""
+    """Search engines and AI search may read every page; training and data crawlers only llms.txt."""
 
     lines = [
         "User-agent: *",
@@ -1196,6 +1278,7 @@ def robots_txt(_request: HttpRequest) -> HttpResponse:
         "Disallow: /admin/",
         "",
         *(f"User-agent: {name}" for name in DATA_CRAWLERS),
+        "Allow: /llms.txt",
         "Disallow: /",
         "",
         f"Sitemap: {settings.PUBLIC_WEB_ORIGIN}/sitemap.xml",
@@ -1206,9 +1289,10 @@ def robots_txt(_request: HttpRequest) -> HttpResponse:
 
 
 def llms_txt(_request: HttpRequest) -> HttpResponse:
-    """What AI tools may do with the site: quote a fact with the source, never copy the data."""
+    """What AI tools may do with the site: answer from a page with a link to it, never copy the data."""
 
     origin = settings.PUBLIC_WEB_ORIGIN
+    allowed, blocked = ", ".join(AI_SEARCH_CRAWLERS), ", ".join(DATA_CRAWLERS)
     text = f"""# Na pivo
 
 > Česká appka a web o hospodách, cenách piva a pivním deníku. Czech app and website about pubs, beer prices and a beer diary. {origin}
@@ -1216,49 +1300,19 @@ def llms_txt(_request: HttpRequest) -> HttpResponse:
 ## Pravidla pro AI a roboty
 
 - Obsah a data webu Na pivo patří Na pivo: ceny piva, lístky hospod, hodnocení, Pivní index, žebříčky a trasy.
-- Stahovat je robotem, ukládat do databází nebo datasetů a používat k trénování, ladění nebo doplňování modelů (včetně RAG a vyhledávání odpovědí) je bez písemného souhlasu zakázáno.
-- Jednotlivý údaj smíš citovat s odkazem na zdroj {origin}.
+- AI vyhledávače a asistenti můžou stránky číst a odpovídat z nich, když u odpovědi odkážou na zdrojovou stránku na {origin}. Platí to pro {allowed}.
+- Používat obsah k trénování nebo ladění modelů je bez písemného souhlasu zakázáno. Stejně tak je zakázané obsah hromadně stahovat a ukládat do databází nebo datasetů.
+- Roboti, kteří sbírají data pro trénink AI, datasety nebo SEO nástroje, mají v robots.txt zakázaný celý web kromě tohoto souboru: {blocked}.
 - O souhlas si napiš na tomades1@gmail.com.
 
 ## Rules for AI and crawlers
 
 - The content and data of Na pivo belong to Na pivo: beer prices, pub menus, ratings, the Beer index, rankings and tours.
-- Scraping them, storing them in databases or datasets, or using them to train, fine-tune or ground models (including RAG and answer engines) is prohibited without written permission.
-- You may quote a single fact with a link to the source {origin}.
+- AI search engines and assistants may read the pages and answer from them if the answer links to the source page on {origin}. This covers {allowed}.
+- Using the content to train or fine-tune models is prohibited without written permission. So is scraping it in bulk or storing it in databases or datasets.
+- Crawlers that collect data for AI training, datasets or SEO tools are disallowed from the whole site in robots.txt, except this file: {blocked}.
 - To ask for permission, write to tomades1@gmail.com.
 """
     response = HttpResponse(text, content_type="text/plain; charset=utf-8")
     response["Cache-Control"] = "public, max-age=86400"
-    return response
-
-
-def _web_sitemap_paths() -> list[str]:
-    from pubs.web import beer_index, delete_account_views, news, pubs_views, rankings, tours
-
-    modules = (pubs_views, rankings, news, beer_index, tours, delete_account_views)
-    return [path for module in modules for path in module.sitemap_paths()]
-
-
-def sitemap_xml(request: HttpRequest) -> HttpResponse:
-    """Every page worth finding, each with its other language."""
-
-    origin = settings.PUBLIC_WEB_ORIGIN
-    snapshot = PubPriceSnapshot.objects.only("day", "data").first()
-    day = snapshot.day if snapshot else None
-    pages = [
-        {"urls": {lang: f"{origin}{path}" for lang, path in HOME_PATHS.items()}},
-        {"urls": {lang: f"{origin}{path}" for lang, path in PRICE_PATHS.items()}, "lastmod": day},
-    ]
-    for area in snapshot.data.get("cities", []) if snapshot else []:
-        slug = city_slug(area["name"])
-        pages.append({"urls": {lang: f"{origin}{path}/{slug}" for lang, path in PRICE_PATHS.items()}, "lastmod": day})
-    for kind, key, beer_day in BeerPage.objects.order_by("kind", "key").values_list("kind", "key", "day"):
-        pages.append({"urls": {lang: f"{origin}{page_path(kind, key, lang)}" for lang in BEER_PATHS}, "lastmod": beer_day})
-    for path in _web_sitemap_paths():
-        match = resolve(path)
-        pages.append({"urls": {lang: f"{origin}{web_reverse(match.url_name, lang, **match.kwargs)}" for lang in ("cs", "en")}})
-    response = render(
-        request, "pubs/sitemap.xml", {"pages": pages}, content_type="application/xml; charset=utf-8"
-    )
-    response["Cache-Control"] = "public, max-age=3600"
     return response

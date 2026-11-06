@@ -135,7 +135,7 @@ def test_english_invite_keeps_its_preview(client, settings):
     assert response["Referrer-Policy"] == "no-referrer"
     assert "noindex" in response["X-Robots-Tag"]
     assert "There is room at the table." in html
-    assert '<meta property="og:image" content="https://na-pivo.cz/og/invite.png">' in html
+    assert re.search(r'<meta property="og:image" content="https://na-pivo.cz/og/invite.png\?v=[0-9a-f]{10}">', html)
     assert "utm_campaign%3Dparty" in html and "ct=web-party" in html
     assert 'href="napivo://party-live?code=EFJ66G"' in html
 

@@ -18,6 +18,7 @@ _WEB_NAMES = sorted(
 )
 _SAMPLE_KWARGS = {
     "web-pubs-city": {"city": "praha"},
+    "web-rankings-region": {"kraj": "praha"},
     "web-pub": {"key": "u-pinkasu"},
     "web-tour": {"tour_id": "abc"},
     "web-night": {"day": "2026-10-24"},
@@ -43,6 +44,14 @@ def test_every_reserved_page_answers_in_both_languages(client, name):
         assert response["Content-Language"] == lang
         assert "script-src 'self'" in response["Content-Security-Policy"]
         assert f'<html lang="{lang}">' in response.content.decode()
+
+
+@pytest.mark.parametrize("name", _WEB_NAMES)
+def test_every_page_blocks_on_one_stylesheet(client, name):
+    response = client.get(web_reverse(name, "cs", **_SAMPLE_KWARGS.get(name, {})))
+    if response.status_code != 200 or not response["Content-Type"].startswith("text/html"):
+        return
+    assert len(re.findall(r'<link rel="stylesheet"', response.content.decode())) == 1
 
 
 def test_english_page_is_translated_and_links_stay_english(client):

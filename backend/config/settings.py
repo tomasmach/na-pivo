@@ -104,6 +104,8 @@ MIDDLEWARE = [
     # final response. Streams (live game SSE, file downloads) pass through.
     "pubs.compression.BufferedGZipMiddleware",
     "pubs.observability.RequestLogMiddleware",
+    # /hospody/, /CENY and /zebricky?kraj=praha lead to the page's address before anything else looks at it.
+    "pubs.web.routes.canonical_address_middleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     # Resolves the request language from Accept-Language ("en" from the new app,
     # anything else falls back to LANGUAGE_CODE). Must sit after
@@ -467,6 +469,8 @@ CLIENT_EVENTS_THROTTLE_RATE: str = os.environ.get("CLIENT_EVENTS_THROTTLE_RATE",
 # Raw telemetry is useful for short product funnels and diagnostics only. Keep
 # long-term account counters separately and automatically prune event-level rows.
 CLIENT_EVENT_RETENTION_DAYS: int = int(os.environ.get("CLIENT_EVENT_RETENTION_DAYS", "90"))
+# Which app accounts saw a pub on which day; distinct visitors are exact for ranges inside it.
+PUB_REACH_VISITOR_RETENTION_DAYS: int = int(os.environ.get("PUB_REACH_VISITOR_RETENTION_DAYS", "90"))
 # Bearer secret for GET /v1/ops/live (desk clock). Unset disables the endpoint.
 OPS_LIVE_TOKEN: str = os.environ.get("OPS_LIVE_TOKEN", "").strip()
 PUBLIC_READS_THROTTLE_RATE: str = os.environ.get(
@@ -745,6 +749,10 @@ REST_FRAMEWORK = {
         "pub_hours": PUB_HOURS_THROTTLE_RATE,
         "pub_reports": PUB_REPORTS_THROTTLE_RATE,
         "client_events": CLIENT_EVENTS_THROTTLE_RATE,
+        # The app sends pub reach in batches about every half minute.
+        "pub_reach": "30/min",
+        # One beacon per pub page view and per navigation tap on the web.
+        "web_reach": "60/min",
         "ops_live": "10/min",
         "push_devices": PUSH_DEVICES_THROTTLE_RATE,
         "friends": FRIENDS_THROTTLE_RATE,

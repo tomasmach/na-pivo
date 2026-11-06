@@ -15,10 +15,10 @@
 
 <div class="np-pubs-filters">
   <div class="np-pubs-filters__chips" role="group" aria-label="{% translate "Filtry" %}">
-    {% for item in chips %}<a class="np-chip" href="{{ item.url }}"{% if item.current %} aria-current="true"{% endif %}>{{ item.label }}</a>{% endfor %}
+    {% for item in chips %}<a class="np-chip" href="{{ item.url }}"{% if item.nofollow %} rel="nofollow"{% endif %}{% if item.current %} aria-current="true"{% endif %}>{{ item.label }}</a>{% endfor %}
     {% if menu_district %}{% include "web/pubs/_menu.html" with menu=menu_district %}{% endif %}
     {% if menu_beer %}{% include "web/pubs/_menu.html" with menu=menu_beer %}{% endif %}
-    {% for item in extra_chips %}<a class="np-chip" href="{{ item.url }}"{% if item.current %} aria-current="true"{% endif %}>{{ item.label }}</a>{% endfor %}
+    {% for item in extra_chips %}<a class="np-chip" href="{{ item.url }}"{% if item.nofollow %} rel="nofollow"{% endif %}{% if item.current %} aria-current="true"{% endif %}>{{ item.label }}</a>{% endfor %}
   </div>
   {% include "web/pubs/_menu.html" with menu=menu_sort right=True plain=True %}
 </div>
@@ -26,10 +26,10 @@
 <div class="np-pubs-layout">
   <section class="np-pubs-list" aria-label="{{ h1 }}">
     {% if rows %}
-    <div class="np-pubs-list__rows">{% for row in rows %}{% include "web/pubs/_pub_row.html" %}{% endfor %}</div>
-    <div class="np-pubs-list__foot">
+    <div class="np-pubs-list__rows" data-more-rows>{% for row in rows %}{% include "web/pubs/_pub_row.html" %}{% endfor %}</div>
+    <div class="np-pubs-list__foot" data-more-foot>
       <span>{{ count_label }}</span>
-      {% if more_url %}<a class="np-link" href="{{ more_url }}">{% translate "Načíst další" %} ›</a>{% endif %}
+      {% if more_url %}<a class="np-link" href="{{ more_url }}"{% if more_nofollow %} rel="nofollow"{% endif %} data-more>{% translate "Načíst další" %} ›</a>{% endif %}
     </div>
     {% else %}
     <div class="np-pubs-list__empty">
@@ -43,7 +43,7 @@
   <aside class="np-pubs-side">
     {% if map %}<div class="np-map">{% include "web/components/map.html" with live=live_map fallback="web/pubs/_map.html" label=h1 %}</div>{% endif %}
     {% if district_tiles %}<section class="np-pubs-section">
-      <h2 class="np-pubs-section__title">{% translate "Hospody podle čtvrtí" %}</h2>
+      <h2 class="np-pubs-section__title">{{ district_title }}</h2>
       <div class="np-pubs-tiles">{% for item in district_tiles %}<a class="np-tile" href="{{ item.url }}">{{ item.label }}{% icon "chevron-right" %}</a>{% endfor %}</div>
     </section>{% endif %}
     {% if other_cities %}<section class="np-pubs-section">
