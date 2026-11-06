@@ -23,14 +23,16 @@ export interface BeerEveningLiveActivityProps {
   //   here and travel with the payload. Keep them short: 4 KB for the lot.
   /** The noun under the numeral, already declined: "piva" / "beers". */
   beerWordLabel: string;
-  /** VoiceOver label for the bare number in the compact/minimal presentations. */
-  beerCountA11yLabel: string;
+  /** Its forms for 1, 2–4 and 5+, so the widget declines a count the native `+ pivo` bumped. */
+  beerWordForms: { one: string; few: string; many: string };
   /** "Celkem 245 Kč"; empty when the total is unknown. */
   totalPriceLabel: string;
   /** The latest beer's name, or a fallback when it has none. */
   latestBeerLabel: string;
-  /** "naposled v 21:47", or the line for an evening with no beer time yet. */
+  /** "zapsáno v 21:47", or the line for an evening with no beer time yet. */
   latestTimeLabel: string;
+  /** "zapsáno v {time}": the lock-screen `+ pivo` rewrites only `latestBeerAt`. */
+  latestTimeTemplate: string;
   addBeerLabel: string;
   addBeerA11yLabel: string;
   openCounterLabel: string;
@@ -142,12 +144,17 @@ export function buildBeerEveningLiveActivityProps(
     latestBeerName,
     latestBeerAt,
     beerWordLabel: t.liveActivity.beerWord(beerCount),
-    beerCountA11yLabel: t.liveActivity.beerCountA11y(beerCount),
+    beerWordForms: {
+      one: t.liveActivity.beerWord(1),
+      few: t.liveActivity.beerWord(2),
+      many: t.liveActivity.beerWord(5),
+    },
     totalPriceLabel: totalPrice ? t.liveActivity.total(totalPrice) : '',
     latestBeerLabel: latestBeerName || t.liveActivity.latestBeerFallback,
     latestTimeLabel: latestBeerAt
       ? t.liveActivity.latestAt(latestBeerAt)
       : t.liveActivity.firstBeerPouring,
+    latestTimeTemplate: t.liveActivity.latestAt('{time}'),
     addBeerLabel: t.liveActivity.addBeer,
     addBeerA11yLabel: t.liveActivity.addBeerA11y,
     openCounterLabel: t.liveActivity.openCounter,

@@ -1158,7 +1158,6 @@ export const en: Strings = {
     pubFallback: 'Beer night',
     beerFallback: 'Beer',
     beerWord: (count: number) => beerNoun(count),
-    beerCountA11y: (count: number) => beerCountLabel(count),
     total: (amount: string) => `Total ${amount}`,
     latestBeerFallback: 'Last beer',
     latestAt: (time: string) => `logged at ${time}`,
