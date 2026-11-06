@@ -8,12 +8,9 @@ import type { OutsidePlaceContext, ServingType } from '@/drinks/drinkTypes';
 import { nvCs } from './nv/cs';
 
 /** Format a serving volume in ml as a Czech litre string with a decimal comma:
- *  500 → "0,5 l", 300 → "0,3 l", 1000 → "1 l", 330 → "0,33 l". */
+ *  500 → "0,5 l", 1000 → "1 l", 330 → "0,33 l", 475 → "0,475 l". */
 export function formatVolume(ml: number): string {
-  const litres = ml / 1000;
-  const text = Number.isInteger(litres)
-    ? String(litres)
-    : litres.toFixed(litres * 100 % 10 === 0 ? 1 : 2).replace(/0+$/, '').replace(/\.$/, '');
+  const text = String(Number((ml / 1000).toFixed(3)));
   return `${text.replace('.', ',')} l`;
 }
 

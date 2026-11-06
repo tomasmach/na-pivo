@@ -10,7 +10,8 @@ import {
   DAY_KEYS,
   computeOpenState,
   emptyWeeklyHours,
-  ALLOWED_BEER_VOLUMES_ML,
+  BEER_VOLUME_MAX_ML,
+  BEER_VOLUME_MIN_ML,
   historicalBeersAfterMenuReplacement,
   isAllowedBeerVolume,
   isSameBeerIdentity,
@@ -50,10 +51,24 @@ const DEFAULT_VOLUME_ML = 500;
 const SMALL_VOLUME_ML = 300;
 
 /** A beer being added (`index` null) or changed in the editor. `volume` null keeps a volume nobody filled in. */
-type BeerDraft = { index: number | null; name: string; price: string; volume: number | 'custom' | null; customMl: string };
+type BeerDraft = {
+  index: number | null;
+  name: string;
+  price: string;
+  volume: number | 'custom' | null;
+  customVolume: string;
+  customUnit: VolumeUnit;
+};
+type VolumeUnit = 'l' | 'ml';
 
 function newBeerDraft(): BeerDraft {
-  return { index: null, name: '', price: '', volume: DEFAULT_VOLUME_ML, customMl: '' };
+  return { index: null, name: '', price: '', volume: DEFAULT_VOLUME_ML, customVolume: '', customUnit: 'l' };
+}
+
+/** "0,47" or "0.47" in litres, "470" in millilitres; NaN when it is not a number. */
+function customVolumeMl(text: string, unit: VolumeUnit): number {
+  const value = text.trim() ? Number(text.trim().replace(',', '.')) : NaN;
+  return Math.round(unit === 'l' ? value * 1000 : value);
 }
 
 function beerDraftOf(beer: CommunityBeer, index: number, currency: string): BeerDraft {
@@ -64,7 +79,8 @@ function beerDraftOf(beer: CommunityBeer, index: number, currency: string): Beer
     name: beer.name,
     price: beer.priceCzk ? String(Math.round((beer.priceCzk / rate) * 100) / 100) : '',
     volume: preset ? (beer.volumeMl ?? null) : 'custom',
-    customMl: preset ? '' : String(beer.volumeMl),
+    customVolume: preset ? '' : formatVolume(beer.volumeMl!).replace(/ l$/, ''),
+    customUnit: 'l',
   };
 }
 
@@ -72,10 +88,10 @@ function beerDraftOf(beer: CommunityBeer, index: number, currency: string): Beer
 function readBeerDraft(draft: BeerDraft, currency: string): { beer: CommunityBeer | null; badPrice: boolean; badVolume: boolean } {
   const name = draft.name.trim().slice(0, 80);
   const priceCzk = draft.price.trim() ? parsePriceInputToCzk(draft.price, currency) : undefined;
-  const volumeMl = draft.volume === 'custom' ? Number(draft.customMl) : (draft.volume ?? undefined);
+  const volumeMl = draft.volume === 'custom' ? customVolumeMl(draft.customVolume, draft.customUnit) : (draft.volume ?? undefined);
   const badPrice = priceCzk === null;
   const badVolume = volumeMl !== undefined && !isAllowedBeerVolume(volumeMl);
-  if (!name || badPrice || badVolume) return { beer: null, badPrice, badVolume: badVolume && draft.customMl !== '' };
+  if (!name || badPrice || badVolume) return { beer: null, badPrice, badVolume: badVolume && draft.customVolume.trim() !== '' };
   return { beer: { name, ...(volumeMl !== undefined ? { volumeMl } : {}), ...(priceCzk != null ? { priceCzk } : {}) }, badPrice, badVolume };
 }
 
@@ -262,7 +278,6 @@ export function DoplnitInfoScreen() {
 
   return (
     <Screen
-      header={<BackHeader />}
       footer={
         tab === 'vybaveni' ? undefined : (
           <View style={{ gap: 14 }}>
@@ -278,6 +293,7 @@ export function DoplnitInfoScreen() {
       }
       gap={16}
     >
+      <BackHeader />
       <PageTitle kicker={pub.name} title={L().fillTitle} />
       <Segmented
         height={38}
@@ -493,13 +509,31 @@ function BeerForm({
         <Chip label={L().volumeOther} active={draft.volume === 'custom'} onPress={() => set({ volume: 'custom' })} />
       </ChipWrap>
       {draft.volume === 'custom' ? (
-        <Field label={L().volumeCustomLabel} style={{ width: 140 }}>
-          <Input value={draft.customMl} onChangeText={(v) => set({ customMl: v.replace(/[^0-9]/g, '').slice(0, 4) })} keyboardType="number-pad" maxLength={4} autoFocus />
-        </Field>
+        <View style={[s.row, { gap: 10, alignItems: 'flex-end' }]}>
+          <Field label={L().volumeCustomLabel} style={{ width: 140 }}>
+            <Input
+              value={draft.customVolume}
+              onChangeText={(v) => set({ customVolume: v.replace(/[^0-9.,]/g, '') })}
+              keyboardType="decimal-pad"
+              maxLength={6}
+              autoFocus
+            />
+          </Field>
+          <Segmented
+            height={48}
+            style={{ width: 120 }}
+            options={[
+              { key: 'l', label: 'l' },
+              { key: 'ml', label: 'ml' },
+            ]}
+            value={draft.customUnit}
+            onChange={(customUnit) => set({ customUnit })}
+          />
+        </View>
       ) : null}
       {badPrice || badVolume ? (
         <T s={13} c={C.danger}>
-          {badPrice ? L().invalidPrice : L().invalidVolume(ALLOWED_BEER_VOLUMES_ML.join(', '))}
+          {badPrice ? L().invalidPrice : L().invalidVolume(formatVolume(BEER_VOLUME_MIN_ML), formatVolume(BEER_VOLUME_MAX_ML))}
         </T>
       ) : null}
       {adding ? (

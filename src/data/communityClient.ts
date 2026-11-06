@@ -66,6 +66,8 @@ export interface CommunityEntry {
   beers?: WireBeer[];
   beer_menu_rotates?: boolean;
   beer_change?: WireBeerChange;
+  /** `beers` keeps every size; released apps leave out odd ones and the server restores them. */
+  beer_sizes_complete?: boolean;
 }
 
 /** Backend response for a successful submission. */
@@ -112,7 +114,10 @@ export function buildCommunityEntry(input: CommunityInput, clientId: string): Co
   const city = input.city?.trim();
   if (city) entry.city = city;
   if (input.hours) entry.hours = input.hours;
-  if (input.beers) entry.beers = input.beers.map(beerToWire);
+  if (input.beers) {
+    entry.beers = input.beers.map(beerToWire);
+    entry.beer_sizes_complete = true;
+  }
   if (typeof input.beerMenuRotates === 'boolean') {
     entry.beer_menu_rotates = input.beerMenuRotates;
   }

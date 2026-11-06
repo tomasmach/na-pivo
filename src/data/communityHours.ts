@@ -54,19 +54,13 @@ export function beerFromWire(beer: WireBeer): CommunityBeer {
   return app;
 }
 
-/**
- * Serving volumes (in millilitres) the community write endpoint accepts.
- * Mirrors the backend CommunityBeerSerializer's `volume_ml` choices — keep the
- * two in sync. The menu-scan helper canonicalizes over a much wider range, so a
- * scan can hand back an in-range-but-disallowed value (e.g. 250/700/750) that
- * the write endpoint would reject with a 400; such volumes must be dropped
- * before submit or the whole contribution loops forever in the retry queue.
- */
-export const ALLOWED_BEER_VOLUMES_ML: readonly number[] = [300, 330, 400, 500, 1000];
+/** Volume range (ml) the community write endpoint accepts — mirrors CommunityBeerSerializer. */
+export const BEER_VOLUME_MIN_ML = 100;
+export const BEER_VOLUME_MAX_ML = 2000;
 
 /** True when `volumeMl` is one the community write endpoint will accept. */
 export function isAllowedBeerVolume(volumeMl: number | undefined): boolean {
-  return typeof volumeMl === 'number' && ALLOWED_BEER_VOLUMES_ML.includes(volumeMl);
+  return Number.isInteger(volumeMl) && volumeMl! >= BEER_VOLUME_MIN_ML && volumeMl! <= BEER_VOLUME_MAX_ML;
 }
 
 /** The most beers a community menu may hold — mirrors the backend cap. */

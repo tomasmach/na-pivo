@@ -110,6 +110,7 @@ from pubs.beer_catalog import (
     BeerCatalogMatchCache,
     BeerSuggestion,
     beer_menu_identity,
+    dedupe_beer_menu,
     match_beer,
     match_beer_brand,
     match_beer_identity,
@@ -2049,6 +2050,49 @@ def _alias_menu_rows_for_update(identity) -> list[PubCommunityData]:
     return [row for row in rows if normalize_pub_name(row.name) in names_by_key[row.cache_key]]
 
 
+def _shown_menu(data: dict) -> dict:
+    """The pub's menu as people see it, merged duplicates included."""
+    return get_cached_pub_details(
+        [
+            {
+                "name": data["name"],
+                "lat": data["lat"],
+                "lng": data["lng"],
+                "city": data.get("city") or None,
+            }
+        ],
+        include_next_change=False,
+    )[0] or {}
+
+
+def _restore_left_out_volumes(beers: list[dict], shown: list[dict]) -> list[dict]:
+    """Give a row sent without a size the odd size the same beer has on the menu.
+
+    Released apps up to 2.3 save the whole menu they showed and leave out any
+    size outside ALLOWED_BEER_VOLUMES_ML, so an edit there would wipe a 0,47 l
+    someone typed. A row with the same price wins. Newer apps send every size
+    and say so with ``beer_sizes_complete``.
+    """
+    odd = [
+        beer
+        for beer in shown
+        if beer.get("volume_ml") is not None and beer["volume_ml"] not in ALLOWED_BEER_VOLUMES_ML
+    ]
+    sent = {beer_menu_identity(beer) for beer in beers}
+    result = []
+    for beer in beers:
+        if beer.get("volume_ml") is None:
+            name = beer_menu_identity(beer)[0]
+            same = [row for row in odd if beer_menu_identity(row)[0] == name and beer_menu_identity(row) not in sent]
+            match = next((row for row in same if row.get("price_czk") == beer.get("price_czk")), same[0] if same else None)
+            if match is not None:
+                odd.remove(match)
+                sent.add(beer_menu_identity(match))
+                beer = {**beer, "volume_ml": match["volume_ml"]}
+        result.append(beer)
+    return result
+
+
 def _apply_beer_change(current: list[dict], change: dict) -> list[dict]:
     """Apply one fixed or removed beer to the menu as it is now.
 
@@ -2193,17 +2237,7 @@ class PubCommunityView(APIView):
                         previous = PubCommunityData.objects.select_for_update().get(pk=row.pk)
                         alias_rows = _alias_menu_rows_for_update(identity)
                         # The change applies to the menu people see for this pub.
-                        shown = get_cached_pub_details(
-                            [
-                                {
-                                    "name": data["name"],
-                                    "lat": data["lat"],
-                                    "lng": data["lng"],
-                                    "city": data.get("city") or None,
-                                }
-                            ],
-                            include_next_change=False,
-                        )[0] or {}
+                        shown = _shown_menu(data)
                         current_beers = list(shown.get("beers") or [])
                         historical = list(shown.get("historical_beers") or [])
                         beers = _apply_beer_change(current_beers, change)
@@ -2263,6 +2297,14 @@ class PubCommunityView(APIView):
                     )
                     current_beers = list(previous.beers or []) if previous else []
                     historical = list(previous.historical_beers or []) if previous else []
+                    if has_beers:
+                        if not data.get("beer_sizes_complete"):
+                            beers = _restore_left_out_volumes(
+                                beers, list(_shown_menu(data).get("beers") or [])
+                            )
+                        # Two spellings of one beer at one volume ("Primátor 11"
+                        # and "Primátor 11°") are one menu row; the first one wins.
+                        beers = dedupe_beer_menu(beers)
 
                 defaults = {
                     "name": identity.name,

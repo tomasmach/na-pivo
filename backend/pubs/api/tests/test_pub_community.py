@@ -5,6 +5,7 @@ precedence in the pub-hours read path (POST /v1/pub-hours).
 
 from __future__ import annotations
 
+import uuid
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
@@ -256,6 +257,134 @@ def test_submit_beers_only(client):
 
 
 @pytest.mark.django_db
+@pytest.mark.parametrize("volume_ml", [100, 300, 470, 568, 2000, None])
+def test_menu_beer_takes_any_realistic_volume(client, volume_ml):
+    """A menu says 0,47 l or 0,568 l; released apps keep sending 300–1000."""
+    token = _register(client)
+    beers = [{"name": "Pilsner Urquell", "price_czk": 69, "volume_ml": volume_ml}]
+    resp = client.post("/v1/pub-community", data=_payload(beers=beers), format="json", **_auth(token))
+
+    assert resp.status_code == status.HTTP_200_OK, resp.json()
+    assert PubCommunityData.objects.get().beers == beers
+
+
+@pytest.mark.django_db
+def test_menu_write_keeps_one_row_per_beer_and_volume(client):
+    token = _register(client)
+    beers = [
+        {"name": "Stodolní 11", "price_czk": 40, "volume_ml": 500},
+        {"name": "Stodolní 11°", "price_czk": 42, "volume_ml": 500},
+        {"name": "Stodolní 11°", "price_czk": 30, "volume_ml": 300},
+    ]
+    resp = client.post("/v1/pub-community", data=_payload(beers=beers), format="json", **_auth(token))
+
+    assert resp.status_code == status.HTTP_200_OK, resp.json()
+    assert [(b["name"], b["volume_ml"]) for b in PubCommunityData.objects.get().beers] == [
+        ("Stodolní 11", 500),
+        ("Stodolní 11°", 300),
+    ]
+
+
+@pytest.mark.django_db
+def test_released_app_menu_edit_keeps_odd_sizes(client):
+    """App 2.3 saves the whole menu and leaves out sizes it cannot show."""
+    token = _register(client)
+    menu = [
+        {"name": "Pilsner Urquell", "price_czk": 69, "volume_ml": 470},
+        {"name": "Pilsner Urquell", "price_czk": 79, "volume_ml": 568},
+        {"name": "Kozel 11", "price_czk": 45, "volume_ml": 500},
+    ]
+    client.post("/v1/pub-community", data=_payload(beers=menu), format="json", **_auth(token))
+
+    released_app_edit = [
+        {"name": "Pilsner Urquell", "price_czk": 79},
+        {"name": "Pilsner Urquell", "price_czk": 69},
+        {"name": "Kozel 11", "price_czk": 49, "volume_ml": 500},
+    ]
+    resp = client.post(
+        "/v1/pub-community",
+        data=_payload(client_id=str(uuid.uuid4()), beers=released_app_edit),
+        format="json",
+        **_auth(token),
+    )
+
+    assert resp.status_code == status.HTTP_200_OK, resp.json()
+    assert [(b["price_czk"], b["volume_ml"]) for b in PubCommunityData.objects.get().beers] == [
+        (79, 568),
+        (69, 470),
+        (49, 500),
+    ]
+
+
+@pytest.mark.django_db
+def test_new_app_menu_write_is_stored_as_sent(client):
+    token = _register(client)
+    menu = [
+        {"name": "Pilsner Urquell", "price_czk": 59, "volume_ml": None},
+        {"name": "Pilsner Urquell", "price_czk": 69, "volume_ml": 470},
+    ]
+    client.post("/v1/pub-community", data=_payload(beers=menu), format="json", **_auth(token))
+
+    resp = client.post(
+        "/v1/pub-community",
+        data=_payload(client_id=str(uuid.uuid4()), beers=menu[:1], beer_sizes_complete=True),
+        format="json",
+        **_auth(token),
+    )
+
+    assert resp.status_code == status.HTTP_200_OK, resp.json()
+    assert [(b["price_czk"], b["volume_ml"]) for b in PubCommunityData.objects.get().beers] == [(59, None)]
+
+
+@pytest.mark.django_db
+def test_released_app_menu_edit_keeps_odd_size_of_a_merged_duplicate(client):
+    from django.utils import timezone
+
+    from pubs.identity import normalize_pub_name
+    from pubs.models import CanonicalPub, PubAlias
+
+    token = _register(client)
+    canonical = CanonicalPub.objects.create(
+        cache_key=_KEY, name=_NAME, name_key=normalize_pub_name(_NAME), lat=_LAT, lng=_LNG, city="Praha"
+    )
+    PubAlias.objects.create(
+        canonical_pub=canonical, cache_key=_KEY, name=_NAME,
+        name_key=normalize_pub_name(_NAME), lat=_LAT, lng=_LNG, is_primary=True,
+    )
+    PubAlias.objects.create(
+        canonical_pub=canonical, cache_key="u2fkbq00", name="Stará hospoda",
+        name_key=normalize_pub_name("Stará hospoda"), lat=_LAT, lng=_LNG,
+    )
+    PubCommunityData.objects.create(
+        cache_key="u2fkbq00", name="Stará hospoda", lat=_LAT, lng=_LNG,
+        beers=[{"name": "Pilsner Urquell", "price_czk": 69, "volume_ml": 470}],
+        beers_updated_at=timezone.now(),
+    )
+
+    resp = client.post(
+        "/v1/pub-community",
+        data=_payload(beers=[{"name": "Pilsner Urquell", "price_czk": 79}]),
+        format="json",
+        **_auth(token),
+    )
+
+    assert resp.status_code == status.HTTP_200_OK, resp.json()
+    assert [(b["price_czk"], b["volume_ml"]) for b in PubCommunityData.objects.get(cache_key=_KEY).beers] == [
+        (79, 470)
+    ]
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("volume_ml", [0, 99, 2001])
+def test_menu_beer_rejects_a_nonsense_volume(client, volume_ml):
+    token = _register(client)
+    beers = [{"name": "Pilsner Urquell", "price_czk": 69, "volume_ml": volume_ml}]
+    resp = client.post("/v1/pub-community", data=_payload(beers=beers), format="json", **_auth(token))
+
+    assert resp.status_code == status.HTTP_400_BAD_REQUEST
+
+
+@pytest.mark.django_db
 def test_submit_empty_beer_menu_deactivates_price_index(client):
     token = _register(client)
     first = client.post(
@@ -438,7 +567,7 @@ def test_submit_validation_errors(client):
     )
     bad_volume = client.post(
         "/v1/pub-community",
-        data=_payload(beers=[{"name": "X", "price_czk": 50, "volume_ml": 250}]),
+        data=_payload(beers=[{"name": "X", "price_czk": 50, "volume_ml": 2500}]),
         format="json",
         **_auth(token),
     )

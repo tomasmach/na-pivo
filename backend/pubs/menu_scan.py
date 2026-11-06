@@ -25,14 +25,15 @@ from django.utils.translation import gettext
 from PIL import Image, ImageOps, UnidentifiedImageError
 from PIL.Image import DecompressionBombError
 
-# The volume set and price bounds are the SAME domain rules the community-save
+# The volume and price bounds are the SAME domain rules the community-save
 # endpoint (CommunityBeerSerializer) validates against; sourcing them from the
 # domain layer keeps the scan output and the write contract from ever drifting
 # apart — a canonicalized beer is then guaranteed to pass the write serializer.
 from pubs.beer_catalog import (
-    ALLOWED_BEER_VOLUMES_ML,
     BEER_PRICE_MAX_CZK,
     BEER_PRICE_MIN_CZK,
+    BEER_VOLUME_MAX_ML,
+    BEER_VOLUME_MIN_ML,
     normalize_beer_payload,
 )
 from pubs.enrichment.openrouter import MAX_DRINKS, OpenRouterVisionSource
@@ -47,7 +48,7 @@ _MAX_IMAGE_PIXELS = 50_000_000
 # scanned value can never be prefilled into a row that POST /v1/pub-community
 # would 400 on — that would loop forever in the offline queue while the optimistic
 # UI claims the contribution was saved. Both the price range and the allowed glass
-# volumes come from pubs.beer_catalog so the two paths can never drift apart.
+# volume range come from pubs.beer_catalog so the two paths can never drift apart.
 _PRICE_MIN, _PRICE_MAX = BEER_PRICE_MIN_CZK, BEER_PRICE_MAX_CZK
 
 
@@ -144,21 +145,7 @@ def _coerce_int(value, *, low: int, high: int) -> int | None:
 
 
 def _coerce_volume(value) -> int | None:
-    """Coerce a model-supplied volume to an allowed glass size, else None.
-
-    The community-save contract (CommunityBeerSerializer.volume_ml) accepts ONLY
-    ``ALLOWED_BEER_VOLUMES_ML``, so a scanned volume outside that set (e.g. 250,
-    568, 700) is nulled out here rather than passed through — otherwise the
-    prefilled row would 400 on save and never land. Set membership is the whole
-    rule; no separate range bound is needed.
-    """
-    if value is None:
-        return None
-    try:
-        number = int(value)
-    except (TypeError, ValueError):
-        return None
-    return number if number in ALLOWED_BEER_VOLUMES_ML else None
+    return _coerce_int(value, low=BEER_VOLUME_MIN_ML, high=BEER_VOLUME_MAX_ML)
 
 
 def _coerce_other_volume(value) -> int | None:

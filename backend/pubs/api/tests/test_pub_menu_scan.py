@@ -277,17 +277,16 @@ def test_unsaveable_price_and_volume_are_nulled(client, monkeypatch):
     """Scan output must match the community-save contract, else the prefilled row
     400s forever in the offline queue.
 
-    CommunityBeerSerializer caps ``price_czk`` at 1000 and only accepts
-    ``volume_ml`` in {300,330,400,500,1000}. A scanned price > 1000 or a volume
-    outside that set must come back as null (not passed straight through), while a
-    legal value survives unchanged.
+    CommunityBeerSerializer caps ``price_czk`` at 1000 and ``volume_ml`` at
+    100–2000. A scanned value outside those bounds must come back as null (not
+    passed straight through), while a legal value survives unchanged.
     """
     content = json.dumps(
         {
             "beers": [
-                {"name": "Pilsner Urquell", "price_czk": 1500, "volume_ml": 250},
-                {"name": "Birell", "price_czk": 1290, "volume_ml": 700},
-                {"name": "Kozel 11", "price_czk": 49, "volume_ml": 330},
+                {"name": "Pilsner Urquell", "price_czk": 1500, "volume_ml": 50},
+                {"name": "Birell", "price_czk": 1290, "volume_ml": 2500},
+                {"name": "Kozel 11", "price_czk": 49, "volume_ml": 470},
             ]
         }
     )
@@ -302,14 +301,14 @@ def test_unsaveable_price_and_volume_are_nulled(client, monkeypatch):
     )
     assert resp.status_code == status.HTTP_200_OK, resp.content
     out = resp.json()["beers"]
-    # Over-cap price (1500, 1290) and disallowed volumes (250, 700) are nulled.
+    # Over-cap price (1500, 1290) and out-of-range volumes (50, 2500) are nulled.
     assert out[0]["price_czk"] is None
     assert out[0]["volume_ml"] is None
     assert out[1]["price_czk"] is None
     assert out[1]["volume_ml"] is None
     # An in-contract price/volume passes through untouched.
     assert out[2]["price_czk"] == 49
-    assert out[2]["volume_ml"] == 330
+    assert out[2]["volume_ml"] == 470
 
 
 @pytest.mark.django_db

@@ -45,6 +45,11 @@ describe('buildCommunityEntry', () => {
     city: '  Praha  ',
   };
 
+  it('tells the server a menu keeps every size, so it never restores one', () => {
+    expect(buildCommunityEntry({ ...base, beers: [{ name: 'Plzeň', volumeMl: 470 }] }, 'c').beer_sizes_complete).toBe(true);
+    expect(buildCommunityEntry({ ...base, hours: undefined }, 'c')).not.toHaveProperty('beer_sizes_complete');
+  });
+
   it('sends a one-beer change with the full menu, sizes as null when unknown', () => {
     const beers = [{ name: 'Plzeň', priceCzk: 65 }];
     expect(
