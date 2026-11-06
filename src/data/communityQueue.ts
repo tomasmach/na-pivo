@@ -110,6 +110,7 @@ export function enqueuePubCommunity(entry: CommunityEntry): Promise<CommunityRes
         ...entry,
         hours: entry.hours ?? latest.hours,
         beers: entry.beers ?? latest.beers,
+        beer_sizes_complete: entry.beers ? entry.beer_sizes_complete : latest.beer_sizes_complete,
         beer_menu_rotates: entry.beer_menu_rotates ?? latest.beer_menu_rotates,
       });
     } else {

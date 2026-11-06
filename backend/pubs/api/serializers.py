@@ -2313,6 +2313,9 @@ class PubCommunityRequestSerializer(PubInputSerializer):
     # Optional: the one beer this write changes. When present the server applies
     # it to the current menu and `beers` is only what older servers store.
     beer_change = CommunityBeerChangeSerializer(required=False)
+    # Sent by apps that keep every size in `beers`; released ones leave out
+    # sizes they cannot show, and the server puts those back.
+    beer_sizes_complete = serializers.BooleanField(required=False)
 
     def validate_hours(self, value: dict | None) -> dict | None:
         if value is None:
