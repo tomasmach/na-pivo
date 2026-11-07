@@ -114,7 +114,8 @@ def test_link_is_the_same_on_every_read_and_unguessable(party):
     token = plan["invite_url"].rsplit("/", 1)[-1]
     assert len(token) >= 24
     assert FriendPubActivity.objects.get(public_id=plan["id"]).guest_token_hash != token
-    assert Client().get(f"/pozvanka/{token[:-1]}x").status_code == 404
+    other = "y" if token.endswith("x") else "x"
+    assert Client().get(f"/pozvanka/{token[:-1]}{other}").status_code == 404
 
 
 def test_guest_sees_who_goes_like_an_invitee(party):

@@ -171,8 +171,8 @@ def test_city_list_builds_rows_only_for_the_pubs_it_shows(client, monkeypatch):
     page = client.get("/hospody/praha").content.decode()
 
     assert page.count('class="np-pubrow"') == 20 and "z 60" in page
-    # The page and the 20 best of the structured list, not all 60.
-    assert len(built) == 40
+    # Only the 20 the page shows; the structured list names the same pubs, not all 60.
+    assert len(built) == 20
 
 
 def test_unknown_city_is_404_with_other_cities(client):

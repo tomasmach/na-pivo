@@ -17,6 +17,7 @@ from django.utils.text import slugify
 from django.utils.translation import gettext
 
 from pubs.api.pub_beers_views import _places, city_name
+from pubs.api.views import _with_pub_name_corrections
 from pubs.beer_catalog import beer_menu_identity
 from pubs.enrichment import names_match
 from pubs.models import (
@@ -30,7 +31,7 @@ from pubs.price_map import public_floor, shows_price
 from pubs.pub_events import PubEvent
 from pubs.web.dates import time_tag, with_times
 from pubs.web.pages import render_page, web_page
-from pubs.web.places import place_name, pub_name
+from pubs.web.places import is_private_pub, place_name, pub_name
 from pubs.web.public_common import (
     PAGE_CACHE_SECONDS,
     breadcrumbs,
@@ -69,7 +70,7 @@ def _menu_changes(start: datetime, end: datetime) -> list[dict]:
             kind=PubContributionLog.Kind.BEERS, created_at__gte=start, created_at__lt=end
         )
         .order_by("created_at", "id")
-        .values_list("cache_key", "name", "payload", "created_at")[:2000]
+        .values_list("cache_key", "name", "payload", "created_at", "lat", "lng")[:2000]
     )
     keys = {write[0] for write in writes}
     floor = public_floor()
@@ -86,7 +87,7 @@ def _menu_changes(start: datetime, end: datetime) -> list[dict]:
     ):
         previous[key] = (name, _beers(payload))
     changes: list[dict] = []
-    for key, name, payload, at in writes:
+    for key, name, payload, at, lat, lng in writes:
         beers = _beers(payload)
         before = previous.get(key)
         previous[key] = (name, beers)
@@ -100,7 +101,7 @@ def _menu_changes(start: datetime, end: datetime) -> list[dict]:
                 continue
             current = now_on.get(identity)
             if current is None:
-                changes.append({"kind": "gone", "key": key, "name": name, "at": at, "beer": beer["name"]})
+                changes.append({"kind": "gone", "key": key, "name": name, "at": at, "lat": lat, "lng": lng, "beer": beer["name"]})
             elif (
                 isinstance(beer.get("price_czk"), int)
                 and isinstance(current.get("price_czk"), int)
@@ -108,10 +109,26 @@ def _menu_changes(start: datetime, end: datetime) -> list[dict]:
                 and beer["price_czk"] != current["price_czk"]
             ):
                 changes.append({
-                    "kind": "price", "key": key, "name": name, "at": at, "beer": current["name"],
+                    "kind": "price", "key": key, "name": name, "at": at, "lat": lat, "lng": lng, "beer": current["name"],
                     "old": beer["price_czk"], "new": current["price_czk"],
                 })
     return changes
+
+
+def _shown_names(records: list[tuple[str, dict | None, float | None, float | None]]) -> list[str]:
+    """The name the web shows for each (name, place, lat, lng): corrected as the catalogue corrects it,
+    then the cell's own spelling, but only when it is the same pub and not another one in the cell."""
+
+    corrected = _with_pub_name_corrections(
+        [{"name": name, "position": {"lat": lat, "lon": lng}} for name, _, lat, lng in records]
+    )
+    names = []
+    for (name, place, _, _), item in zip(records, corrected, strict=True):
+        if place and (names_match(place["name"], item["name"]) or names_match(place["name"], name)):
+            names.append(place["name"])
+        else:
+            names.append(item["name"])
+    return names
 
 
 def _feed(week: int) -> dict:
@@ -138,20 +155,21 @@ def _feed(week: int) -> dict:
             price, volume = prices.get((tap.cache_key, tap.product_id), (None, None))
             items.append({
                 "kind": "tap", "key": tap.cache_key, "name": tap.pub_name, "at": tap.observed_at,
-                "beer": tap.product.name,
+                "lat": tap.lat, "lng": tap.lng, "beer": tap.product.name,
                 "price": price if (volume or 500) == 500 and price and shows_price(price, 500, public_floor()) else None,
             })
         items += _menu_changes(start, end)
         for pub in UserAddedPub.objects.filter(active=True, created_at__gte=start, created_at__lt=end).order_by(
             "-created_at"
         )[:200]:
-            items.append({"kind": "pub", "key": pub.cache_key, "name": pub.name, "at": pub.created_at, "city": pub.city})
+            items.append({"kind": "pub", "key": pub.cache_key, "name": pub.name, "at": pub.created_at, "city": pub.city,
+                          "lat": pub.lat, "lng": pub.lng})
         for event in PubEvent.objects.filter(
             status=PubEvent.Status.VERIFIED, verified_at__gte=start, verified_at__lt=end, ends_at__gt=timezone.now()
         ).order_by("-verified_at")[:100]:
             items.append({
                 "kind": "event", "key": event.cache_key, "name": event.name, "at": event.verified_at,
-                "city": event.city, "title": event.title, "starts": timezone.localdate(event.starts_at).isoformat(),
+                "lat": event.lat, "lng": event.lng, "city": event.city, "title": event.title, "starts": timezone.localdate(event.starts_at).isoformat(),
             })
 
         keys = {item["key"] for item in items}
@@ -161,16 +179,23 @@ def _feed(week: int) -> dict:
             PubCommunityData.objects.filter(cache_key__in=keys).exclude(city="").values_list("cache_key", "city")
         )
         shown = []
-        for item in sorted(items, key=lambda item: item["at"], reverse=True):
-            if item["key"] in hidden:
+        items = sorted((item for item in items if item["key"] not in hidden), key=lambda item: item["at"], reverse=True)
+        # A pub the catalogue does not list is corrected at the position its own record gives.
+        names = _shown_names([
+            (item["name"], place, place["lat"], place["lng"]) if (place := places.get(item["key"]))
+            else (item["name"], None, item["lat"], item["lng"])
+            for item in items
+        ])
+        for item, name in zip(items, names, strict=True):
+            if is_private_pub(name):
                 continue
             place = places.get(item["key"])
             raw_city = item.get("city") or (place or {}).get("city") or menu_cities.get(item["key"]) or ""
+            item["name"] = name
             item["city"] = city_name(raw_city)
             item["district"] = raw_city if raw_city != item["city"] else ""
-            if place and names_match(place["name"], item["name"]):
-                item["name"] = place["name"]
             item["day"] = timezone.localdate(item.pop("at")).isoformat()
+            del item["lat"], item["lng"]
             shown.append(item)
             if len(shown) == MAX_ITEMS:
                 break
@@ -184,11 +209,15 @@ def _new_pubs() -> list[dict]:
         rows = UserAddedPub.objects.filter(
             active=True, created_at__gte=timezone.now() - timedelta(days=30)
         ).order_by("-created_at")[:20]
-        return [
-            {"key": pub.cache_key, "name": pub.name, "city": city_name(pub.city), "district": pub.city,
-             "day": timezone.localdate(pub.created_at).isoformat()}
-            for pub in rows
-        ]
+        places = _places(sorted({pub.cache_key for pub in rows}))
+        names = _shown_names([(pub.name, places.get(pub.cache_key), pub.lat, pub.lng) for pub in rows])
+        shown = []
+        for pub, name in zip(rows, names, strict=True):
+            if is_private_pub(name):
+                continue
+            shown.append({"key": pub.cache_key, "name": name, "city": city_name(pub.city), "district": pub.city,
+                          "day": timezone.localdate(pub.created_at).isoformat()})
+        return shown
 
     return cache.get_or_set("web:news:new-pubs", build, PAGE_CACHE_SECONDS)
 

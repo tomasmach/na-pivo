@@ -48,11 +48,14 @@ def test_each_document_is_indexed_in_both_languages_with_every_anchor_the_app_li
 
 
 @pytest.mark.django_db
-def test_the_terms_section_called_obsah_is_not_the_skip_link_target(client):
-    html = client.get("/podminky").content.decode()
+@pytest.mark.parametrize("path", ["/podminky", "/ochrana-soukromi", "/en/terms", "/en/privacy"])
+def test_the_main_text_keeps_the_content_anchor_of_the_old_documents(client, path):
+    html = client.get(path).content.decode()
 
-    assert html.count('id="obsah"') == 1
-    assert 'href="#stranka"' in html and '<main class="np-main" id="stranka">' in html
+    # The terms section called "obsah" stays the only one, so the skip link goes to the main text.
+    assert html.count('id="obsah"') == (1 if "podminky" in path or "terms" in path else 0)
+    assert html.count('id="content"') == 1
+    assert 'href="#content"' in html and '<main class="np-main" id="content">' in html
 
 
 @pytest.mark.django_db

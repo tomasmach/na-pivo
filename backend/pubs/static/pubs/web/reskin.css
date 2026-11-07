@@ -187,7 +187,7 @@ table.rs-strips { display: block; width: 100%; border-collapse: collapse; }
 .rs-row__link::after { content: ""; position: absolute; inset: 0; border-radius: var(--np-radius); }
 .rs-row--link:hover .rs-row__link::after { background: var(--np-tint); }
 .rs-row--link .rs-row__link:hover { text-decoration: none; }
-.rs-row__chevron { position: absolute; top: 50%; right: 12px; display: flex; color: var(--np-muted); transform: translateY(-50%); }
+.rs-row__chevron { position: absolute; top: 50%; right: 12px; display: flex; color: var(--np-muted); transform: translateY(-50%); pointer-events: none; }
 
 .rs-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; }
 .rs-tile { display: grid; gap: 8px; padding: 20px 18px; border-radius: var(--np-radius); }

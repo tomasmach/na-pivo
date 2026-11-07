@@ -40,8 +40,9 @@ def _document(request: HttpRequest, name: str, document: str, title: str, crumb:
         {
             "crumbs": [{"label": "Na pivo", "url": web_reverse("home")}, {"label": crumb}],
             "document": f"web/legal/{document}_{lang}.html",
-            # The terms have a section with id "obsah", the shell's usual skip-link target.
-            "main_id": "stranka",
+            # The old GitHub Pages documents kept "#content" for the main text, and their redirect keeps the hash.
+            # It also leaves "obsah", the shell's usual skip-link target, to the terms section of that name.
+            "main_id": "content",
             "structured_data": structured,
         },
         title=title,

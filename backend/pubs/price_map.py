@@ -23,7 +23,7 @@ from django.utils.translation import gettext
 from PIL import Image, ImageDraw, ImageFont
 
 from pubs.api.pub_beers_views import CITY_ALIASES, _merged_aliases, _places, city_name
-from pubs.api.views import _globally_reported_pub_cache_keys
+from pubs.api.views import _globally_reported_pub_cache_keys, _with_pub_name_corrections
 from pubs.enrichment import names_match
 from pubs.enrichment.coverage import coverage_country
 from pubs.models import (
@@ -155,10 +155,12 @@ def prague_district(raw: str, lat: float | None = None, lng: float | None = None
         return ""
     numbered = _PRAGUE_NUMBERED.match(city)
     said = "" if city == "Praha" or city in CITY_ALIASES else f"Praha {numbered.group(1)}" if numbered else city
-    located = district_at(lat, lng)
-    if not located or (numbered and near_district(said, lat, lng)):
+    if lat is None or lng is None:
         return said
-    return located
+    # With a position, the address counts only where it can be true: in its district or a few metres off it.
+    if numbered and near_district(said, lat, lng):
+        return said
+    return district_at(lat, lng)
 
 
 def city_slug(name: str) -> str:
@@ -270,17 +272,43 @@ def _cheapest(rows: list[PubPriceIndex], in_city: str = "") -> list[dict]:
     return picked
 
 
+def without_private_pubs(rows: list[PubPriceIndex], targets: dict[str, str]) -> list[PubPriceIndex]:
+    """Prices of pubs anyone can walk into, judged by the name the web shows like the catalogue does.
+
+    A price row keeps the name it was written under. A pub renamed to "soukromý výčep" since, or a
+    duplicate merged into one, is private all the same. ``targets`` maps a merged duplicate to its pub.
+    Each row gets ``corrected_name``, the name after the community's corrections.
+    """
+
+    places = _places(sorted({row.cache_key for row in rows} | {targets[row.cache_key] for row in rows if row.cache_key in targets}))
+    renamed = _with_pub_name_corrections(
+        [{"name": row.name, "position": {"lat": row.lat, "lon": row.lng}} for row in rows]
+    )
+    kept = []
+    for row, item in zip(rows, renamed, strict=True):
+        row.corrected_name = item["name"]
+        names = [row.name, item["name"]]
+        place = places.get(row.cache_key)
+        if place and any(names_match(place["name"], name) for name in names):
+            names.append(place["name"])
+        if (target := targets.get(row.cache_key)) and target in places:
+            names.append(places[target]["name"])
+        if not any(is_private_pub(name) for name in names):
+            kept.append(row)
+    return kept
+
+
 def _one_price_per_pub(rows: list[PubPriceIndex], since: datetime, fresh_since: datetime) -> list[PubPriceIndex]:
     """The newest confirmed price of every public pub: merged duplicates count once, hidden and private pubs not at all."""
 
-    rows = [row for row in rows if not is_private_pub(row.name)]
-    confirmed = _confirmed_since(rows, since)
     # A duplicate merged into another pub is that pub: it counts once, with the newest price.
     targets: dict[str, str] = {}
     alias_names: dict[str, list[str]] = defaultdict(list)
     for key, target, name in _merged_aliases().values_list("cache_key", "canonical_pub__cache_key", "name"):
         targets[key] = target
         alias_names[key].append(name)
+    rows = without_private_pubs(rows, targets)
+    confirmed = _confirmed_since(rows, since)
     pubs: dict[str, PubPriceIndex] = {}
     for row in sorted(
         (row for row in rows if row.cache_key in confirmed), key=lambda row: confirmed[row.cache_key]
@@ -295,6 +323,28 @@ def _one_price_per_pub(rows: list[PubPriceIndex], since: datetime, fresh_since: 
     return [
         row for row in pubs.values() if row.cache_key not in excluded and row.pub_key not in excluded
     ]
+
+
+def _catalogue_districts(rows: list[PubPriceIndex]) -> dict[str, str]:
+    """The Prague district the catalogue gives each priced pub it lists, so a district's median counts the pubs its pages show."""
+
+    from pubs.web.pubs_data import catalogue
+
+    by_cell: dict[str, list[dict]] = defaultdict(list)
+    for pub in catalogue()["pubs"]:
+        by_cell[pub["k"]].append(pub)
+    found = {}
+    for row in rows:
+        pub = next(
+            (
+                pub for pub in by_cell.get(row.pub_key, ())
+                if any(names_match(pub["n"], name) for name in (row.name, row.corrected_name, *row.alias_names))
+            ),
+            None,
+        )
+        if pub is not None:
+            found[row.cache_key] = pub["d"] if city_name(pub["d"]) == "Praha" else ""
+    return found
 
 
 def build_price_map(now: datetime | None = None) -> dict:
@@ -319,6 +369,7 @@ def build_price_map(now: datetime | None = None) -> dict:
         [row for row in rows if shows_price(row.price_czk, row.volume_ml, floor)], since, fresh_since
     )
 
+    listed = _catalogue_districts(rows)
     # Spellings that share an address ("Plzen", "Plzeň") are one city under its most common name.
     by_slug: dict[str, list[PubPriceIndex]] = defaultdict(list)
     spellings: dict[str, Counter] = defaultdict(Counter)
@@ -331,7 +382,7 @@ def build_price_map(now: datetime | None = None) -> dict:
             spellings[slug][city] += 1
             if (posted := city_slug(city_name(row.city))) != slug:
                 merged[posted] = slug
-        if district := prague_district(row.city, row.lat, row.lng):
+        if district := listed.get(row.cache_key, prague_district(row.city, row.lat, row.lng)):
             districts[district].append(row)
     cities = {spellings[slug].most_common(1)[0][0]: group for slug, group in by_slug.items()}
     return {

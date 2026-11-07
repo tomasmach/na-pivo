@@ -30,7 +30,7 @@ from pubs.api.pub_beers_views import (
     weekly_pub_beers,
 )
 from pubs.api.views import _globally_reported_pub_cache_keys, _with_pub_name_corrections
-from pubs.beer_catalog import BeerCatalogMatchCache, match_beer, suggest_beers
+from pubs.beer_catalog import BeerCatalogMatchCache, poured_product, suggest_beers
 from pubs.enrichment import names_match
 from pubs.identity import normalize_pub_name, pub_identity_key
 from pubs.models import (
@@ -625,12 +625,12 @@ def _with_beer_pages(rows: list[dict]) -> list[dict]:
     """Each beer on the menu with the key of its beer page, when it has one."""
 
     match_cache = BeerCatalogMatchCache()
-    matches = {row["name"]: match_beer(row["name"], fuzzy=False, match_cache=match_cache) for row in rows}
-    keys = {match.product.key for match in matches.values() if match and match.product}
+    products = {row["name"]: poured_product(row["name"], match_cache) for row in rows}
+    keys = {product.key for product in products.values() if product}
     with_page = set(BeerPage.objects.filter(kind=BeerPage.Kind.BEER, key__in=keys).values_list("key", flat=True))
     for row in rows:
-        match = matches[row["name"]]
-        key = match.product.key if match and match.product else ""
+        product = products[row["name"]]
+        key = product.key if product else ""
         row["beer_page"] = key if key in with_page else ""
     return rows
 

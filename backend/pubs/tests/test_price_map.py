@@ -524,7 +524,8 @@ def test_city_list_skips_pubs_the_catalogue_puts_in_another_city():
 
     assert data["cities"][0]["name"] == "Brno"
     assert data["cities"][0]["cheapest"] == []
-    assert [pub["city"] for pub in data["cheapest"]] == ["Praha 7"]
+    # Its address names Praha 7, but it stands in Brno, so it is in no Prague district.
+    assert [pub["city"] for pub in data["cheapest"]] == ["Praha"]
 
 
 def test_city_addresses_drop_diacritics_and_spaces():

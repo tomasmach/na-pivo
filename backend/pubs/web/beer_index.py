@@ -35,11 +35,12 @@ from pubs.price_map import (
     _in_czechia,
     _stats,
     shows_price,
+    without_private_pubs,
 )
 from pubs.regions import REGION_CODES, region_of
 from pubs.web.dates import time_tag, with_times
 from pubs.web.pages import render_page, web_page
-from pubs.web.places import is_private_pub
+from pubs.web.places import municipality
 from pubs.web.public_common import (
     breadcrumbs,
     og_image,
@@ -78,9 +79,9 @@ def _regional(snapshot: PubPriceSnapshot) -> dict:
     ))
     # The same floor as the snapshot's own /ceny numbers.
     floor = snapshot.data.get("min_czk", PUBLIC_MIN_CZK)
-    rows = [row for row in rows if shows_price(row.price_czk, row.volume_ml, floor) and not is_private_pub(row.name)]
-    confirmed = _confirmed_since(rows, now - timedelta(days=WINDOW_DAYS))
     targets = dict(_merged_aliases().values_list("cache_key", "canonical_pub__cache_key"))
+    rows = without_private_pubs([row for row in rows if shows_price(row.price_czk, row.volume_ml, floor)], targets)
+    confirmed = _confirmed_since(rows, now - timedelta(days=WINDOW_DAYS))
     pubs: dict[str, PubPriceIndex] = {}
     for row in sorted((row for row in rows if row.cache_key in confirmed), key=lambda row: confirmed[row.cache_key]):
         row.stale = False
@@ -93,7 +94,8 @@ def _regional(snapshot: PubPriceSnapshot) -> dict:
             continue
         if code := region_of(row.lat, row.lng):
             groups[code].append(row)
-            if city := city_name(row.city):
+            # The same town names as /ceny: "Louny 1" votes for Louny.
+            if city := municipality(city_name(row.city)):
                 city_votes[city][code] += 1
     result = {
         "regions": {

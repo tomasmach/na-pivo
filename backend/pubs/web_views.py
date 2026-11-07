@@ -683,7 +683,7 @@ def _beer_texts(kind: str, page: BeerPage | None, key: str) -> dict:
             "h1": gettext("Kde se čepuje %(beer)s") % values,
             "page_title": gettext("Piva značky %(brand)s a kde se čepují") % {"brand": name},
             "description": gettext(
-                "Kde se čepuje %(brand)s: %(pubs)s, %(beers)s s vlastní stránkou. U každé hospody cena a datum posledního potvrzení."
+                "Kde se čepuje %(brand)s: %(pubs)s, %(beers)s s vlastní stránkou. U každé hospody datum posledního potvrzení a cena, pokud ji někdo zapsal."
             ) % {"brand": name, "beers": _beers_label(len(data["beers"])), "pubs": _pubs_label(data["pubs"])},
             "known": True,
         }
@@ -691,7 +691,7 @@ def _beer_texts(kind: str, page: BeerPage | None, key: str) -> dict:
     description = (
         gettext("Kde se čepuje %(beer)s a za kolik: %(pubs)s s čerstvým zápisem, obvykle %(price)s Kč za 0,5 l.")
         if data["median"] is not None
-        else gettext("Kde se čepuje %(beer)s a za kolik: %(pubs)s s čerstvým zápisem, u každé cena a datum posledního potvrzení.")
+        else gettext("Kde se čepuje %(beer)s a za kolik: %(pubs)s s čerstvým zápisem, u každé datum posledního potvrzení a cena, pokud ji někdo zapsal.")
     ) % values
     return {
         "h1": gettext("Kde se čepuje %(beer)s") % values,
@@ -699,6 +699,17 @@ def _beer_texts(kind: str, page: BeerPage | None, key: str) -> dict:
         "description": description,
         "known": True,
     }
+
+
+def _later_page_title(kind: str, name: str, number: int) -> str:
+    """Every page of a long pub list is its own in search results: it says which one.
+
+    The title is short enough for the longest beer and brand names in the catalogue to stay within 60 characters.
+    """
+
+    if kind == BeerPage.Kind.BRAND:
+        return gettext("Piva značky %(brand)s, strana %(page)s") % {"brand": name, "page": number}
+    return gettext("%(beer)s, strana %(page)s") % {"beer": name, "page": number}
 
 
 def _snapshot_texts(snapshot: PubPriceSnapshot | None, area: dict | None) -> dict:
@@ -1086,11 +1097,18 @@ def _find_pubs(rows: list[dict], query: str, sort: str) -> list[dict]:
     from pubs.web.pubs_data import fold
 
     words = fold(query).split()
-    found = [row for row in rows if all(word in fold(f"{row['name']} {row.get('city', '')}") for word in words)]
+    found = [row for row in rows if all(word in fold(row["find"]) for word in words)]
     if sort == "cheap":
         found = sorted(found, key=lambda row: (not row["fresh"], not row["per_half_litre"], row["per_half_litre"] or 0))
     first_old = next((index for index, row in enumerate(found) if not row["fresh"]), None)
     return [{**row, "first_old": index == first_old} for index, row in enumerate(found)]
+
+
+def _find_text(pub: dict) -> str:
+    """What a search over a beer's pubs looks in: the name and the town as stored and as the page shows it."""
+
+    city = pub.get("city") or ""
+    return " ".join(dict.fromkeys(part for part in (pub_name(pub["name"]), city, place_name(city)) if part))
 
 
 def _pubs_query(query: str, sort: str, number: int) -> str:
@@ -1120,6 +1138,7 @@ def beer_pages(request: HttpRequest, kind: str = BeerPage.Kind.LIST, key: str = 
         {
             **pub,
             "name": pub_name(pub["name"]),
+            "find": _find_text(pub),
             "date": _short_date(date.fromisoformat(pub["confirmed"]), today),
             "litres": _litres(pub["volume_ml"]) if pub["volume_ml"] else None,
             # Sorted per half litre, so 41 Kč for 0,3 l is not the cheapest.
@@ -1134,6 +1153,7 @@ def beer_pages(request: HttpRequest, kind: str = BeerPage.Kind.LIST, key: str = 
         {
             **pub,
             "name": pub_name(pub["name"]),
+            "find": _find_text(pub),
             "url": _pub_url(pub) or f"https://www.google.com/maps/search/?api=1&query={pub['lat']},{pub['lng']}",
             "on_map": not pub.get("cache_key"),
             "date": _short_date(date.fromisoformat(pub["confirmed"]), today),
@@ -1285,9 +1305,7 @@ def beer_pages(request: HttpRequest, kind: str = BeerPage.Kind.LIST, key: str = 
             "folded_rows": _FOLDED_ROWS,
             **_stores(campaign),
         },
-        # Every page of a long pub list is its own in search results, so each says which one it is.
-        title=gettext("%(title)s, strana %(page)s") % {"title": texts["page_title"], "page": number} if number > 1
-        else texts["page_title"],
+        title=_later_page_title(kind, data.get("name") or texts["h1"], number) if page and number > 1 else texts["page_title"],
         description=(
             (gettext("Strana %(page)s z %(pages)s.") % {"page": number, "pages": last_page} + " " if number > 1 else "")
             + texts["description"]

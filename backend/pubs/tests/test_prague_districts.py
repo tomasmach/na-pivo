@@ -45,7 +45,9 @@ def test_the_position_names_the_district_and_the_address_wins_only_at_the_border
     assert prague_district("Praha 4", *DISTRICT_POINTS["Praha 11"]) == "Praha 11"
     # Outside Prague, or not a Prague address, the position changes nothing.
     assert prague_district("Praha", *KLADNO) == ""
-    assert prague_district("Praha 4", *KLADNO) == "Praha 4"
+    # An address district counts only where it can be true, not in Kladno or Bratislava.
+    assert prague_district("Praha 4", *KLADNO) == ""
+    assert prague_district("Praha 7", 48.1486, 17.1077) == ""
     assert prague_district("Kladno", *SEVEN) == ""
     assert prague_district("Praha 7") == "Praha 7"
 
@@ -54,7 +56,7 @@ def test_pubs_without_a_district_in_their_address_fill_its_page_sitemap_and_pric
     for index in range(5):
         row = _price("Praha", 45 + index, (SEVEN[0] + index * 0.001, SEVEN[1]))
         _catalog(row, f"Sedmička {index}")
-    # Its address says Praha 7, but it stands in Kladno: the address keeps it in Praha 7.
+    # Its address says Praha 7, but it stands in Kladno: it stays in the Prague list, in no district.
     _menu(_place("Mimo mapu", lat=KLADNO[0], lng=KLADNO[1], city="Praha 7"))
     call_command("snapshot_beer_prices", stdout=StringIO())
 
@@ -65,7 +67,8 @@ def test_pubs_without_a_district_in_their_address_fill_its_page_sitemap_and_pric
 
     html = page.content.decode()
     assert page.status_code == 200 and "X-Robots-Tag" not in page
-    assert html.count('class="np-pubrow__name"') == 6 and "Mimo mapu" in html
+    assert html.count('class="np-pubrow__name"') == 5 and "Mimo mapu" not in html
+    assert "Mimo mapu" in client.get("/hospody/praha").content.decode()
     assert "https://na-pivo.cz/hospody/praha-7" in sitemap_xml(client)
     assert [(area["name"], area["pubs"]) for area in build_price_map()["prague_districts"]] == [("Praha 7", 5)]
     assert '<a class="rs-row__link" href="/hospody/praha-7">Praha 7</a>' in prices

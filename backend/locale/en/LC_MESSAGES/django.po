@@ -1499,8 +1499,8 @@ msgid "Kde se čepuje %(beer)s a za kolik: %(pubs)s s čerstvým zápisem, obvyk
 msgstr "Where %(beer)s is on tap and for how much: %(pubs)s with a recent entry, usually %(price)s CZK for 0.5 l."
 
 #, python-format
-msgid "Kde se čepuje %(beer)s a za kolik: %(pubs)s s čerstvým zápisem, u každé cena a datum posledního potvrzení."
-msgstr "Where %(beer)s is on tap and for how much: %(pubs)s with a recent entry, each with its price and the date it was last confirmed."
+msgid "Kde se čepuje %(beer)s a za kolik: %(pubs)s s čerstvým zápisem, u každé datum posledního potvrzení a cena, pokud ji někdo zapsal."
+msgstr "Where %(beer)s is on tap and for how much: %(pubs)s with a recent entry, each with the date it was last confirmed and its price, if someone logged it."
 
 #, python-format
 msgid "Kde se čepuje %(beer)s"
@@ -4334,6 +4334,14 @@ msgid "%(title)s, strana %(page)s"
 msgstr "%(title)s, page %(page)s"
 
 #, python-format
+msgid "Piva značky %(brand)s, strana %(page)s"
+msgstr "%(brand)s beers, page %(page)s"
+
+#, python-format
+msgid "%(beer)s, strana %(page)s"
+msgstr "%(beer)s on tap, page %(page)s"
+
+#, python-format
 msgid "Strana %(page)s z %(pages)s."
 msgstr "Page %(page)s of %(pages)s."
 
@@ -5538,8 +5546,8 @@ msgstr "What a beer costs %(in_city)s"
 msgid "Cena piva %(year)s po městech: kolik stojí v hospodě"
 msgstr "Beer prices %(year)s by town: what beer costs in pubs"
 
-msgid "Kde se čepuje %(brand)s: %(pubs)s, %(beers)s s vlastní stránkou. U každé hospody cena a datum posledního potvrzení."
-msgstr "Where %(brand)s is poured: %(pubs)s, %(beers)s with their own page. Each pub with its price and the date it was last confirmed."
+msgid "Kde se čepuje %(brand)s: %(pubs)s, %(beers)s s vlastní stránkou. U každé hospody datum posledního potvrzení a cena, pokud ji někdo zapsal."
+msgstr "Where %(brand)s is poured: %(pubs)s, %(beers)s with their own page. Each pub with the date it was last confirmed and its price, if someone logged it."
 
 msgid "hospoda za 3 měsíce"
 msgstr "pub in 3 months"
