@@ -6,7 +6,7 @@
 {% block content %}
 {% include "web/components/breadcrumbs.html" with crumbs=crumbs %}
 {% if not data %}
-<header class="pp-head"><h1 class="np-h1">{% translate "Pivní index Česka" %}</h1></header>
+<header class="pp-head"><h1 class="np-h1">{% translate "Pivní index Na pivo" %}</h1></header>
 {% translate "Index se teprve počítá" as empty_title %}
 {% translate "Zatím nemám dost cen z hospod, abych řekl, kolik stojí pivo v Česku. Jakmile lidi zapíšou ceny aspoň z pěti hospod, objeví se tady." as empty_text %}
 {% translate "Ceny piva" as action_label %}
@@ -15,7 +15,7 @@
 {% else %}
 <div class="pi-top">
   <header class="pi-hero">
-    <h1 class="np-h1">{% translate "Pivní index Česka" %}</h1>
+    <h1 class="np-h1">{% translate "Pivní index Na pivo" %}</h1>
     <div class="pi-hero__number">
       <span class="pi-hero__value">{{ median }} {% translate "Kč" %}</span>
       <span class="pi-hero__text">
@@ -132,7 +132,7 @@
   <div class="pi-press__quote">
     <h2 class="np-h2" id="pi-press">{% translate "Píšeš o cenách piva?" %}</h2>
     <p class="np-muted">{% translate "Jednotlivá čísla klidně cituj, jen uveď zdroj. Tady je hotová věta:" %}</p>
-    <blockquote>{{ quote }}<cite>{% translate "Zdroj: Pivní index Česka, Na pivo" %}, {{ page.canonical_url }}</cite></blockquote>
+    <blockquote>{{ quote }}<cite>{% translate "Zdroj: Pivní index Na pivo" %}, {{ page.canonical_url }}</cite></blockquote>
   </div>
   <div class="pi-press__files">
     <h3 class="np-title">{% translate "Ke stažení" %}</h3>

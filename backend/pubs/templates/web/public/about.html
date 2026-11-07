@@ -21,10 +21,10 @@
   <div class="pi-method__cols">
     <div><h3>{% translate "Hospody" %}</h3><p>{% translate "Seznam hospod skládám z veřejných zdrojů a z hospod, které do appky přidali lidi." %} {{ report_text }}</p></div>
     <div><h3>{% translate "Lístky a otevírací doba" %}</h3><p>{% translate "Zapisují je lidi, kteří v hospodě zrovna sedí. U lístku ukazuju, kdy ho někdo naposledy ověřil." %}</p></div>
-    <div><h3>{% translate "Ceny" %}</h3><p>{% translate "Z každé hospody beru nejlevnější pivo od 0,4 l, které někdo zapsal za poslední rok. Město ukážu, až mám ceny aspoň z 5 tamních hospod. Přepočítávám je každý den." %}</p></div>
+    <div><h3>{% translate "Ceny" %}</h3><p>{% translate "Z každé hospody beru nejlevnější pivo od 0,4 l, které někdo zapsal za poslední rok. Město ukážu, až mám ceny aspoň z 5 tamních hospod. Přepočítávám je každý den." %} {% blocktranslate with floor=price_floor %}Cenu za 0,5 l pod polovinou celostátního mediánu, teď pod {{ floor }} Kč, beru jako překlep a nepočítám ji, stejně jako cokoli pod 20 Kč.{% endblocktranslate %}</p></div>
     <div><h3>{% translate "Hodnocení" %}</h3><p>{% translate "Průměr piva v hospodě ukážu, až ho ohodnotí aspoň 3 lidi. Jeden nadšenec ani jeden naštvaný host číslo neudělá." %}</p></div>
   </div>
-  <div class="pp-pager"><a class="np-link" href="{% web_url "beer-prices" %}">{% translate "Ceny piva po městech" %} ›</a><a class="np-link" href="{% web_url "web-beer-index" %}">{% translate "Pivní index Česka" %} ›</a></div>
+  <div class="pp-pager"><a class="np-link" href="{% web_url "beer-prices" %}">{% translate "Ceny piva po městech" %} ›</a><a class="np-link" href="{% web_url "web-beer-index" %}">{% translate "Pivní index Na pivo" %} ›</a></div>
 </section>
 
 <section class="pi-cta">

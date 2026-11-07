@@ -324,5 +324,5 @@ def test_beer_index_goes_by_one_name_in_its_data(client):
 
     html = _get(client, "/pivni-index")
 
-    assert _node(html, "Dataset")["name"] == "Pivní index Česka"
-    assert _node(html, "BreadcrumbList")["itemListElement"][-1]["name"] == "Pivní index Česka"
+    assert _node(html, "Dataset")["name"] == "Pivní index Na pivo"
+    assert _node(html, "BreadcrumbList")["itemListElement"][-1]["name"] == "Pivní index Na pivo"

@@ -88,6 +88,16 @@ def _clean_pub_name(name: str) -> str:
     return "" if folded in _PLACEHOLDERS else clean
 
 
+# A name that says the tap is private ("Plotovka Louny - soukromý výčep") is somebody's own bar, not a pub
+# anyone can walk into. Its page stays for a direct link, but no list, ranking or search engine gets it.
+_PRIVATE = re.compile(r"\b(?:soukrom(?:a|e|eho|emu|i|ou|y|ych|ym|ymi)?|privat(?:e|ni|nich|nim|nimi)?)\b")
+
+
+def is_private_pub(name: str) -> bool:
+    folded = " ".join(re.findall(r"[a-z0-9]+", unicodedata.normalize("NFKD", name or "").encode("ascii", "ignore").decode().casefold()))
+    return bool(_PRIVATE.search(folded))
+
+
 def has_pub_name(name: str) -> bool:
     return bool(_clean_pub_name(name))
 
