@@ -45,7 +45,7 @@
         <h2 class="np-title" id="pubs-title">{% translate "Hospody" %}</h2>
         <span class="np-muted np-small">{% translate "cena za 0,5 l" %}</span>
       </div>
-      {% if not pubs_page.paged and listed|length > folded_rows %}
+      {% if not pubs_page.server and listed|length > folded_rows %}
       {% translate "Najdi hospodu nebo město" as search_label %}
       <div class="rs-tools" data-tools>
         <label class="np-search rs-tools__search">{% icon "search" "np-icon--s" %}<input class="np-input" type="search" data-search placeholder="{{ search_label }}" aria-label="{{ search_label }}" autocomplete="off" spellcheck="false" enterkeyhint="search"></label>
@@ -55,6 +55,7 @@
         </div>
       </div>
       {% endif %}
+      {% if pubs_page.server %}{% include "web/reskin/_pub_search.html" with list_id="hospody" %}{% endif %}
       <ol class="rs-pubs" role="list" data-rows data-more-rows>
         {% for pub in listed %}<li id="{{ pub.anchor }}" class="rs-pub{% if not pub.fresh %} is-old{% endif %}{% if pub.first_old %} has-head{% endif %}{% if not pub.on_map %} rs-row--link{% endif %}" data-find="{{ pub.name }} {{ pub.city }}" data-median="{{ pub.per_half_litre }}"{% if not pub.fresh %} data-old{% endif %}>
           {% if pub.first_old %}<span class="rs-pub__old" data-old-head>{% translate "Zápisy starší než 3 měsíce" %}</span>{% endif %}
@@ -64,11 +65,12 @@
           {% if not pub.on_map %}<span class="rs-row__chevron">{% icon "chevron-right" "np-icon--s" %}</span>{% endif %}
         </li>{% endfor %}
       </ol>
+      {% if pubs_page.server and not listed %}<div class="rs-empty" role="status"><p>{% translate "Takovou hospodu ani město tu s tímhle pivem nemám." %}</p><a class="np-btn" href="{{ pubs_page.clear_url }}#hospody">{% translate "Zrušit hledání" %}</a></div>{% endif %}
       <div class="rs-empty" data-empty role="status" hidden>
         <p>{% translate "Takovou hospodu ani město tu s tímhle pivem nemám." %}</p>
         <button class="np-btn" type="button" data-clear>{% translate "Zrušit hledání" %}</button>
       </div>
-      {% if pubs_page.paged %}{% include "web/reskin/_more_pubs.html" %}{% elif listed|length > folded_rows %}{% blocktranslate with count=listed|length asvar more_label %}Ukázat všechny hospody ({{ count }}){% endblocktranslate %}<button class="np-btn rs-fold" type="button" data-more data-less="{% translate "Sbalit" %}" aria-expanded="false">{{ more_label }}</button>{% endif %}
+      {% if pubs_page.server %}{% include "web/reskin/_more_pubs.html" %}{% elif listed|length > folded_rows %}{% blocktranslate with count=listed|length asvar more_label %}Ukázat všechny hospody ({{ count }}){% endblocktranslate %}<button class="np-btn rs-fold" type="button" data-more data-less="{% translate "Sbalit" %}" aria-expanded="false">{{ more_label }}</button>{% endif %}
     </section>
 
     {% if rating %}
@@ -173,13 +175,13 @@
   {% endif %}
 </div>
 
-{% if brand_pubs %}
-<section class="np-card rs-areas rs-section" aria-labelledby="brand-pubs-title" data-areas data-folded="{{ folded_rows }}">
+{% if brand_pubs or pubs_page.server %}
+<section class="np-card rs-areas rs-section" aria-labelledby="brand-pubs-title" data-areas data-folded="{{ folded_rows }}" id="hospody">
   <div class="np-card__head">
     <h2 class="np-title" id="brand-pubs-title">{% blocktranslate with brand=beer.name %}Hospody, kde čepují {{ brand }}{% endblocktranslate %}</h2>
     <span class="np-muted np-small">{% translate "cena za 0,5 l" %}</span>
   </div>
-  {% if not pubs_page.paged and brand_pubs|length > folded_rows %}
+  {% if not pubs_page.server and brand_pubs|length > folded_rows %}
   {% translate "Najdi hospodu nebo město" as search_label %}
   <div class="rs-tools" data-tools>
     <label class="np-search rs-tools__search">{% icon "search" "np-icon--s" %}<input class="np-input" type="search" data-search placeholder="{{ search_label }}" aria-label="{{ search_label }}" autocomplete="off" spellcheck="false" enterkeyhint="search"></label>
@@ -189,6 +191,7 @@
     </div>
   </div>
   {% endif %}
+  {% if pubs_page.server %}{% include "web/reskin/_pub_search.html" with list_id="hospody" %}{% endif %}
   <ol class="rs-pubs" role="list" data-rows data-more-rows>
     {% for pub in brand_pubs %}<li id="{{ pub.anchor }}" class="rs-pub{% if not pub.fresh %} is-old{% endif %}{% if not pub.on_map %} rs-row--link{% endif %}" data-find="{{ pub.name }} {{ pub.city }}" data-median="{{ pub.per_half_litre|default_if_none:"" }}"{% if not pub.fresh %} data-old{% endif %}>
       <span class="rs-pub__who"><span class="rs-pub__name name"><a{% if not pub.on_map %} class="rs-row__link"{% endif %} href="{{ pub.url }}">{{ pub.name }}{% if pub.on_map %}<span class="np-sr-only">, {% translate "na mapě" %}</span>{% endif %}</a></span>{% if pub.city %}<span class="rs-pub__meta">{{ pub.city|place }}</span>{% endif %}<span class="rs-pub__meta">{{ pub.beer_names }}</span></span>
@@ -197,11 +200,12 @@
       {% if not pub.on_map %}<span class="rs-row__chevron">{% icon "chevron-right" "np-icon--s" %}</span>{% endif %}
     </li>{% endfor %}
   </ol>
+  {% if pubs_page.server and not brand_pubs %}<div class="rs-empty" role="status"><p>{% translate "Takovou hospodu ani město tu s touhle značkou nemám." %}</p><a class="np-btn" href="{{ pubs_page.clear_url }}#hospody">{% translate "Zrušit hledání" %}</a></div>{% endif %}
   <div class="rs-empty" data-empty role="status" hidden>
     <p>{% translate "Takovou hospodu ani město tu s touhle značkou nemám." %}</p>
     <button class="np-btn" type="button" data-clear>{% translate "Zrušit hledání" %}</button>
   </div>
-  {% if pubs_page.paged %}{% include "web/reskin/_more_pubs.html" %}{% elif brand_pubs|length > folded_rows %}{% blocktranslate with count=brand_pubs|length asvar more_label %}Ukázat všechny hospody ({{ count }}){% endblocktranslate %}<button class="np-btn rs-fold" type="button" data-more data-less="{% translate "Sbalit" %}" aria-expanded="false">{{ more_label }}</button>{% endif %}
+  {% if pubs_page.server %}{% include "web/reskin/_more_pubs.html" %}{% elif brand_pubs|length > folded_rows %}{% blocktranslate with count=brand_pubs|length asvar more_label %}Ukázat všechny hospody ({{ count }}){% endblocktranslate %}<button class="np-btn rs-fold" type="button" data-more data-less="{% translate "Sbalit" %}" aria-expanded="false">{{ more_label }}</button>{% endif %}
 </section>
 {% endif %}
 

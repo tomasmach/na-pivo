@@ -1,0 +1,12 @@
+{% load i18n web %}{% comment %}
+Search and order for a pub list too long for the page: a plain GET form and two links over the whole list,
+answered by the server. Crawlers need not follow them; the list's own pages are the ones to index.
+{% endcomment %}{% translate "Najdi hospodu nebo město" as search_label %}<form class="rs-tools rs-tools--server" method="get" action="{{ page_url }}" role="search">
+  <label class="np-search rs-tools__search">{% icon "search" "np-icon--s" %}<input class="np-input" type="search" name="q" value="{{ pubs_page.query }}" placeholder="{{ search_label }}" aria-label="{{ search_label }}" autocomplete="off" spellcheck="false" enterkeyhint="search"></label>
+  {% if pubs_page.sort %}<input type="hidden" name="sort" value="{{ pubs_page.sort }}">{% endif %}
+  <button class="np-sr-only" type="submit">{% translate "Hledat" %}</button>
+  <nav class="np-segment" aria-label="{% translate "Seřadit" %}">
+    <a class="np-segment__item" href="{{ pubs_page.default_url }}#{{ list_id }}" rel="nofollow"{% if not pubs_page.sort %} aria-current="page"{% endif %}>{% translate "Naposledy potvrzené" %}</a>
+    <a class="np-segment__item" href="{{ pubs_page.cheap_url }}#{{ list_id }}" rel="nofollow"{% if pubs_page.sort == "cheap" %} aria-current="page"{% endif %}>{% translate "Nejlevnější" %}</a>
+  </nav>
+</form>

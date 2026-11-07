@@ -30,7 +30,7 @@ from pubs.home_views import HOME_OG_PATH, breadcrumb_list, ld_json
 from pubs.i18n import current_locale
 from pubs.models import BeerPage, PubPriceSnapshot
 from pubs.price_map import MIN_PUBS as PRICES_MIN_PUBS
-from pubs.price_map import city_slug
+from pubs.price_map import city_slug, half_litre_czk
 from pubs.web import pubs_data
 from pubs.web.dates import time_tag, with_times
 from pubs.web.pages import render_page, web_page
@@ -39,7 +39,7 @@ from pubs.web.pub_map import live_map, pub_map
 from pubs.web.public_common import og_image
 from pubs.web.pubs_og import render_pub_og
 from pubs.web.routes import web_reverse
-from pubs.web.words import plural
+from pubs.web.words import list_count, plural
 from pubs.web_views import _short_date
 
 PAGE_SIZE = 20
@@ -615,7 +615,7 @@ def pubs_city(request: HttpRequest, city: str) -> HttpResponse:
             "menu_beer": menu_beer,
             "menu_sort": menu_sort,
             "rows": shown,
-            "count_label": gettext("%(shown)s z %(total)s") % {"shown": num(start + len(shown)), "total": num(len(visible))},
+            "count": list_count(start, len(shown), len(visible)),
             "more_url": _query(params, page=str(page + 1)) + f"#h{start + len(shown) + 1}" if page < last_page else "",
             "more_nofollow": _facet(_query(params)),
             "filtered": bool(params),
@@ -666,7 +666,7 @@ def _city_og_payload(data: dict, prices_area: dict | None) -> dict:
         figures.append((num(prices_area["pubs"]), gettext("hospod s cenou")))
         figures.append((f"{prices_area['p25']}–{_price_label(prices_area['p75'])}", gettext("polovina hospod")))
         if prices_area.get("cheapest"):
-            figures.append((_price_label(prices_area["cheapest"][0]["price_czk"]), gettext("nejlevněji")))
+            figures.append((_price_label(half_litre_czk(prices_area["cheapest"][0])), gettext("nejlevněji za 0,5 l")))
     total = len(data["list"])
     if not figures:
         figures.append((num(total), plural(total, gettext("hospoda"), gettext("hospody"), gettext("hospod"))))

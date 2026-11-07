@@ -212,6 +212,7 @@ def render_page(
     follow: bool = False,
     canonical_params: dict | None = None,
     with_map: bool = False,
+    canonical_noindex: bool = False,
 ) -> HttpResponse:
     """Render a page of the public or signed-in shell.
 
@@ -221,6 +222,8 @@ def render_page(
     thin or a filtered view of another one). ``canonical_params`` stay in the
     canonical and hreflang addresses, which otherwise drop the query string.
     ``with_map=True`` lets the page load the street map of ``web/components/map.html``.
+    ``canonical_noindex=True`` keeps the canonical on a page out of the index: a search within a list
+    points at the list itself.
     """
 
     lang = translation.get_language() if translation.get_language() in LANGS else "cs"
@@ -240,6 +243,7 @@ def render_page(
         "description": description,
         "section": section,
         "indexable": indexable,
+        "canonical_noindex": canonical_noindex and status == 200,
         # Pages that are only out of the index still get a share preview.
         "shareable": indexable or (follow and status == 200),
         "account": _account_card(getattr(request, "web_account", None)),
