@@ -160,6 +160,8 @@ export const stamgastEn: typeof stamgastCs = {
   whatPoured: 'What you had',
   share: 'Share',
   postToVycep: 'Post to the Taproom',
+  hangsWorld: 'The night is up in the Taproom. The whole world sees it.',
+  hangsParta: 'The night is up in the Taproom. Your crew sees it.',
   edit: 'Edit',
   pubSep: ' → ',
   pubVerdictTitle: 'Worth coming back?',
