@@ -87,8 +87,9 @@ její pin. Rozložené okno drží kompas a mapu vedle sebe beze změny.
 Celá appka leží na zemi stránky hospody. Stouty mají znovu hodnoty z §2.1:
 `stout` `#15120F`, `stout2` `#1C1815`, `stout3` `#262019`, `border` `#3A322A`.
 Jantar, pěna i texty zůstávají. Samostatný `Colors.canvas` zanikl, jeho
-obrazovky leží na `Colors.stout`. Ikona appky a splash mají
-pozadí `#15120F`; tmavé pásy mezi sekcemi a ztmavení pod sheety jsou
+obrazovky leží na `Colors.stout`. Ikona appky a splash mají od 7. 11. 2026
+barvy nového vzhledu: zem `#0A0A0A`, pěna `#F7F7F2` a žlutá `#E6AE00`, o stupeň
+tmavší než žlutá UI `#FFC400`, aby ikona na ploše nekřičela. Tmavé pásy mezi sekcemi a ztmavení pod sheety jsou
 `Colors.deep` (`#0E0C0A`). Web na na-pivo.cz je taky šedý (viz Web). Jantar s nízkou alfou na
 šedé zemi vypadá olivově hnědě, proto klidové plochy nesou neutrální pěnu:
 sekundární tlačítko je `stout3` bez okraje (§6.2), medailonek pod ikonou
@@ -100,7 +101,7 @@ Hnědá zůstává jako neudržovaná volba v Nastavení → Vzhled
 (`src/theme/palette.ts`). Čte se synchronně při startu jako jazyk a přepnutí
 restartuje appku. Mění stouty, `deep` a na iOS i ikonu
 (`expo-alternate-app-icons`, alternativní ikona `Brown`). Android ikonu
-nemění, protože jeho alias nemá filtr `napivo://`. Splash zůstává šedý.
+nemění, protože jeho alias nemá filtr `napivo://`. Splash se nemění.
 Ilustrace mají průhledné pozadí a zrno z pěny s alfou ~3 %, takže sedí na
 obou zemích. Nové UI se navrhuje a ověřuje jen v šedé.
 

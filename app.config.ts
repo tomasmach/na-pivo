@@ -12,7 +12,7 @@ const REMINDERS_REASON = 'Na pivo připomínky nepoužívá.';
 const SAVE_PHOTOS_REASON = 'Do Fotek ti uložím nálepku, když o to požádáš. Ostatní fotky tím nevidím.';
 
 const LOCAL_BACKEND_MODES = new Set(['local', 'auto']);
-const SPLASH_BACKGROUND = '#15120F';
+const SPLASH_BACKGROUND = '#0A0A0A';
 const SKIP_IOS_WIDGETS = process.env.NA_PIVO_SKIP_IOS_WIDGETS === '1';
 
 // Reversed iOS OAuth client id for the native Google Sign-In redirect, e.g.
@@ -295,7 +295,7 @@ export default ({ config }: ConfigContext): ExpoConfig => {
       ],
       adaptiveIcon: {
         foregroundImage: './assets/images/icon.png',
-        backgroundColor: '#101010',
+        backgroundColor: '#0A0A0A',
       },
     },
     plugins,
