@@ -37,7 +37,6 @@ export const partaEn: Strings['nv']['parta'] = {
   pingNoFriends: 'Nobody is in your crew yet, so there is no one to ping.',
   pingPartyOffline: "I can't load your crew right now. Try again once you have signal.",
   ping: 'Ping',
-  pinged: 'Pinged',
   cheer: 'Cheers',
   cheerCount: (n) => `Cheers · ${n}`,
   cheered: 'Clink! Cheers.',
@@ -45,7 +44,6 @@ export const partaEn: Strings['nv']['parta'] = {
   cheerOfflineSub: "I'll raise a glass once there's signal.",
   cheersAt: (pub, n) => `${pub} · ${n}× cheers`,
   pingedToast: 'Pinged!',
-  pingedSub: (name: string) => `${name} knows you miss them at the table.`,
   liveSub: (pub: string, n: number) => `${pub} · ${n} ${beers(n)}`,
   atSomeonesHome: 'At someone’s place',
 
@@ -157,7 +155,7 @@ export const partaEn: Strings['nv']['parta'] = {
   saved: 'Plan updated.',
   savedSub: 'I let everyone invited know.',
 
-  pingFriendSub: (name: string) => `${name} knows.`,
+  pingAlreadyKnown: (who: string) => `Already sent to ${who}.`,
   levelLine: (nick: string, title: string, level: number) => `@${nick} · ${title}, level ${level}`,
   sitsNow: (pub: string, n: number) => `At ${pub} now · ${n} ${beers(n)}`,
   sitsAtHome: 'At someone’s place now',

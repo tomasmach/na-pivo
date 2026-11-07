@@ -7523,81 +7523,108 @@ class FriendActivityView(APIView):
                     if requested_recipient_ids is not None
                     else None
                 )
-                should_notify = (
-                    activity is None
-                    or not activity.active
-                    or activity.expires_at <= now
-                    or activity.cache_key != cache_key
-                    or previous_target_signature != target_signature
-                    # Every new tour ping tells friends (the app offers one per stop), even at a pub they heard
-                    # about from the counter or an earlier walk; a retry of the same ping stays quiet.
-                    or (bool(data.get("tour_title")) and activity.client_id != data["client_id"])
+                joins_live_ping = (
+                    data.get("add_recipients")
+                    and not is_plan
+                    and requested_recipient_ids is not None
+                    and activity is not None
+                    and activity.kind == FriendPubActivity.Kind.LIVE
+                    and activity.active
+                    and activity.expires_at > now
+                    and activity.cache_key == cache_key
                 )
-                if activity is None:
-                    activity = FriendPubActivity.objects.create(
-                        account=request.user,
-                        client_id=data["client_id"],
-                        cache_key=cache_key,
-                        name=data["name"],
-                        lat=data["lat"],
-                        lng=data["lng"],
-                        city=data.get("city") or "",
-                        external_id=data.get("external_id") or "",
-                        message=data.get("message") or "",
-                        kind=kind,
-                        scheduled_for=scheduled_for,
-                        started_at=started_at,
-                        expires_at=expires_at,
-                        active=True,
+                if joins_live_ping:
+                    # A ping to the whole party already reached everyone, so it stays as it is.
+                    notify_ids = (
+                        [fid for fid in target_friend_ids if fid not in previous_target_ids]
+                        if previous_target_ids
+                        else []
                     )
-                else:
-                    activity.client_id = data["client_id"]
-                    activity.cache_key = cache_key
-                    activity.name = data["name"]
-                    activity.lat = data["lat"]
-                    activity.lng = data["lng"]
-                    activity.city = data.get("city") or ""
-                    activity.external_id = data.get("external_id") or ""
-                    activity.message = data.get("message") or ""
-                    activity.kind = kind
-                    activity.scheduled_for = scheduled_for
-                    activity.started_at = started_at
-                    activity.expires_at = expires_at
-                    activity.active = True
-                    activity.save(
-                        update_fields=[
-                            "client_id",
-                            "cache_key",
-                            "name",
-                            "lat",
-                            "lng",
-                            "city",
-                            "external_id",
-                            "message",
-                            "kind",
-                            "scheduled_for",
-                            "started_at",
-                            "expires_at",
-                            "active",
-                            "updated_at",
-                        ]
-                    )
-
-                FriendPubActivity.objects.filter(
-                    account=request.user,
-                    active=True,
-                    expires_at__gt=now,
-                    kind=kind,
-                ).filter(legacy_rows).exclude(pk=activity.pk).update(active=False, updated_at=now)
-                FriendPubActivityRecipient.objects.filter(activity=activity).delete()
-                if requested_recipient_ids is not None:
+                    should_notify = bool(notify_ids)
                     FriendPubActivityRecipient.objects.bulk_create(
                         [
                             FriendPubActivityRecipient(activity=activity, account_id=friend_id)
-                            for friend_id in target_friend_ids
+                            for friend_id in notify_ids
                         ],
                         ignore_conflicts=True,
                     )
+                else:
+                    notify_ids = target_friend_ids
+                    should_notify = (
+                        activity is None
+                        or not activity.active
+                        or activity.expires_at <= now
+                        or activity.cache_key != cache_key
+                        or previous_target_signature != target_signature
+                        # Every new tour ping tells friends (the app offers one per stop), even at a pub they heard
+                        # about from the counter or an earlier walk; a retry of the same ping stays quiet.
+                        or (bool(data.get("tour_title")) and activity.client_id != data["client_id"])
+                    )
+                    if activity is None:
+                        activity = FriendPubActivity.objects.create(
+                            account=request.user,
+                            client_id=data["client_id"],
+                            cache_key=cache_key,
+                            name=data["name"],
+                            lat=data["lat"],
+                            lng=data["lng"],
+                            city=data.get("city") or "",
+                            external_id=data.get("external_id") or "",
+                            message=data.get("message") or "",
+                            kind=kind,
+                            scheduled_for=scheduled_for,
+                            started_at=started_at,
+                            expires_at=expires_at,
+                            active=True,
+                        )
+                    else:
+                        activity.client_id = data["client_id"]
+                        activity.cache_key = cache_key
+                        activity.name = data["name"]
+                        activity.lat = data["lat"]
+                        activity.lng = data["lng"]
+                        activity.city = data.get("city") or ""
+                        activity.external_id = data.get("external_id") or ""
+                        activity.message = data.get("message") or ""
+                        activity.kind = kind
+                        activity.scheduled_for = scheduled_for
+                        activity.started_at = started_at
+                        activity.expires_at = expires_at
+                        activity.active = True
+                        activity.save(
+                            update_fields=[
+                                "client_id",
+                                "cache_key",
+                                "name",
+                                "lat",
+                                "lng",
+                                "city",
+                                "external_id",
+                                "message",
+                                "kind",
+                                "scheduled_for",
+                                "started_at",
+                                "expires_at",
+                                "active",
+                                "updated_at",
+                            ]
+                        )
+
+                    FriendPubActivity.objects.filter(
+                        account=request.user,
+                        active=True,
+                        expires_at__gt=now,
+                        kind=kind,
+                    ).filter(legacy_rows).exclude(pk=activity.pk).update(active=False, updated_at=now)
+                    FriendPubActivityRecipient.objects.filter(activity=activity).delete()
+                    if requested_recipient_ids is not None:
+                        FriendPubActivityRecipient.objects.bulk_create(
+                            [
+                                FriendPubActivityRecipient(activity=activity, account_id=friend_id)
+                                for friend_id in target_friend_ids
+                            ],
+                            ignore_conflicts=True,
+                        )
         except Exception as exc:  # noqa: BLE001
             logger.error("friends: pub activity failed: %s", exc, exc_info=True)
             return _internal_error()
@@ -7607,7 +7634,7 @@ class FriendActivityView(APIView):
         # push fanout. The activity also vanishes from friends' active feed via
         # the ghost_mode exclusion in FriendsView.
         is_ghost = bool(getattr(request.user, "ghost_mode", False))
-        if should_notify and target_friend_ids and not is_ghost:
+        if should_notify and notify_ids and not is_ghost:
             actor = _friend_display_name(request.user)
             if is_plan:
                 local_time = dj_timezone.localtime(scheduled_for, PRAGUE_TZ).strftime("%H:%M")
@@ -7638,7 +7665,7 @@ class FriendActivityView(APIView):
                 notif_kind = FriendNotification.Kind.FRIEND_AT_PUB
                 push_kind = "friend_at_pub"
             _bulk_create_friend_notifications(
-                recipient_ids=target_friend_ids,
+                recipient_ids=notify_ids,
                 actor=request.user,
                 kind=notif_kind,
                 title=title,
@@ -7648,7 +7675,7 @@ class FriendActivityView(APIView):
                 pub_name=activity.name[:200],
             )
             _send_friend_push(
-                target_friend_ids,
+                notify_ids,
                 title,
                 body,
                 {
@@ -7663,8 +7690,11 @@ class FriendActivityView(APIView):
             .prefetch_related(*_friend_activity_prefetches())
             .get(pk=activity.pk)
         )
+        payload = dict(FriendPubActivitySerializer(fresh, context=_friend_activity_context(request)).data)
+        # Additive: how many friends this request told, so "they already know" can be said.
+        payload["notified_count"] = len(notify_ids) if should_notify and not is_ghost else 0
         return Response(
-            FriendPubActivitySerializer(fresh, context=_friend_activity_context(request)).data,
+            payload,
             status=status.HTTP_201_CREATED if should_notify else status.HTTP_200_OK,
         )
 

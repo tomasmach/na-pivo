@@ -73,6 +73,8 @@ export const profilCs = {
     nextBeerSub: (minutes: number) => `Za ${minutes} minut po každém pivu`,
     lastTransit: 'Připomenout poslední spoj',
     lastTransitSub: 'Jen Praha a okolí, potřebuju domovský bod',
+    closingTime: 'Upozornit na zavíračku',
+    closingTimeSub: 'Hodinu předem ukážu, kde mají otevřeno déle',
     tourReminders: 'Připomenout tour',
     tourRemindersSub: 'V den tour připomenu, kdy a kde je sraz',
     water: 'Připomenout vodu',
