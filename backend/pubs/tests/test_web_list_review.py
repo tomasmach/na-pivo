@@ -9,6 +9,7 @@ import pytest
 from django.core.cache import cache
 from django.core.management import call_command
 
+from pubs.tests.prague_points import DISTRICT_POINTS
 from pubs.tests.test_beer_pages import _second_beer, _three_fresh_pubs, catalog  # noqa: F401
 from pubs.tests.test_price_map import _catalog
 from pubs.tests.test_price_map import _price as _indexed_price
@@ -42,8 +43,8 @@ def _foot(html: str) -> str:
 
 def test_the_top_card_names_the_same_half_litre_as_the_list(client):
     for price in (44, 48, 52, 56, 60):
-        _catalog(_indexed_price("Praha 2", price), f"Hospoda za {price}")
-    _catalog(_indexed_price("Praha 2", 28, volume_ml=400), "Pivnice Na Klikovce")
+        _catalog(_indexed_price("Praha 2", price, DISTRICT_POINTS["Praha 2"]), f"Hospoda za {price}")
+    _catalog(_indexed_price("Praha 2", 28, DISTRICT_POINTS["Praha 2"], volume_ml=400), "Pivnice Na Klikovce")
     call_command("snapshot_beer_prices", stdout=StringIO())
 
     for path in ("/ceny", "/ceny/praha"):
