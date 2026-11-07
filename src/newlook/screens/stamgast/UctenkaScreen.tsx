@@ -21,6 +21,7 @@ import { myRating } from '../piva/model';
 import { useMyRatings } from '../piva/useMyRatings';
 import { badgeIcon, nightBadge, nvBadgeAmount, nvBadgeName } from '../profil/profilModel';
 import { beerTally, dateOfDay, minutesBetween, nightOrdinal, nightsOf, previousNight } from './eveningData';
+import { NightHangsNote, useNightHangs } from './NightHangsNote';
 import { durationLabel } from './stamgastFormat';
 
 const PAPER = '#F4F1E8';
@@ -82,6 +83,7 @@ export function UctenkaScreen() {
   const nights = useMemo(() => nightsOf(current ? [current, ...history] : history), [current, history]);
   const night = (day ? nights.find((n) => n.day === day) : nights[0]) ?? null;
   const summary = useNightSummary(night?.day ?? null);
+  const hangs = useNightHangs(night?.day ?? '');
   const ratings = useMyRatings();
   const paperW = width - SCREEN_X * 2;
   const close = () => router.navigate('/nv/stamgast');
@@ -243,7 +245,11 @@ export function UctenkaScreen() {
           <Button label={copy.sticker} icon="sticker" kind="raised" flex onPress={() => router.push({ pathname: '/nv/nalepky', params: { day: night.day } })} />
           <Button label={copy.edit} icon="pencil" kind="raised" style={{ paddingHorizontal: 20 }} onPress={() => router.push({ pathname: '/nv/dopsat', params: { day: night.day } })} />
         </View>
-        <Button label={copy.postToVycep} icon="megaphone" height={56} onPress={() => router.push({ pathname: '/nv/vyvesit', params: { day: night.day } })} />
+        {hangs ? (
+          <NightHangsNote visibility={hangs.visibility} />
+        ) : (
+          <Button label={copy.postToVycep} icon="megaphone" height={56} onPress={() => router.push({ pathname: '/nv/vyvesit', params: { day: night.day } })} />
+        )}
       </View>
     </View>
   );

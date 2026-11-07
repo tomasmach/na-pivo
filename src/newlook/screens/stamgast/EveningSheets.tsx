@@ -24,6 +24,7 @@ import { Button, Card, Chip, ChipWrap, D, IconButton, Press, Row, Segmented, T }
 import { C, font, s } from '../../theme';
 import { dialog, toast } from '../../ui/store';
 import { PubVerdictSection } from './PubVerdict';
+import { NightHangsNote, useNightHangs } from './NightHangsNote';
 import { beerTally, canFixRejectedField, dateOfDay, dayKeyOf, dayString, hourlyTempo, minutesBetween, nightsOf } from './eveningData';
 import { durationLabel, nightDayLabel, servingLine } from './stamgastFormat';
 import { NO_VALUE } from '../../format';
@@ -442,6 +443,7 @@ export function EveningDetailScreen() {
   const { nights } = useAllNights();
   const currency = useSettingsStore((st) => st.priceCurrency);
   const night = nights.find((n) => n.day === id);
+  const hangs = useNightHangs(id ?? '');
   if (!night) {
     return (
       <Screen header={<BackHeader />}>
@@ -459,11 +461,11 @@ export function EveningDetailScreen() {
   const share = () => router.push({ pathname: '/nv/vyvesit', params: { day: night.day } });
   return (
     <Screen
-      header={<BackHeader right={<IconButton icon="share" size={40} iconSize={18} label={copy.share} onPress={share} />} />}
+      header={<BackHeader right={hangs ? undefined : <IconButton icon="share" size={40} iconSize={18} label={copy.share} onPress={share} />} />}
       footer={
         <View style={[s.row, { gap: 10 }]}>
-          <Button label={copy.postToVycep} icon="megaphone" flex onPress={share} />
-          <Button label={copy.edit} icon="pencil" kind="raised" style={{ paddingHorizontal: 18 }} onPress={() => router.push({ pathname: '/nv/dopsat', params: { day: night.day } })} />
+          {hangs ? null : <Button label={copy.postToVycep} icon="megaphone" flex onPress={share} />}
+          <Button label={copy.edit} icon="pencil" kind="raised" flex={!!hangs} style={{ paddingHorizontal: 18 }} onPress={() => router.push({ pathname: '/nv/dopsat', params: { day: night.day } })} />
         </View>
       }
     >
@@ -472,6 +474,7 @@ export function EveningDetailScreen() {
         <T s={15} w={500} c={C.text2}>
           {night.pubs.map((p) => p.name).join(copy.pubSep)}
         </T>
+        {hangs ? <NightHangsNote visibility={hangs.visibility} align="flex-start" /> : null}
       </View>
       <View style={[s.row, { justifyContent: 'space-between' }]}>
         {(

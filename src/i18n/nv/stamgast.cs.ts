@@ -173,6 +173,8 @@ export const stamgastCs = {
   whatPoured: 'Co padlo',
   share: 'Sdílet',
   postToVycep: 'Vyvěsit na Výčep',
+  hangsWorld: 'Noc visí na Výčepu. Vidí ji celý svět.',
+  hangsParta: 'Noc visí na Výčepu. Vidí ji tvoje parta.',
   edit: 'Upravit',
   pubSep: ' → ',
   pubVerdictTitle: 'Stálo to za návrat?',

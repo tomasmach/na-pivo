@@ -39,6 +39,10 @@ export interface NightSummary {
 /** Cap mirrored by the backend validator. */
 export const MAX_PUB_NAMES = 5;
 
+export function nightClientKey(dayKey: string): string {
+  return `night-${dayKey}`;
+}
+
 function latestDrinkAt(session: TallySession): string {
   let latest = session.startedAt;
   let latestMs = Date.parse(latest);
@@ -106,7 +110,7 @@ export function buildNightSummary(sessions: TallySession[]): NightSummary | null
     Number.isFinite(spanMs) && spanMs > 0 ? Math.round(spanMs / 60000) : undefined;
 
   const summary: NightSummary = {
-    clientKey: `night-${dayKey}`,
+    clientKey: nightClientKey(dayKey),
     drinkingDay: dayKey,
     startedAt,
     endedAt,
