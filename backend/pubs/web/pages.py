@@ -33,7 +33,6 @@ from pubs.web.routes import base_name, web_reverse
 from pubs.web.session import session_token
 
 LANGS = ("cs", "en")
-_LEGAL_ROOT = "https://tomasmach.github.io/na-pivo"
 _OG_LOCALES = {"cs": "cs_CZ", "en": "en_US"}
 
 
@@ -229,7 +228,6 @@ def render_page(
     lang = translation.get_language() if translation.get_language() in LANGS else "cs"
     alternates = _alternates(request)
     origin = settings.PUBLIC_WEB_ORIGIN
-    legal = _LEGAL_ROOT if lang == "cs" else f"{_LEGAL_ROOT}/en"
     kept = f"?{urlencode(canonical_params)}" if canonical_params else ""
     indexable = indexable and status == 200
     page = {
@@ -249,8 +247,8 @@ def render_page(
         "account": _account_card(getattr(request, "web_account", None)),
         "app_store_url": app_store_url("web"),
         "play_store_url": play_store_url("web"),
-        "privacy_url": f"{legal}/privacy.html",
-        "terms_url": f"{legal}/terms.html",
+        "privacy_url": web_reverse("web-privacy", lang),
+        "terms_url": web_reverse("web-terms", lang),
         "search_query": request.GET.get("q", "")[:120] if section == "search" else "",
         # Called by the template, so only pages with the public footer read it; the 500 page never does.
         "footer": (lambda: _footer(lang)) if status < 500 else None,

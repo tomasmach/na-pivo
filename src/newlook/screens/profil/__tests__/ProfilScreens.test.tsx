@@ -85,18 +85,18 @@ describe('sign-in terms notice', () => {
     links[0].props.onPress();
     links[1].props.onPress();
     expect(open.mock.calls).toEqual([
-      ['https://tomasmach.github.io/na-pivo/terms.html'],
-      ['https://tomasmach.github.io/na-pivo/privacy.html'],
+      ['https://na-pivo.cz/podminky'],
+      ['https://na-pivo.cz/ochrana-soukromi'],
     ]);
     open.mockRestore();
   });
 
 
   it.each([
-    ['cs', 'terms', 'https://tomasmach.github.io/na-pivo/terms.html'],
-    ['cs', 'privacy', 'https://tomasmach.github.io/na-pivo/privacy.html'],
-    ['en', 'terms', 'https://tomasmach.github.io/na-pivo/en/terms.html'],
-    ['en', 'privacy', 'https://tomasmach.github.io/na-pivo/en/privacy.html'],
+    ['cs', 'terms', 'https://na-pivo.cz/podminky'],
+    ['cs', 'privacy', 'https://na-pivo.cz/ochrana-soukromi'],
+    ['en', 'terms', 'https://na-pivo.cz/en/terms'],
+    ['en', 'privacy', 'https://na-pivo.cz/en/privacy'],
   ] as const)('opens the %s %s page', (lang, page, url) => {
     expect(legalUrl(page, lang)).toBe(url);
   });

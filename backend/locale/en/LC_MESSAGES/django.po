@@ -5629,6 +5629,18 @@ msgstr "Median price"
 msgid "Změna za rok"
 msgstr "Change in a year"
 
+msgid "Zásady ochrany osobních údajů"
+msgstr "Privacy Policy"
+
+msgid "Jak aplikace Na pivo pracuje s polohou, Pivním deníkem, fotkami, komunitou a službami třetích stran."
+msgstr "How the Na pivo app works with location, the Beer Diary, photos, the community and third-party services."
+
+msgid "Podmínky použití"
+msgstr "Terms of Use"
+
+msgid "Pravidla používání aplikace Na pivo: účty, uživatelský obsah, komunita, odpovědnost a kontakt."
+msgstr "Rules for using the Na pivo app: accounts, user content, community, liability and contact details."
+
 #, python-format
 msgid "Cenu za 0,5 l pod polovinou celostátního mediánu, teď pod %(floor)s Kč, beru jako překlep a nepočítám ji, stejně jako cokoli pod 20 Kč."
 msgstr "A half litre under half the national median, now under %(floor)s CZK, I take for a typo and leave out, like anything under 20 CZK."

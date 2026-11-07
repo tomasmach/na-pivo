@@ -125,9 +125,9 @@ do `AuthToken`, aby už nainstalované appky nepřišly o účet). **Otestuj na 
 - [ ] Google: 3 OAuth klienti, vyplněné `GOOGLE_*` (backend) + `EXPO_PUBLIC_GOOGLE_*` (mobil)
 - [ ] Apple: capability zapnutá, `.p8` klíč, `APPLE_TEAM_ID/KEY_ID/PRIVATE_KEY`
 - [ ] Resend: klíč + ověřená doména + `EMAIL_ENABLED=True`
-- [ ] `WEB_BASE_URL` ukazuje na GitHub Pages (kde je i `delete-account.html`)
+- [ ] `WEB_BASE_URL` ukazuje na web `https://na-pivo.cz` (je tam `/smazat-ucet`, `/ochrana-soukromi` a `/podminky`)
 - [ ] Mobilní `expo prebuild` + rebuild dev clientu
 - [ ] Purge smazaných účtů: ověř, že `worker` v logu po nasazení spouští
       `purge_deleted_accounts` (běží automaticky každých 5 minut)
 - [ ] Migrace ověřené na Postgresu
-- [ ] V App Store / Play doplnit odkaz na `…/na-pivo/delete-account.html`
+- [ ] V App Store / Play doplnit odkaz na `https://na-pivo.cz/smazat-ucet`

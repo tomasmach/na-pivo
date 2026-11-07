@@ -29,7 +29,7 @@ def test_home_is_czech_with_store_links_and_alternates(client, settings):
     assert f'href="{PLAY_STORE_URL}&amp;referrer=utm_source%3Dna-pivo.cz%26utm_medium%3Dweb%26utm_campaign%3Dhome"' in html
     assert '<link rel="canonical" href="https://na-pivo.cz/">' in html
     assert '<link rel="alternate" hreflang="en" href="https://na-pivo.cz/en">' in html
-    assert "https://tomasmach.github.io/na-pivo/privacy.html" in html
+    assert 'href="/ochrana-soukromi"' in html
 
 
 def test_english_home_is_translated_and_links_english_documents(client, settings):
@@ -43,7 +43,7 @@ def test_english_home_is_translated_and_links_english_documents(client, settings
     assert '<html lang="en">' in html
     assert "How many beers,<br>where and with whom." in html
     assert "Kolik piv" not in html
-    assert "https://tomasmach.github.io/na-pivo/en/privacy.html" in html
+    assert 'href="/en/privacy"' in html
 
 
 def test_home_loads_nothing_from_other_origins(client):
@@ -185,6 +185,7 @@ def test_sitemap_lists_both_languages_of_every_page(client, settings):
     pages = ("/", "/en", "/ceny", "/en/prices", "/hospody", "/en/pubs", "/zebricky", "/en/rankings")
     # No tour is published yet, so /trasy is not listed.
     pages += ("/novinky", "/en/news", "/pivni-index", "/en/beer-index", "/o-appce", "/en/about")
+    pages += ("/ochrana-soukromi", "/en/privacy", "/podminky", "/en/terms")
     assert set(urls) == {f"https://na-pivo.cz{path}" for path in pages}
     alternates = {
         link.get("hreflang"): link.get("href")
