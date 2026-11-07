@@ -146,9 +146,10 @@ _FOOTER_SECONDS = 3600
 def _footer_data() -> dict:
     """Cities with prices and the most poured beers, so every footer link has a page behind it."""
 
-    data = cache.get("web:footer")
+    data = cache.get("web:footer:2")
     if data is None:
         from pubs.models import BeerPage, PubPriceSnapshot
+        from pubs.tours import readable_publications
 
         snapshot = PubPriceSnapshot.objects.defer("og_image_cs", "og_image_en").first()
         cities = sorted((snapshot.data if snapshot else {}).get("cities", []), key=lambda area: -area["pubs"])
@@ -156,8 +157,10 @@ def _footer_data() -> dict:
         data = {
             "cities": [area["name"] for area in cities[:4]],
             "beers": [{"key": beer["key"], "name": beer["name"]} for beer in (listing.data if listing else {}).get("beers", [])[:3]],
+            # The menu leads to the tours once one is public, by the same rule the sitemap lists them.
+            "tours": readable_publications().exists(),
         }
-        cache.set("web:footer", data, _FOOTER_SECONDS)
+        cache.set("web:footer:2", data, _FOOTER_SECONDS)
     return data
 
 
@@ -247,6 +250,7 @@ def render_page(
         "search_query": request.GET.get("q", "")[:120] if section == "search" else "",
         # Called by the template, so only pages with the public footer read it; the 500 page never does.
         "footer": (lambda: _footer(lang)) if status < 500 else None,
+        "tours": (lambda: _footer_data()["tours"]) if status < 500 else False,
     }
     response = render(request, template, {"page": page, **(context or {})}, status=status)
     if not indexable:

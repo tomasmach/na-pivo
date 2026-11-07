@@ -165,7 +165,7 @@ def test_the_beer_index_aims_at_the_trend_and_links_the_city_prices(client):
 
     html = client.get("/pivni-index").content.decode()
 
-    assert "<title>Pivní index Česka: cena piva po krajích a v čase | Na pivo</title>" in html
+    assert "<title>Pivní index Na pivo: cena piva po krajích a v čase | Na pivo</title>" in html
     assert 'href="/ceny"' in html and 'href="/o-appce#ceny"' in html
 
 
