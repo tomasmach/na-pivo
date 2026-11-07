@@ -153,7 +153,10 @@ async function lookupPlan(session: TallySession): Promise<{ plan: ClosingPlan | 
       }];
     }),
   });
-  return { plan, retryAfterMs: REFRESH_AFTER_MS };
+  // Pubs still being looked up may be the ones open later; until three are found, ask again soon.
+  const nearbyPending = nearby.some(({ pub }) => hours.get(pub.id)?.status === 'pending');
+  const complete = (plan?.alternatives.length ?? 0) >= 3;
+  return { plan, retryAfterMs: nearbyPending && !complete ? RETRY_AFTER_MS : REFRESH_AFTER_MS };
 }
 
 // A notification wraps anywhere; "442 m" must stay on one line.

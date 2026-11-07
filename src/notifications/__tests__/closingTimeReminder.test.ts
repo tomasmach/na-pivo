@@ -211,6 +211,21 @@ it('looks again by itself while the server is still filling in the hours', async
   expect(mockScheduleNotificationAsync).toHaveBeenCalledTimes(1);
 });
 
+it('looks again by itself while the pubs around are still being looked up', async () => {
+  mockFetchPubHours.mockImplementationOnce(
+    async (pubs: Pub[]) =>
+      new Map(pubs.map((pub) => [pub.id, pub.id === PUB_KEY ? hoursById.get(pub.id)! : { ...hoursById.get(pub.id)!, status: 'pending' }])),
+  );
+  const { reminder } = load();
+  await reminder.syncClosingTimeReminder();
+  expect(mockScheduleNotificationAsync).not.toHaveBeenCalled();
+
+  jest.spyOn(Date, 'now').mockReturnValue(NOW + 2 * 60_000);
+  jest.advanceTimersByTime(2 * 60_000);
+  await flush();
+  expect(mockScheduleNotificationAsync).toHaveBeenCalledTimes(1);
+});
+
 it('asks again on the next sync when the pubs around were not loaded yet', async () => {
   mockFindNearbyPubs.mockReturnValueOnce([]);
   const { reminder } = load();
