@@ -409,7 +409,7 @@ function MapMode({ k, name, onCompass }: { k: Kompas; name: NameReveal; onCompas
             </PubCard>
           ) : st.mapView !== 'stopy' && target ? (
             <Animated.View entering={fadeIn} style={{ alignItems: 'center' }}>
-              <Press haptic onPress={() => setCollapsed(false)}>
+              <Press haptic onPress={() => setCollapsed(false)} style={{ maxWidth: '100%' }}>
                 <Glass style={[s.row, { height: 44, borderRadius: 22, paddingHorizontal: 16, gap: 8 }]}>
                   {target.distance != null ? (
                     <>
@@ -422,7 +422,7 @@ function MapMode({ k, name, onCompass }: { k: Kompas; name: NameReveal; onCompas
                     </>
                   ) : null}
                   {name.secret ? <Icon name="eye-off" size={15} color={C.yellow} /> : null}
-                  <T s={15} w={700} numberOfLines={1}>
+                  <T s={15} w={700} numberOfLines={1} style={{ flexShrink: 1 }}>
                     {name.secret ? t.nv.common.secretPub : target.name}
                   </T>
                   <Icon name="chevron-up" size={16} color={C.text2} />
