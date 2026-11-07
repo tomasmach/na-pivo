@@ -83,7 +83,7 @@ def region_names() -> dict[str, tuple[str, str]]:
 
 
 def region_slug(code: str) -> str:
-    """The kraj in a query string: ?kraj=jihomoravsky, the same in both languages."""
+    """The kraj in an address: /zebricky/jihomoravsky or ?kraj=jihomoravsky, the same in both languages."""
 
     return {"CZ063": "vysocina"}.get(code) or slugify(_CZECH_SHORT[code])
 

@@ -395,6 +395,7 @@ def news(request: HttpRequest) -> HttpResponse:
         ),
         section="news",
         indexable=not request.GET,
+        follow=True,
     )
     return public_cache(response)
 

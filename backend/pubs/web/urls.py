@@ -63,6 +63,8 @@ urlpatterns = [
 
     *bilingual("zebricky", "en/rankings", rankings, "web-rankings"),
     *bilingual("zebricky/og.png", "en/rankings/og.png", rankings_og, "rankings-og"),
+    *bilingual("zebricky/<slug:kraj>", "en/rankings/<slug:kraj>", rankings, "web-rankings-region"),
+    *bilingual("zebricky/<slug:kraj>/og.png", "en/rankings/<slug:kraj>/og.png", rankings_og, "rankings-region-og"),
 
     *bilingual("novinky", "en/news", news, "web-news"),
     *bilingual("novinky/og.png", "en/news/og.png", news_og, "news-og"),

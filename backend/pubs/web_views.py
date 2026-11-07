@@ -18,9 +18,14 @@ from django.conf import settings
 from django.core.cache import cache
 from django.db.models import Count, Max, Q, Sum
 from django.db.models.functions import TruncMonth
-from django.http import FileResponse, Http404, HttpRequest, HttpResponse, JsonResponse
-from django.shortcuts import render
-from django.urls import resolve
+from django.http import (
+    FileResponse,
+    Http404,
+    HttpRequest,
+    HttpResponse,
+    HttpResponsePermanentRedirect,
+    JsonResponse,
+)
 from django.utils import formats, timezone, translation
 from django.utils.translation import gettext, pgettext_lazy
 
@@ -777,6 +782,10 @@ def beer_prices(request: HttpRequest, city: str = "") -> HttpResponse:
     missing = False
     if city and not wait:
         area = next((area for area in data.get("cities", []) if city_slug(area["name"]) == city), None)
+        town = data.get("merged", {}).get(city, "")
+        if area is None and any(city_slug(other["name"]) == town for other in data.get("cities", [])):
+            query = request.META.get("QUERY_STRING", "")
+            return HttpResponsePermanentRedirect(f"{PRICE_PATHS[lang]}/{town}" + (f"?{query}" if query else ""))
         # A city drops out once it has fewer than five priced pubs. Its old links get a 404
         # that still leads to the other cities.
         if area is None:
@@ -1182,17 +1191,22 @@ def beer_pages_og_image(
 
 
 
-# Crawlers that collect pages for AI models or datasets. The prices and menus are ours to keep.
+# AI search and the fetchers a person sends to one page read the site like a search engine.
+# Amzn-SearchBot answers Alexa; Amazonbot below also collects for Amazon's model training.
+AI_SEARCH_CRAWLERS = (
+    "OAI-SearchBot", "ChatGPT-User", "Claude-SearchBot", "Claude-User", "PerplexityBot", "Perplexity-User",
+    "YouBot", "Amzn-SearchBot", "Amzn-User",
+)
+# Crawlers that collect pages to train AI models, fill datasets or feed SEO tools. The prices and menus are ours to keep.
 DATA_CRAWLERS = (
-    "GPTBot", "ChatGPT-User", "OAI-SearchBot", "ClaudeBot", "Claude-User", "Claude-SearchBot", "anthropic-ai",
-    "CCBot", "Google-Extended", "Applebot-Extended", "PerplexityBot", "Perplexity-User", "Bytespider",
+    "GPTBot", "ClaudeBot", "anthropic-ai", "CCBot", "Google-Extended", "Applebot-Extended", "Bytespider",
     "Amazonbot", "meta-externalagent", "FacebookBot", "cohere-ai", "Diffbot", "Omgilibot", "Timpibot",
-    "YouBot", "ImagesiftBot", "DataForSeoBot", "AhrefsBot", "SemrushBot", "MJ12bot", "DotBot",
+    "ImagesiftBot", "DataForSeoBot", "AhrefsBot", "SemrushBot", "MJ12bot", "DotBot",
 )
 
 
 def robots_txt(_request: HttpRequest) -> HttpResponse:
-    """Search engines may read every page; AI and data crawlers none; the API only answers the app."""
+    """Search engines and AI search may read every page; training and data crawlers only llms.txt."""
 
     lines = [
         "User-agent: *",
@@ -1200,6 +1214,7 @@ def robots_txt(_request: HttpRequest) -> HttpResponse:
         "Disallow: /admin/",
         "",
         *(f"User-agent: {name}" for name in DATA_CRAWLERS),
+        "Allow: /llms.txt",
         "Disallow: /",
         "",
         f"Sitemap: {settings.PUBLIC_WEB_ORIGIN}/sitemap.xml",
@@ -1210,9 +1225,10 @@ def robots_txt(_request: HttpRequest) -> HttpResponse:
 
 
 def llms_txt(_request: HttpRequest) -> HttpResponse:
-    """What AI tools may do with the site: quote a fact with the source, never copy the data."""
+    """What AI tools may do with the site: answer from a page with a link to it, never copy the data."""
 
     origin = settings.PUBLIC_WEB_ORIGIN
+    allowed, blocked = ", ".join(AI_SEARCH_CRAWLERS), ", ".join(DATA_CRAWLERS)
     text = f"""# Na pivo
 
 > Česká appka a web o hospodách, cenách piva a pivním deníku. Czech app and website about pubs, beer prices and a beer diary. {origin}
@@ -1220,49 +1236,19 @@ def llms_txt(_request: HttpRequest) -> HttpResponse:
 ## Pravidla pro AI a roboty
 
 - Obsah a data webu Na pivo patří Na pivo: ceny piva, lístky hospod, hodnocení, Pivní index, žebříčky a trasy.
-- Stahovat je robotem, ukládat do databází nebo datasetů a používat k trénování, ladění nebo doplňování modelů (včetně RAG a vyhledávání odpovědí) je bez písemného souhlasu zakázáno.
-- Jednotlivý údaj smíš citovat s odkazem na zdroj {origin}.
+- AI vyhledávače a asistenti můžou stránky číst a odpovídat z nich, když u odpovědi odkážou na zdrojovou stránku na {origin}. Platí to pro {allowed}.
+- Používat obsah k trénování nebo ladění modelů je bez písemného souhlasu zakázáno. Stejně tak je zakázané obsah hromadně stahovat a ukládat do databází nebo datasetů.
+- Roboti, kteří sbírají data pro trénink AI, datasety nebo SEO nástroje, mají v robots.txt zakázaný celý web kromě tohoto souboru: {blocked}.
 - O souhlas si napiš na tomades1@gmail.com.
 
 ## Rules for AI and crawlers
 
 - The content and data of Na pivo belong to Na pivo: beer prices, pub menus, ratings, the Beer index, rankings and tours.
-- Scraping them, storing them in databases or datasets, or using them to train, fine-tune or ground models (including RAG and answer engines) is prohibited without written permission.
-- You may quote a single fact with a link to the source {origin}.
+- AI search engines and assistants may read the pages and answer from them if the answer links to the source page on {origin}. This covers {allowed}.
+- Using the content to train or fine-tune models is prohibited without written permission. So is scraping it in bulk or storing it in databases or datasets.
+- Crawlers that collect data for AI training, datasets or SEO tools are disallowed from the whole site in robots.txt, except this file: {blocked}.
 - To ask for permission, write to tomades1@gmail.com.
 """
     response = HttpResponse(text, content_type="text/plain; charset=utf-8")
     response["Cache-Control"] = "public, max-age=86400"
-    return response
-
-
-def _web_sitemap_paths() -> list[str]:
-    from pubs.web import beer_index, delete_account_views, news, pubs_views, rankings, tours
-
-    modules = (pubs_views, rankings, news, beer_index, tours, delete_account_views)
-    return [path for module in modules for path in module.sitemap_paths()]
-
-
-def sitemap_xml(request: HttpRequest) -> HttpResponse:
-    """Every page worth finding, each with its other language."""
-
-    origin = settings.PUBLIC_WEB_ORIGIN
-    snapshot = PubPriceSnapshot.objects.only("day", "data").first()
-    day = snapshot.day if snapshot else None
-    pages = [
-        {"urls": {lang: f"{origin}{path}" for lang, path in HOME_PATHS.items()}},
-        {"urls": {lang: f"{origin}{path}" for lang, path in PRICE_PATHS.items()}, "lastmod": day},
-    ]
-    for area in snapshot.data.get("cities", []) if snapshot else []:
-        slug = city_slug(area["name"])
-        pages.append({"urls": {lang: f"{origin}{path}/{slug}" for lang, path in PRICE_PATHS.items()}, "lastmod": day})
-    for kind, key, beer_day in BeerPage.objects.order_by("kind", "key").values_list("kind", "key", "day"):
-        pages.append({"urls": {lang: f"{origin}{page_path(kind, key, lang)}" for lang in BEER_PATHS}, "lastmod": beer_day})
-    for path in _web_sitemap_paths():
-        match = resolve(path)
-        pages.append({"urls": {lang: f"{origin}{web_reverse(match.url_name, lang, **match.kwargs)}" for lang in ("cs", "en")}})
-    response = render(
-        request, "pubs/sitemap.xml", {"pages": pages}, content_type="application/xml; charset=utf-8"
-    )
-    response["Cache-Control"] = "public, max-age=3600"
     return response

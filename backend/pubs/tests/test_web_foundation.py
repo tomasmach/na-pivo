@@ -18,6 +18,7 @@ _WEB_NAMES = sorted(
 )
 _SAMPLE_KWARGS = {
     "web-pubs-city": {"city": "praha"},
+    "web-rankings-region": {"kraj": "praha"},
     "web-pub": {"key": "u-pinkasu"},
     "web-tour": {"tour_id": "abc"},
     "web-night": {"day": "2026-10-24"},

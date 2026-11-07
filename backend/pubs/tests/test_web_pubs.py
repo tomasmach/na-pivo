@@ -112,6 +112,7 @@ def test_city_page_lists_pubs_with_price_tap_and_rating(client):
     for account, rating in zip(raters, (4, 5, 4.5), strict=True):
         _rate(tiger, account, rating)
     _pub("Lokál Dlouhááá", lat=50.0903, lng=14.4255, city="Praha 1")
+    _pub("U Medvídků", lat=50.0833, lng=14.4185, city="Praha 1")
     _pub("Pivnice Pegas", lat=49.1950, lng=16.6080, city="Brno-střed")
 
     response = client.get("/hospody/praha")
@@ -119,7 +120,7 @@ def test_city_page_lists_pubs_with_price_tap_and_rating(client):
     html = response.content.decode()
     assert response.status_code == 200
     assert "Hospody v Praze" in html
-    assert _listed(client, "/hospody/praha") == ["U Zlatého tygra", "Lokál Dlouhááá"]
+    assert _listed(client, "/hospody/praha") == ["U Zlatého tygra", "Lokál Dlouhááá", "U Medvídků"]
     assert "59 Kč" in html and "Pilsner Urquell 12° tankové" in html and "4,5" in html
     assert "otevřeno do 24:00" in html
     assert f'href="/hospoda/u-zlateho-tygra-{tiger.cache_key}"' in html
@@ -151,9 +152,11 @@ def test_city_list_loads_more_by_page(client):
         _pub(f"Hospoda {index:02d}", lat=50.08 + index / 1000, lng=14.42, city="Praha")
 
     first = client.get("/hospody/praha").content.decode()
-    assert first.count('class="np-pubrow"') == 20 and "?page=2#h21" in first
+    assert first.count('class="np-pubrow"') == 20 and 'href="?page=2#h21" data-more' in first
+    # Only its own pubs, so the page can be its own canonical; the script appends it under page 1.
     second = client.get("/hospody/praha?page=2").content.decode()
-    assert second.count('class="np-pubrow"') == 25 and "Načíst další" not in second
+    assert second.count('class="np-pubrow"') == 5 and 'id="h21"' in second and "Načíst další" not in second
+    assert "25 z 25" in second
 
 
 def test_unknown_city_is_404_with_other_cities(client):
@@ -341,7 +344,7 @@ def test_app_share_link_leads_to_the_pub_page(client):
     beta = _pub("Beta")
 
     response = client.get(f"/h/{beta.cache_key}?n=beta")
-    assert response.status_code == 302 and response["Location"] == f"/hospoda/beta-{beta.cache_key}"
+    assert response.status_code == 301 and response["Location"] == f"/hospoda/beta-{beta.cache_key}"
 
     english = client.get(f"/h/{beta.cache_key}?n=Beta", HTTP_ACCEPT_LANGUAGE="en")
     assert english["Location"] == f"/en/pub/beta-{beta.cache_key}"
@@ -450,7 +453,8 @@ def test_sitemap_paths_list_cities_and_pubs_with_data():
         _pub(f"Hospoda {index}", lat=50.08 + index / 1000, lng=14.42, city="Praha")
 
     paths = sitemap_paths()
+    pubs = pubs_data.indexed_pubs()
 
     assert "/hospody" in paths and "/hospody/praha" in paths
-    assert f"/hospoda/u-zlateho-tygra-{tiger.cache_key}" in paths
-    assert not any(path.startswith("/hospoda/hospoda-") for path in paths)
+    assert f"u-zlateho-tygra-{tiger.cache_key}" in pubs
+    assert not any(key.startswith("hospoda-") for key in pubs)

@@ -155,7 +155,7 @@ def test_robots_lets_crawlers_in_and_points_to_the_sitemap(client, settings):
     everyone, data_crawlers, _ = response.content.decode().split("\n\n")
     assert everyone.splitlines() == ["User-agent: *", "Disallow: /v1/", "Disallow: /admin/"]
     assert "User-agent: GPTBot" in data_crawlers and "User-agent: CCBot" in data_crawlers
-    assert data_crawlers.splitlines()[-1] == "Disallow: /" and "Googlebot" not in data_crawlers
+    assert data_crawlers.splitlines()[-2:] == ["Allow: /llms.txt", "Disallow: /"] and "Googlebot" not in data_crawlers
     assert response.content.decode().endswith("Sitemap: https://na-pivo.cz/sitemap.xml\n")
 
 
@@ -171,15 +171,18 @@ def test_llms_txt_forbids_copying_the_data(client, settings):
 def test_sitemap_lists_both_languages_of_every_page(client, settings):
     settings.PUBLIC_WEB_ORIGIN = "https://na-pivo.cz"
 
-    response = client.get("/sitemap.xml")
-
-    assert response.status_code == 200
-    root = ElementTree.fromstring(response.content)
     ns = {"s": "http://www.sitemaps.org/schemas/sitemap/0.9", "x": "http://www.w3.org/1999/xhtml"}
+    index = client.get("/sitemap.xml")
+    assert index.status_code == 200
+    files = [loc.text for loc in ElementTree.fromstring(index.content).findall("s:sitemap/s:loc", ns)]
+    assert files == ["https://na-pivo.cz/sitemap-pages-1.xml"]
+    response = client.get("/sitemap-pages-1.xml")
+    root = ElementTree.fromstring(response.content)
     urls = {url.findtext("s:loc", namespaces=ns): url for url in root.findall("s:url", ns)}
     pages = ("/", "/en", "/ceny", "/en/prices", "/hospody", "/en/pubs", "/zebricky", "/en/rankings")
-    pages += ("/novinky", "/en/news", "/pivni-index", "/en/beer-index", "/trasy", "/en/tours")
-    assert set(urls) == {f"https://na-pivo.cz{path}" for path in pages + ("/smazat-ucet", "/en/delete-account")}
+    # No tour is published yet, so /trasy is not listed.
+    pages += ("/novinky", "/en/news", "/pivni-index", "/en/beer-index")
+    assert set(urls) == {f"https://na-pivo.cz{path}" for path in pages}
     alternates = {
         link.get("hreflang"): link.get("href")
         for link in urls["https://na-pivo.cz/en/prices"].findall("x:link", ns)

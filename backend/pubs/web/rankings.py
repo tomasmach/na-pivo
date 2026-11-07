@@ -6,8 +6,8 @@ from datetime import timedelta
 
 from django.conf import settings
 from django.core.cache import cache
-from django.db.models import Sum
-from django.http import HttpRequest, HttpResponse
+from django.db.models import Count, Sum
+from django.http import Http404, HttpRequest, HttpResponse
 from django.utils import formats, timezone, translation
 from django.utils.translation import gettext, ngettext, npgettext
 
@@ -43,6 +43,8 @@ from pubs.web.words import plural
 
 # A beer joins the public ranking once this many people rated it.
 MIN_RATINGS = 50
+# A kraj's page is worth finding once it ranks a few beers, like a town with three pubs or a beer in three.
+MIN_INDEXED_REGION_BEERS = 3
 FIRST_ROWS = 10
 MORE_ROWS = 30
 MAX_ROWS = 100
@@ -131,20 +133,24 @@ def _side_numbers() -> dict:
     return cache.get_or_set("web:rankings:side", build, PAGE_CACHE_SECONDS)
 
 
-def _share_card() -> dict | None:
-    """The national list's share image: the best beer big, the next two beside it."""
+def _share_card(region: str = "") -> dict | None:
+    """The list's share image, national or one kraj's: the best beer big, the next two beside it."""
 
-    data = _ranking("", "")
+    data = _ranking(region, "")
     rows = data["rows"][:3]
     if not rows:
         return None
+    title = (
+        gettext("Nejlepší piva: %(place)s") % {"place": region_names()[region][1]} if region
+        else gettext("Nejlepší piva v Česku")
+    )
     return {
         "kicker": _ratings_label(data["ratings"]),
-        "title": gettext("Nejlepší piva v Česku"),
+        "title": title,
         "hero": decimal(rows[0]["avg"]),
         "hero_label": rows[0]["name"],
         "figures": [(decimal(row["avg"]), row["name"]) for row in rows[1:]],
-        "address": settings.PUBLIC_WEB_ORIGIN.split("://", 1)[-1] + web_reverse("web-rankings"),
+        "address": settings.PUBLIC_WEB_ORIGIN.split("://", 1)[-1] + _path(region),
     }
 
 
@@ -157,9 +163,12 @@ def _ratings_label(ratings: int) -> str:
 
 
 @web_page
-def rankings_og(request: HttpRequest) -> HttpResponse:
+def rankings_og(request: HttpRequest, kraj: str = "") -> HttpResponse:
+    region = REGION_BY_SLUG.get(kraj, "")
+    if kraj and not region:
+        raise Http404
     with translation.override(getattr(request, "web_lang", "cs")):
-        payload = _share_card()
+        payload = _share_card(region)
     return og_png(request, payload)
 
 
@@ -177,13 +186,51 @@ def _pubs_line(row: dict) -> str:
     ) % {"pub": row["pub_name"], "n": thousands(others)}
 
 
+def _region_description(place: str, data: dict) -> str:
+    """What this kraj's ranking says: how many ratings and which beers lead, so no two kraje read the same."""
+
+    if not data["rows"]:
+        return gettext(
+            "%(place)s: žebříček se teprve plní. Pivo se do něj dostane s aspoň %(n)s hodnoceními."
+        ) % {"place": place, "n": MIN_RATINGS}
+    text = ngettext(
+        "%(place)s: nejlíp hodnocená piva z %(n)s hodnocení v appce Na pivo.",
+        "%(place)s: nejlíp hodnocená piva z %(n)s hodnocení v appce Na pivo.",
+        data["ratings"],
+    ) % {"place": place, "n": thousands(data["ratings"])}
+    leaders = [f"{row['name']} ({decimal(row['avg'])})" for row in data["rows"][:3]]
+    if len(leaders) == 1:
+        return f"{text} " + gettext("Vede %(beer)s.") % {"beer": leaders[0]}
+    return f"{text} " + gettext("Vede %(beer)s, pak %(others)s.") % {"beer": leaders[0], "others": ", ".join(leaders[1:])}
+
+
+def _path(region: str, lang: str | None = None) -> str:
+    if region:
+        return web_reverse("web-rankings-region", lang, kraj=region_slug(region))
+    return web_reverse("web-rankings", lang)
+
+
+def _og_path(region: str) -> str:
+    if region:
+        return web_reverse("rankings-region-og", kraj=region_slug(region))
+    return web_reverse("rankings-og")
+
+
+def region_path(kraj: str, lang: str) -> str:
+    """Where the old /zebricky?kraj=<slug> lives now; an unknown kraj is the whole of Czechia."""
+
+    return _path(REGION_BY_SLUG.get(kraj, ""), lang)
+
+
 @web_page
-def rankings(request: HttpRequest) -> HttpResponse:
+def rankings(request: HttpRequest, kraj: str = "") -> HttpResponse:
+    region = REGION_BY_SLUG.get(kraj, "")
+    if kraj and not region:
+        raise Http404
     wait = throttle_wait(request, "web_pages")
     if wait:
         return too_many(request, wait, "rankings")
 
-    region = REGION_BY_SLUG.get(request.GET.get("kraj", ""), "")
     style = request.GET.get("styl", "")
     style = style if style in STYLES else ""
     try:
@@ -195,10 +242,11 @@ def rankings(request: HttpRequest) -> HttpResponse:
     styles = _style_labels()
     base = web_reverse("web-rankings")
 
-    def url(**params) -> str:
-        values = {"kraj": region_slug(region) if region else "", "styl": style, **params}
+    def url(kraj: str | None = None, **params) -> str:
+        path = _path(region if kraj is None else REGION_BY_SLUG.get(kraj, ""))
+        values = {"styl": style, **params}
         query = "&".join(f"{key}={value}" for key, value in values.items() if value)
-        return f"{base}?{query}" if query else base
+        return f"{path}?{query}" if query else path
 
     style_chips = [{"label": gettext("Všechna piva"), "url": url(styl=""), "current": not style}] + [
         {"label": label, "url": url(styl=key), "current": style == key} for key, label in styles.items()
@@ -246,7 +294,8 @@ def rankings(request: HttpRequest) -> HttpResponse:
         )
         updated = with_times(gettext("přepočítáno %(when)s"), when=time_tag(computed, when))
 
-    crumbs, crumb_graph = breadcrumbs([("Na pivo", web_reverse("home")), (gettext("Žebříčky"), base), (gettext("Piva"), url())])
+    last_crumb = (names[region][1], _path(region)) if region else (gettext("Piva"), url())
+    crumbs, crumb_graph = breadcrumbs([("Na pivo", web_reverse("home")), (gettext("Žebříčky"), base), last_crumb])
     graph = [crumb_graph]
     if rows:
         graph.append({
@@ -291,21 +340,32 @@ def rankings(request: HttpRequest) -> HttpResponse:
             "new_pubs": side["new_pubs"],
             "structured_data": structured(*graph),
             "og_image": (
-                f"{settings.PUBLIC_WEB_ORIGIN}{web_reverse('rankings-og')}?v={og_version(card)}"
-                if (card := _share_card()) else home_og_image()
+                f"{settings.PUBLIC_WEB_ORIGIN}{_og_path(region)}?v={og_version(card)}"
+                if (card := _share_card(region)) else home_og_image()
             ),
             "og_image_alt": title if card else "",
         },
         title=title,
-        description=gettext(
+        description=_region_description(names[region][1], data) if region else gettext(
             "Která piva lidi v appce Na pivo hodnotí nejlíp. Do žebříčku se dostane pivo s aspoň %(n)s hodnoceními, každý mu dává jednu známku."
         ) % {"n": MIN_RATINGS},
         section="rankings",
-        # Filtered and longer lists are the same page for search engines.
-        indexable=not request.GET,
+        # A kraj is a page of its own once it has beers; a style or a longer list is the same page.
+        indexable=not request.GET and (not region or len(data["rows"]) >= MIN_INDEXED_REGION_BEERS),
+        follow=True,
     )
     return public_cache(response)
 
 
 def sitemap_paths() -> list[str]:
-    return [web_reverse("web-rankings", "cs")]
+    ranked = (
+        BeerRegionRanking.objects.filter(rank__isnull=False, rating_count__gte=MIN_RATINGS)
+        .values("region")
+        .annotate(beers=Count("id"))
+        .filter(beers__gte=MIN_INDEXED_REGION_BEERS)
+        .values_list("region", flat=True)
+    )
+    regions = set(ranked) & set(REGION_BY_SLUG.values())
+    return [web_reverse("web-rankings", "cs")] + [
+        web_reverse("web-rankings-region", "cs", kraj=region_slug(code)) for code in sorted(regions)
+    ]

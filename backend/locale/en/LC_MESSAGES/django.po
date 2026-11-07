@@ -4333,6 +4333,14 @@ msgstr "“%(query)s”"
 msgid "Podívej se, kde mají otevřeno a co čepují."
 msgstr "See where's open and what's on tap."
 
+#, python-format
+msgid "%(title)s, strana %(page)s"
+msgstr "%(title)s, page %(page)s"
+
+#, python-format
+msgid "Strana %(page)s z %(pages)s."
+msgstr "Page %(page)s of %(pages)s."
+
 msgctxt "one"
 msgid "hodnocení"
 msgstr "rating"
@@ -4656,6 +4664,24 @@ msgstr "updated %(when)s"
 #, python-format
 msgid "Která piva lidi v appce Na pivo hodnotí nejlíp. Do žebříčku se dostane pivo s aspoň %(n)s hodnoceními, každý mu dává jednu známku."
 msgstr "The beers people rate best in the Na pivo app. A beer needs at least %(n)s ratings to get in, and everyone gives it one rating."
+
+#, python-format
+msgid "%(place)s: žebříček se teprve plní. Pivo se do něj dostane s aspoň %(n)s hodnoceními."
+msgstr "%(place)s: the ranking is still filling up. A beer needs at least %(n)s ratings to get in."
+
+#, python-format
+msgid "%(place)s: nejlíp hodnocená piva z %(n)s hodnocení v appce Na pivo."
+msgid_plural "%(place)s: nejlíp hodnocená piva z %(n)s hodnocení v appce Na pivo."
+msgstr[0] "%(place)s: the best rated beers from %(n)s rating in the Na pivo app."
+msgstr[1] "%(place)s: the best rated beers from %(n)s ratings in the Na pivo app."
+
+#, python-format
+msgid "Vede %(beer)s."
+msgstr "%(beer)s leads."
+
+#, python-format
+msgid "Vede %(beer)s, pak %(others)s."
+msgstr "%(beer)s leads, then %(others)s."
 
 msgid "Hospod: všechny"
 msgstr "Pubs: any"

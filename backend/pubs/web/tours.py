@@ -235,7 +235,9 @@ def tours(request: HttpRequest) -> HttpResponse:
             "Trasy po hospodách, které sestavili lidi z appky Na pivo. U každé hospody cena piva a kolik se jde pěšky."
         ),
         section="tours",
-        indexable=not request.GET,
+        # Until somebody publishes a tour the page only says there are none.
+        indexable=not request.GET and total > 0,
+        follow=True,
         with_map=bool(shown),
     )
     return public_cache(response, 300)
@@ -421,7 +423,7 @@ def tour_og(request: HttpRequest, tour_id: str, lang: str = "cs") -> HttpRespons
 
 
 def sitemap_paths() -> list[str]:
-    paths = [web_reverse("web-tours", "cs")]
+    paths = [web_reverse("web-tours", "cs")] if readable_publications().exists() else []
     for token in readable_publications().order_by("-people_count").values_list("token", flat=True)[:500]:
         paths.append(web_reverse("web-tour", "cs", tour_id=token))
     return paths

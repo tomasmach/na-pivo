@@ -164,7 +164,9 @@ def _render_auth(
         },
         title=titles[mode],
         status=status,
-        indexable=mode in ("login", "register"),
+        # Nobody searches for a login form; its links still lead on.
+        indexable=False,
+        follow=True,
         with_map=True,
     )
 
