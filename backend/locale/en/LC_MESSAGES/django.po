@@ -5644,3 +5644,7 @@ msgstr "Rules for using the Na pivo app: accounts, user content, community, liab
 #, python-format
 msgid "Cenu za 0,5 l pod polovinou celostátního mediánu, teď pod %(floor)s Kč, beru jako překlep a nepočítám ji, stejně jako cokoli pod 20 Kč."
 msgstr "A half litre under half the national median, now under %(floor)s CZK, I take for a typo and leave out, like anything under 20 CZK."
+
+#, python-format
+msgid "%(first)s–%(last)s z %(total)s"
+msgstr "%(first)s–%(last)s of %(total)s"

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import re
 from io import StringIO
 
 import pytest
@@ -67,7 +68,7 @@ def test_pubs_without_a_district_in_their_address_fill_its_page_sitemap_and_pric
     assert html.count('class="np-pubrow__name"') == 6 and "Mimo mapu" in html
     assert "https://na-pivo.cz/hospody/praha-7" in sitemap_xml(client)
     assert [(area["name"], area["pubs"]) for area in build_price_map()["prague_districts"]] == [("Praha 7", 5)]
-    assert '<a href="/hospody/praha-7">Praha 7</a>' in prices
+    assert '<a class="rs-row__link" href="/hospody/praha-7">Praha 7</a>' in prices
     assert 'href="/hospody/praha-7"' in detail
 
 
@@ -82,3 +83,31 @@ def test_a_pub_whose_address_names_another_district_is_logged_without_its_name(c
     message = record.getMessage()
     assert "for 1 pubs" in message and "Praha 4 -> Praha 11" in message
     assert "Pankráci" not in message
+
+
+def test_a_city_or_a_district_with_its_own_page_is_a_whole_row_link_on_the_prices(client):
+    for index in range(5):
+        row = _price("Praha", 45 + index, (SEVEN[0] + index * 0.001, SEVEN[1]))
+        _catalog(row, f"Sedmička {index}")
+    # Priced in the app, but not in the catalogue: Praha 2 has no page of its own.
+    two = DISTRICT_POINTS["Praha 2"]
+    for index in range(5):
+        _price("Praha", 50 + index, (two[0] + index * 0.001, two[1]))
+    call_command("snapshot_beer_prices", stdout=StringIO())
+
+    html = client.get("/ceny/praha").content.decode()
+    rows = {
+        re.search(r">(Praha \d+)<", row).group(1): row
+        for row in re.findall(r'<tr class="rs-strip.*?</tr>', html, re.S)
+    }
+
+    assert set(rows) == {"Praha 2", "Praha 7"}
+    assert 'class="rs-strip rs-row--link"' in rows["Praha 7"]
+    assert '<a class="rs-row__link" href="/hospody/praha-7">Praha 7</a>' in rows["Praha 7"]
+    assert 'class="rs-row__chevron"' in rows["Praha 7"]
+    assert "<a " not in rows["Praha 2"] and "rs-row" not in rows["Praha 2"]
+    # A city on the country page is a whole-row link the same way.
+    country = client.get("/ceny").content.decode()
+    city = next(row for row in re.findall(r'<tr class="rs-strip.*?</tr>', country, re.S) if 'href="/ceny/praha"' in row)
+    assert 'class="rs-strip rs-row--link"' in city and 'class="rs-row__chevron"' in city
+    assert '<a class="rs-row__link" href="/ceny/praha">Praha</a>' in city

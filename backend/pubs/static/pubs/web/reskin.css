@@ -120,7 +120,7 @@
 /* Lists in cards: area strips with a bar, pubs and beers, the cheapest pubs */
 .rs-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-bottom: 12px; }
 @media (scripting: enabled) { .rs-tools { visibility: hidden; } }
-.rs-areas.is-live .rs-tools { visibility: visible; }
+.rs-areas.is-live .rs-tools, .rs-tools.rs-tools--server { visibility: visible; }
 .rs-tools__search { flex: 1 1 220px; }
 .rs-fold { display: none; margin-top: 16px; }
 .rs-more-foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding-top: 8px; color: var(--np-muted); font-size: 13px; }
@@ -179,7 +179,7 @@ table.rs-strips { display: block; width: 100%; border-collapse: collapse; }
 .rs-ranked__name { font-size: 17px; }
 .rs-ranked__meta { font-size: 13px; }
 .rs-ranked__price { display: grid; justify-items: end; font: 800 32px/1 var(--np-display); white-space: nowrap; }
-.rs-ranked__price .rs-ranked__meta { font: 400 12px/1.4 var(--np-font); }
+.rs-ranked__all { display: inline-flex; align-items: center; min-height: 44px; margin-top: 8px; }
 
 /* A pub with its own page: the whole row is the link, with a chevron, like a row of a menu. */
 /* The tint sits on the link's own layer, so the rounded hover does not bend the straight divider. */

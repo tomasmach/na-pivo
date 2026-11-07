@@ -123,10 +123,13 @@ def test_the_cheapest_pubs_show_the_half_litre_price_they_are_ordered_by(client)
     call_command("snapshot_beer_prices", stdout=StringIO())
 
     html = client.get("/ceny").content.decode()
-    rows = re.findall(r'<span class="rs-ranked__price">(\d+) Kč(.*?)</span>(?=\s*(?:<span class="rs-row__chevron|</li>))', html, re.S)
-    shown = [int(price) for price, _ in rows]
+    rows = re.findall(r'<li class="rs-ranked__row.*?</li>', html, re.S)
+    shown = [int(re.search(r'<span class="rs-ranked__price">(\d+) Kč</span>', row).group(1)) for row in rows]
     assert shown == sorted(shown) == [40, 45, 59, 62, 70]
-    assert "na lístku 50 Kč za 0,4 l" in rows[3][1] and "za 0,5 l" in rows[3][1]
+    # The unit is in the card's head; the menu's own price is a line under the pub's name.
+    assert "cena za 0,5 l" in html.split('id="cheapest-title"')[1].split("</div>")[0]
+    who = re.search(r'<span class="rs-ranked__who">(.*?)</span>\s*<span class="rs-ranked__price">', rows[3], re.S).group(1)
+    assert "Malá míra" in who and "na lístku 50 Kč za 0,4 l" in who
     assert "50 CZK for 0.4 l on the menu" in client.get("/en/prices").content.decode()
 
 
@@ -251,11 +254,12 @@ def test_a_long_pub_list_of_a_beer_goes_on_over_pages_a_crawler_can_follow(clien
 
     first = client.get("/pivo/testovar-11").content.decode()
     assert first.count('<li id="h') == 2 and "data-tools" not in first
-    assert '<span>2 z 3</span>' in first and 'href="/pivo/testovar-11?page=2#h3" data-more' in first
+    assert re.search(r'>2\sz\s3</span>', first) and 'href="/pivo/testovar-11?page=2#h3" data-more' in first
     assert '<link rel="canonical" href="https://na-pivo.cz/pivo/testovar-11">' in first
 
     second = client.get("/pivo/testovar-11?page=2").content.decode()
     assert second.count('<li id="h') == 1 and 'id="h3"' in second and "data-more>" not in second
+    assert re.search(r'>3–3\sz\s3</span>', second)
     assert '<link rel="canonical" href="https://na-pivo.cz/pivo/testovar-11?page=2">' in second
     assert 'hreflang="en" href="https://na-pivo.cz/en/beer/testovar-11?page=2"' in second
     assert _title(second) == "Testovar 11°: kde se čepuje a za kolik, strana 2 | Na pivo"

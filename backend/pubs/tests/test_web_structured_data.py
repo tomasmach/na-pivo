@@ -313,7 +313,7 @@ def test_area_prices_are_a_table_with_headers(client):
 
     table = re.search(r'<table class="rs-strips" role="table" aria-labelledby="cities-title">.*?</table>', html, re.S).group(0)
     assert re.findall(r'<th scope="col" role="columnheader">([^<]+)</th>', table) == ["Město", "Medián"]
-    assert re.search(r'<th class="rs-strip__who" scope="row" role="rowheader"><span class="rs-strip__name name"><a href="/ceny/praha">Praha</a>', table)
+    assert re.search(r'<th class="rs-strip__who" scope="row" role="rowheader"><span class="rs-strip__name name"><a class="rs-row__link" href="/ceny/praha">Praha</a>', table)
     assert "<li" not in table
 
 

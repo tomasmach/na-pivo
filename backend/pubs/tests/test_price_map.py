@@ -602,8 +602,8 @@ def test_country_page_links_every_city_and_the_sitemap_lists_them(client, settin
     settings.PUBLIC_WEB_ORIGIN = "https://na-pivo.cz"
     _city_snapshot()
 
-    assert '<a href="/ceny/brno">Brno</a>' in client.get("/ceny").content.decode()
-    assert '<a href="/en/prices/praha">Prague</a>' in client.get("/en/prices").content.decode()
+    assert '<a class="rs-row__link" href="/ceny/brno">Brno</a>' in client.get("/ceny").content.decode()
+    assert '<a class="rs-row__link" href="/en/prices/praha">Prague</a>' in client.get("/en/prices").content.decode()
     sitemap = sitemap_xml(client)
     assert "<loc>https://na-pivo.cz/ceny/brno</loc>" in sitemap
     assert "<loc>https://na-pivo.cz/en/prices/praha</loc>" in sitemap

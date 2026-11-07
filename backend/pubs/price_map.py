@@ -201,6 +201,12 @@ def shows_price(price: int, volume_ml: int | None, floor: int) -> bool:
     return price >= PUBLIC_MIN_CZK and price * 500 / (volume_ml or 500) >= floor
 
 
+def half_litre_czk(pub: dict) -> int:
+    """A listed pub's cheapest beer as the price of half a litre, the number its list is ordered by."""
+
+    return round(pub["price_czk"] * 500 / (pub.get("volume_ml") or 500))
+
+
 def public_floor() -> int:
     """The floor of the newest price snapshot, for pages that show prices outside it."""
 
@@ -460,7 +466,7 @@ def render_city_og_image(area: dict, day, lang: str) -> bytes:
         unit = gettext("Kč")
         figures = []
         if area.get("cheapest"):
-            figures.append((f"{area['cheapest'][0]['price_czk']}\u00a0{unit}", gettext("nejlevněji")))
+            figures.append((f"{half_litre_czk(area['cheapest'][0])}\u00a0{unit}", gettext("nejlevněji za 0,5 l")))
         figures.append((f"{area['p25']}–{area['p75']}\u00a0{unit}", gettext("polovina hospod")))
         figures.append((str(area["pubs"]), gettext("hospod s cenou")))
         return share_card(
