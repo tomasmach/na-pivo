@@ -4338,7 +4338,7 @@ msgid "Piva značky %(brand)s, strana %(page)s"
 msgstr "%(brand)s beers, page %(page)s"
 
 #, python-format
-msgid "%(beer)s: kde se čepuje, strana %(page)s"
+msgid "%(beer)s, strana %(page)s"
 msgstr "%(beer)s on tap, page %(page)s"
 
 #, python-format

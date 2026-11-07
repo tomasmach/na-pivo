@@ -277,6 +277,7 @@ def without_private_pubs(rows: list[PubPriceIndex], targets: dict[str, str]) -> 
 
     A price row keeps the name it was written under. A pub renamed to "soukromý výčep" since, or a
     duplicate merged into one, is private all the same. ``targets`` maps a merged duplicate to its pub.
+    Each row gets ``corrected_name``, the name after the community's corrections.
     """
 
     places = _places(sorted({row.cache_key for row in rows} | {targets[row.cache_key] for row in rows if row.cache_key in targets}))
@@ -285,6 +286,7 @@ def without_private_pubs(rows: list[PubPriceIndex], targets: dict[str, str]) -> 
     )
     kept = []
     for row, item in zip(rows, renamed, strict=True):
+        row.corrected_name = item["name"]
         names = [row.name, item["name"]]
         place = places.get(row.cache_key)
         if place and any(names_match(place["name"], name) for name in names):
@@ -334,7 +336,10 @@ def _catalogue_districts(rows: list[PubPriceIndex]) -> dict[str, str]:
     found = {}
     for row in rows:
         pub = next(
-            (pub for pub in by_cell.get(row.pub_key, ()) if any(names_match(pub["n"], name) for name in (row.name, *row.alias_names))),
+            (
+                pub for pub in by_cell.get(row.pub_key, ())
+                if any(names_match(pub["n"], name) for name in (row.name, row.corrected_name, *row.alias_names))
+            ),
             None,
         )
         if pub is not None:

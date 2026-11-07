@@ -176,30 +176,33 @@ def test_the_news_never_recommends_a_private_tap(client):
     assert "Pivnice U Rotundy" in html and "u Jardy" not in html
 
 
-def test_a_later_page_of_a_longer_beer_name_keeps_its_title_under_sixty_characters(client, monkeypatch):
+def test_a_later_page_fits_sixty_characters_with_the_longest_names_in_the_catalogue(client, monkeypatch):
     from pubs import web_views
 
     monkeypatch.setattr(web_views, "PUBS_PER_PAGE", 2)
-    brand = BeerBrand.objects.create(key="kozlovar-urquell", name="Kozlovar Urquell", rank=1)
-    for key, name in (("kozlovar-urquell", "Kozlovar Urquell"), ("kozlovar-urquell-tmavy", "Kozlovar Urquell Tmavý")):
-        BeerProduct.objects.create(key=key, brand=brand, brand_key=brand.key, brand_name=brand.name, name=name, aliases=[], rank=1)
+    # The catalogue the migrations load; the longest names are where a title runs out of room.
+    beer = max(BeerProduct.objects.filter(active=True), key=lambda product: len(product.name))
+    brand = max(BeerBrand.objects.filter(active=True), key=lambda brand: len(brand.name))
+    brand_beers = list(BeerProduct.objects.filter(brand=brand, active=True)[:2])
+    assert len(beer.name) >= 30 and len(brand_beers) == 2
+    for product in (beer, *brand_beers):
         for index in range(3):
-            _menu_pub(f"{name} hospoda {index}", [(name, 55 + index, 500)])
+            _menu_pub(f"{product.key} {index}", [(product.name, 55 + index, 500)])
     call_command("snapshot_beer_prices", stdout=StringIO())
 
-    titles = {
-        path: re.search(r"<title>(.*?)</title>", client.get(path).content.decode(), re.S).group(1)
-        for path in ("/pivo/kozlovar-urquell?page=2", "/en/beer/kozlovar-urquell?page=2",
-                     "/pivo/znacka/kozlovar-urquell?page=2", "/en/beer/brand/kozlovar-urquell?page=2")
-    }
-
-    assert list(titles.values()) == [
-        "Kozlovar Urquell: kde se čepuje, strana 2 | Na pivo",
-        "Kozlovar Urquell on tap, page 2 | Na pivo",
-        "Piva značky Kozlovar Urquell, strana 2 | Na pivo",
-        "Kozlovar Urquell beers, page 2 | Na pivo",
+    titles = [
+        re.search(r"<title>(.*?)</title>", client.get(path).content.decode(), re.S).group(1)
+        for path in (f"/pivo/{beer.key}?page=2", f"/en/beer/{beer.key}?page=2",
+                     f"/pivo/znacka/{brand.key}?page=2", f"/en/beer/brand/{brand.key}?page=2")
     ]
-    assert all(len(title) <= 60 for title in titles.values())
+
+    assert titles == [
+        f"{beer.name}, strana 2 | Na pivo",
+        f"{beer.name} on tap, page 2 | Na pivo",
+        f"Piva značky {brand.name}, strana 2 | Na pivo",
+        f"{brand.name} beers, page 2 | Na pivo",
+    ]
+    assert all(len(title) <= 60 for title in titles), titles
 
 
 def test_a_pub_renamed_or_merged_into_a_private_tap_leaves_the_medians_and_the_floor():
@@ -246,3 +249,53 @@ def test_a_point_on_the_line_between_two_districts_belongs_to_one():
     from pubs.prague_districts import district_at
 
     assert district_at(50.080575, 14.446475) == "Praha 2"
+
+
+def test_the_news_judge_a_pub_by_its_corrected_name_and_keep_its_neighbour(client):
+    # Two pubs share one cell; only the first was renamed into a private tap.
+    lat, lng = 50.0866, 14.4174
+    for name in ("U Jardy", "Pivnice U Rotundy"):
+        UserAddedPub.objects.create(client_id=uuid.uuid4(), cache_key=geohash8(lat, lng), name=name, lat=lat, lng=lng,
+                                    city="Praha 1")
+    PubNameCorrection.objects.create(client_id=uuid.uuid4(), cache_key=geohash8(lat, lng), original_name="U Jardy",
+                                     suggested_name="U Jardy - soukromý výčep", lat=lat, lng=lng)
+
+    from pubs.web import news
+
+    assert [item["name"] for item in news._feed(0)["items"]] == ["Pivnice U Rotundy"]
+    assert [pub["name"] for pub in news._new_pubs()] == ["Pivnice U Rotundy"]
+    assert "U Jardy" not in client.get("/novinky").content.decode()
+
+
+def test_a_renamed_pub_counts_in_the_district_the_catalogue_gives_it():
+    from pubs.models import PubContributionLog, PubPriceIndex
+    from pubs.tests.prague_points import DISTRICT_POINTS
+
+    seven = DISTRICT_POINTS["Praha 7"]
+    for index in range(4):
+        _indexed_price("Praha 7", 50 + index, (seven[0] + index * 0.001, seven[1]))
+    # The index wrote plain "Praha" under the old name; the position alone says Praha 8.
+    border = (50.09837, 14.45275)
+    pub = _pub("Na Hranici", lat=border[0], lng=border[1], city="Praha 7")
+    PubPriceIndex.objects.create(cache_key=pub.cache_key, name="Na Hranici", lat=pub.lat, lng=pub.lng, city="Praha",
+                                 price_czk=54, volume_ml=500, observed_at=timezone.now(),
+                                 source=PubPriceIndex.Source.COMMUNITY)
+    PubContributionLog.objects.create(cache_key=pub.cache_key, name="Na Hranici", lat=pub.lat, lng=pub.lng,
+                                      kind=PubContributionLog.Kind.BEERS, client_id=uuid.uuid4(),
+                                      payload={"beers": [{"name": "Desítka", "price_czk": 54, "volume_ml": 500}]})
+    PubNameCorrection.objects.create(client_id=uuid.uuid4(), cache_key=pub.cache_key, original_name="Na Hranici",
+                                     suggested_name="U Holešovického nádraží", lat=pub.lat, lng=pub.lng)
+
+    districts = [(area["name"], area["pubs"]) for area in build_price_map()["prague_districts"]]
+
+    assert [(entry["n"], entry["d"]) for entry in pubs_data.catalogue()["pubs"]] == [("U Holešovického nádraží", "Praha 7")]
+    assert districts == [("Praha 7", 5)]
+
+
+def test_the_row_chevron_lets_a_click_through_to_the_row_link():
+    from pathlib import Path
+
+    css = (Path(pubs_data.__file__).resolve().parent.parent / "static" / "pubs" / "web" / "reskin.css").read_text()
+    rule = re.search(r"\.rs-row__chevron\s*\{([^}]*)\}", css).group(1)
+
+    assert re.search(r"pointer-events:\s*none", rule)

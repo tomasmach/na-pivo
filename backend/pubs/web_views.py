@@ -702,11 +702,14 @@ def _beer_texts(kind: str, page: BeerPage | None, key: str) -> dict:
 
 
 def _later_page_title(kind: str, name: str, number: int) -> str:
-    """Every page of a long pub list is its own in search results: it says which one, in a shorter title that still fits."""
+    """Every page of a long pub list is its own in search results: it says which one.
+
+    The title is short enough for the longest beer and brand names in the catalogue to stay within 60 characters.
+    """
 
     if kind == BeerPage.Kind.BRAND:
         return gettext("Piva značky %(brand)s, strana %(page)s") % {"brand": name, "page": number}
-    return gettext("%(beer)s: kde se čepuje, strana %(page)s") % {"beer": name, "page": number}
+    return gettext("%(beer)s, strana %(page)s") % {"beer": name, "page": number}
 
 
 def _snapshot_texts(snapshot: PubPriceSnapshot | None, area: dict | None) -> dict:

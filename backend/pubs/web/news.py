@@ -17,6 +17,7 @@ from django.utils.text import slugify
 from django.utils.translation import gettext
 
 from pubs.api.pub_beers_views import _places, city_name
+from pubs.api.views import _with_pub_name_corrections
 from pubs.beer_catalog import beer_menu_identity
 from pubs.enrichment import names_match
 from pubs.models import (
@@ -114,6 +115,22 @@ def _menu_changes(start: datetime, end: datetime) -> list[dict]:
     return changes
 
 
+def _shown_names(records: list[tuple[str, dict | None, float | None, float | None]]) -> list[str]:
+    """The name the web shows for each (name, place, lat, lng): corrected as the catalogue corrects it,
+    then the cell's own spelling, but only when it is the same pub and not another one in the cell."""
+
+    corrected = _with_pub_name_corrections(
+        [{"name": name, "position": {"lat": lat, "lon": lng}} for name, _, lat, lng in records]
+    )
+    names = []
+    for (name, place, _, _), item in zip(records, corrected, strict=True):
+        if place and (names_match(place["name"], item["name"]) or names_match(place["name"], name)):
+            names.append(place["name"])
+        else:
+            names.append(item["name"])
+    return names
+
+
 def _feed(week: int) -> dict:
     """Every change of one week, newest first, with the pub's public name and city."""
 
@@ -161,17 +178,19 @@ def _feed(week: int) -> dict:
             PubCommunityData.objects.filter(cache_key__in=keys).exclude(city="").values_list("cache_key", "city")
         )
         shown = []
-        for item in sorted(items, key=lambda item: item["at"], reverse=True):
-            if item["key"] in hidden:
+        items = sorted((item for item in items if item["key"] not in hidden), key=lambda item: item["at"], reverse=True)
+        names = _shown_names([
+            (item["name"], place, place["lat"], place["lng"]) if (place := places.get(item["key"])) else (item["name"], None, None, None)
+            for item in items
+        ])
+        for item, name in zip(items, names, strict=True):
+            if is_private_pub(name):
                 continue
             place = places.get(item["key"])
             raw_city = item.get("city") or (place or {}).get("city") or menu_cities.get(item["key"]) or ""
+            item["name"] = name
             item["city"] = city_name(raw_city)
             item["district"] = raw_city if raw_city != item["city"] else ""
-            if place and names_match(place["name"], item["name"]):
-                item["name"] = place["name"]
-            if is_private_pub(item["name"]):
-                continue
             item["day"] = timezone.localdate(item.pop("at")).isoformat()
             shown.append(item)
             if len(shown) == MAX_ITEMS:
@@ -187,10 +206,9 @@ def _new_pubs() -> list[dict]:
             active=True, created_at__gte=timezone.now() - timedelta(days=30)
         ).order_by("-created_at")[:20]
         places = _places(sorted({pub.cache_key for pub in rows}))
+        names = _shown_names([(pub.name, places.get(pub.cache_key), pub.lat, pub.lng) for pub in rows])
         shown = []
-        for pub in rows:
-            place = places.get(pub.cache_key)
-            name = place["name"] if place and names_match(place["name"], pub.name) else pub.name
+        for pub, name in zip(rows, names, strict=True):
             if is_private_pub(name):
                 continue
             shown.append({"key": pub.cache_key, "name": name, "city": city_name(pub.city), "district": pub.city,
