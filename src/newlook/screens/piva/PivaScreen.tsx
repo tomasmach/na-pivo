@@ -42,14 +42,12 @@ const COLLECTION_TASTER_HEIGHT = 174;
 const SEARCH_GHOST_HEIGHT = 5 * 62 + 8;
 
 /** Share of raters per star, 5★ first, as one bar. */
-export function DistBar({ shares, width = 230, flip }: { shares: number[]; width?: number; flip?: boolean }) {
-  const parts = shares.map((x, i) => ({ x, c: SHADES[i] }));
-  const ordered = flip ? [...parts].reverse() : parts;
+export function DistBar({ shares, width = 230 }: { shares: number[]; width?: number }) {
   const usable = width - 8;
   return (
     <View style={[s.row, { width, height: 6, gap: 2, borderRadius: 3, overflow: 'hidden' }]}>
-      {ordered.map((p, i) => (
-        <View key={i} style={{ width: Math.max(2, p.x * usable), height: 6, backgroundColor: p.c }} />
+      {shares.map((x, i) => (
+        <View key={i} style={{ width: Math.max(2, x * usable), height: 6, backgroundColor: SHADES[i] }} />
       ))}
     </View>
   );
@@ -98,7 +96,7 @@ function RankRow({ b, bottom, onPress, early, inRegion }: { b: RankedBeer; botto
         <T s={12} w={500} c={C.muted} numberOfLines={1}>
           {sub}
         </T>
-        <DistBar shares={b.stars} flip={bottom} />
+        <DistBar shares={b.stars} />
       </View>
       <View style={{ alignItems: 'flex-end', gap: 1 }}>
         <D s={30}>{b.ratingAvg !== null ? fmtRating(b.ratingAvg) : NO_VALUE}</D>

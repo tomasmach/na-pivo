@@ -96,6 +96,11 @@ import {
   initializeLiveBeerActivity,
   reconcileLiveBeerActivityAndAutoArchive,
 } from '@/liveActivity/liveBeerActivity';
+import {
+  consumeInitialClosingTimeTap,
+  initializeClosingTimeReminder,
+  subscribeClosingTimeTap,
+} from '@/notifications/closingTimeReminder';
 import { initializeHomeTransitReminder } from '@/notifications/homeTransitReminder';
 import { initializeHomeTransit, refreshHomeTransit } from '@/transit/homeTransitSync';
 import { C as NewLookColors, FontFiles as NewLookFontFiles } from '@/newlook/theme';
@@ -255,6 +260,7 @@ export default function RootLayout() {
     void initializeLiveBeerActivity();
     initializeHomeTransit();
     initializeHomeTransitReminder();
+    initializeClosingTimeReminder();
     void refreshCurrencyFromLastKnownLocation();
   }, []);
 
@@ -281,18 +287,21 @@ export default function RootLayout() {
       void consumeInitialTourReminderTap(navigateToTour);
       void consumeInitialTourInviteTap(openTourInvite);
       void consumeInitialBeerOnTapTap(openBeerOnTapPub);
+      void consumeInitialClosingTimeTap(openBeerOnTapPub);
     }
     const pubSubscription = subscribePubReminderTap(navigateToCounter, navigateToFriends);
     const beerCountSubscription = subscribeBeerCountReminderTap(navigateToCounter);
     const tourSubscription = subscribeTourReminderTap(navigateToTour);
     const tourInviteSubscription = subscribeTourInviteTap(openTourInvite);
     const beerOnTapSubscription = subscribeBeerOnTapTap(openBeerOnTapPub);
+    const closingTimeSubscription = subscribeClosingTimeTap(openBeerOnTapPub);
     return () => {
       pubSubscription.remove();
       beerCountSubscription.remove();
       tourSubscription.remove();
       tourInviteSubscription.remove();
       beerOnTapSubscription.remove();
+      closingTimeSubscription.remove();
     };
   }, [fontsLoaded, fontError, router]);
 

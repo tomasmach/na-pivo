@@ -4,9 +4,8 @@
  *
  * Model: Watson total body water from sex, age, height and weight, Widmark
  * distribution into that water, each drink absorbed evenly over 45 minutes,
- * linear elimination. Three runs give the shown range; the cautious run (slow
- * elimination, 20 % more alcohol than logged) decides when you are at zero, so
- * the morning answer errs late rather than early. While a drink is still being
+ * linear elimination. Three runs give the shown range; the middle run, an
+ * average person, decides when you are at zero. While a drink is still being
  * absorbed the level is low on purpose, so the estimate also says where it peaks.
  */
 
@@ -92,7 +91,7 @@ const ETHANOL_DENSITY = 0.789;
 const BLOOD_WATER = 0.8;
 const BLOOD_DENSITY = 1.055;
 const ABSORPTION_MIN = 45;
-// Long enough that a heavy night is never cut off before the cautious run ends.
+// Long enough that a heavy night is never cut off before it is back at zero.
 export const ESTIMATE_WINDOW_MS = 72 * 60 * 60 * 1000;
 const STEP_MS = 60 * 1000;
 const HALF_HOUR_MS = 30 * 60 * 1000;
@@ -110,7 +109,7 @@ interface Scenario {
 
 const MID: Scenario = { alcohol: 1, eliminationPerHour: 0.15 };
 const LOW: Scenario = { alcohol: 0.9, eliminationPerHour: 0.2 };
-const CAUTIOUS: Scenario = { alcohol: 1.2, eliminationPerHour: 0.1 };
+const HIGH: Scenario = { alcohol: 1.2, eliminationPerHour: 0.1 };
 
 interface Dose {
   startMs: number;
@@ -164,7 +163,7 @@ export interface AlcoholEstimate {
   now: number;
   low: number;
   high: number;
-  /** When the cautious run reaches zero, rounded up to the half hour. */
+  /** When the middle run reaches zero, rounded up to the half hour. */
   zeroAt: Date;
   /** The last drink is still being absorbed, so the level is not falling yet. */
   absorbing: boolean;
@@ -175,7 +174,7 @@ export interface AlcoholEstimate {
 }
 
 /**
- * Null when nothing alcoholic was logged in the window or the cautious run is
+ * Null when nothing alcoholic was logged in the window or the middle run is
  * already back at zero.
  */
 export function estimateAlcohol(
@@ -198,19 +197,19 @@ export function estimateAlcohol(
       drinkVolumeMl(drink) * (drinkAbv(drink) / 100) * ETHANOL_DENSITY * promilePerGram,
   }));
 
-  const cautious = simulate(doses, CAUTIOUS, nowMs);
-  const zeroAtMs = Math.ceil(cautious.zeroAt / HALF_HOUR_MS) * HALF_HOUR_MS;
+  const mid = simulate(doses, MID, nowMs);
+  const zeroAtMs = Math.ceil(mid.zeroAt / HALF_HOUR_MS) * HALF_HOUR_MS;
   if (zeroAtMs <= nowMs) return null;
 
-  const mid = simulate(doses, MID, nowMs);
   const low = simulate(doses, LOW, nowMs);
-  // Minute steps can leave a lower run a hair above the cautious one, so the earliest bout start wins.
-  const lastZeroMs = Math.min(cautious.lastZeroMs, mid.lastZeroMs, low.lastZeroMs);
+  const high = simulate(doses, HIGH, nowMs);
+  // Minute steps can leave a lower run a hair above a higher one, so the earliest bout start wins.
+  const lastZeroMs = Math.min(high.lastZeroMs, mid.lastZeroMs, low.lastZeroMs);
   const absorbing = nowMs < doses[doses.length - 1].startMs + ABSORPTION_MIN * STEP_MS;
   return {
     now: mid.at,
     low: low.at,
-    high: cautious.at,
+    high: high.at,
     zeroAt: new Date(zeroAtMs),
     absorbing,
     rising: absorbing && mid.peak > mid.at ? { promile: mid.peak, at: new Date(mid.peakAt) } : null,
