@@ -46,6 +46,7 @@ import {
   reschedulePendingBeerCountReminder,
 } from '@/notifications/beerCountReminder';
 import { disableFriendPush, registerFriendPush } from '@/notifications/friendPush';
+import { disableClosingTimeReminder, enableClosingTimeReminder } from '@/notifications/closingTimeReminder';
 import { disableHomeTransitReminder, enableHomeTransitReminder } from '@/notifications/homeTransitReminder';
 import { disablePubReminderNotifications } from '@/notifications/pubReminderNotifications';
 import { askTourReminderPermission, notificationPermissionStatus } from '@/notifications/tourReminder';
@@ -855,6 +856,20 @@ export function NastaveniScreen() {
     }
   };
 
+  const toggleClosingTime = async () => {
+    if (busy) return;
+    if (st.closingTimeReminderEnabled) {
+      disableClosingTimeReminder();
+      return;
+    }
+    setBusy(true);
+    try {
+      if (!(await enableClosingTimeReminder()).ok) notificationsDenied();
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const toggleHaptic = (on: boolean) => {
     trackUiInteraction('settings_haptics', on ? 'toggle_on' : 'toggle_off');
     st.setHapticEnabled(on);
@@ -1055,6 +1070,11 @@ export function NastaveniScreen() {
           title={P().settings.lastTransit}
           sub={P().settings.lastTransitSub}
           trailing={<Toggle value={st.homeTransitReminderEnabled && homeSet} onChange={() => void toggleTransit()} />}
+        />
+        <Row
+          title={P().settings.closingTime}
+          sub={P().settings.closingTimeSub}
+          trailing={<Toggle value={st.closingTimeReminderEnabled} onChange={() => void toggleClosingTime()} />}
         />
         <Row
           title={P().settings.tourReminders}
