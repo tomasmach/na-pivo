@@ -17,7 +17,7 @@ from django.db import transaction
 from django.http import HttpRequest, HttpResponse, HttpResponseRedirect, QueryDict
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
-from django.utils.translation import gettext
+from django.utils.translation import gettext, pgettext
 from django.views.decorators.http import require_POST
 
 from pubs import accounts
@@ -563,7 +563,7 @@ def my_pubs(request: HttpRequest) -> HttpResponse:
         selected["log_url"] = f"{web_reverse('web-log-beer')}?{urlencode({'hospoda': selected['cache_key'], 'n': selected['name']})}"
         destination = f"{selected['lat']},{selected['lng']}"
         selected["route_url"] = f"https://www.google.com/maps/dir/?{urlencode({'api': '1', 'destination': destination})}"
-        selected["ratings_label"] = _plural(selected["ratings"], gettext("%(n)s hodnocení"), gettext("%(n)s hodnocení"),
+        selected["ratings_label"] = _plural(selected["ratings"], pgettext("one", "%(n)s hodnocení"), gettext("%(n)s hodnocení"),
                                             gettext("%(n)s hodnocení")) if selected["ratings"] else ""
         selected["friends_label"] = (gettext("Teď tu sedí: %(names)s") % {"names": ", ".join(selected["friends"][:3])}
                                      if selected["friends"] else "")

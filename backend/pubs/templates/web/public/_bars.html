@@ -1,7 +1,10 @@
-{% load i18n web %}<ul class="pi-bars">
-  {% for row in rows %}<li>
-    <span class="pi-bars__name"><strong>{% if beer %}{{ row.name }}{% else %}{{ row.name|place }}{% endif %}</strong><span>{% if beer %}{{ row.pubs_label }}{% else %}{{ row.region }}{% endif %}</span></span>
-    <svg class="pi-bars__bar" viewBox="0 0 100 8" preserveAspectRatio="none" aria-hidden="true"><rect width="{{ row.width }}" height="8" rx="4"{% if forloop.first and not beer %} class="is-top"{% endif %}/></svg>
-    <b>{{ row.median }} {% translate "Kč" %}</b>
-  </li>{% endfor %}
-</ul>
+{% load i18n web %}<table class="pi-bars" role="table"{% if labelled_by %} aria-labelledby="{{ labelled_by }}"{% endif %}>
+  <thead class="np-sr-only" role="rowgroup"><tr role="row"><th scope="col" role="columnheader">{% if beer %}{% translate "Pivo" %}{% else %}{% translate "Město" %}{% endif %}</th><td aria-hidden="true"></td><th scope="col" role="columnheader">{% translate "Střední cena" %}</th></tr></thead>
+  <tbody role="rowgroup">
+  {% for row in rows %}<tr role="row">
+    <th class="pi-bars__name" scope="row" role="rowheader"><strong>{% if beer %}{{ row.name }}{% else %}{{ row.name|place }}{% endif %}</strong><span>{% if beer %}{{ row.pubs_label }}{% else %}{{ row.region }}{% endif %}</span></th>
+    <td aria-hidden="true"><svg class="pi-bars__bar" viewBox="0 0 100 8" preserveAspectRatio="none" focusable="false"><rect width="{{ row.width }}" height="8" rx="4"{% if forloop.first and not beer %} class="is-top"{% endif %}/></svg></td>
+    <td class="pi-bars__value" role="cell">{{ row.median }} {% translate "Kč" %}</td>
+  </tr>{% endfor %}
+  </tbody>
+</table>

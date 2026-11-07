@@ -394,7 +394,7 @@ def test_price_page_tells_search_engines_the_year_the_median_and_the_dataset(cli
 
     html = client.get("/ceny").content.decode()
 
-    assert f"<title>Cena piva {today.year} po městech: kolik stojí pivo v hospodě | Na pivo</title>" in html
+    assert f"<title>Cena piva {today.year} po městech: kolik stojí v hospodě | Na pivo</title>" in html
     assert 'content="Medián ceny piva v českých hospodách je 47 Kč.' in html
     data = _structured_data(html)
     assert [crumb["item"] for crumb in data["BreadcrumbList"]["itemListElement"]] == [
@@ -406,7 +406,7 @@ def test_price_page_tells_search_engines_the_year_the_median_and_the_dataset(cli
     assert data["Dataset"]["license"] == "https://na-pivo.cz/llms.txt"
 
     english = client.get("/en/prices").content.decode()
-    assert f"<title>Beer prices {today.year} by town: what a beer costs in a pub | Na pivo</title>" in english
+    assert f"<title>Beer prices {today.year} by town: what beer costs in pubs | Na pivo</title>" in english
     assert "The median beer price in Czech pubs is 47 CZK." in english
     assert _structured_data(english)["Dataset"]["description"].startswith("From each pub I take")
     assert _structured_data(english)["BreadcrumbList"]["itemListElement"][0]["item"] == "https://na-pivo.cz/en"

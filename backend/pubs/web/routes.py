@@ -11,8 +11,9 @@ from __future__ import annotations
 
 from django.http import HttpRequest, HttpResponsePermanentRedirect
 from django.urls import NoReverseMatch, Resolver404, URLPattern, path, resolve, reverse
+from django.utils import translation
 
-from pubs.i18n import current_locale
+from pubs.i18n import current_locale, normalize_locale
 
 EN_SUFFIX = "-en"
 
@@ -58,6 +59,7 @@ def _page(path: str) -> str | None:
 # Tokens, invite codes, nicknames and file names keep their case and are not listed. A pub page sends
 # any spelling of its own key on in one step, so only an address its route does not match is lowered here.
 _PUB_PAGE = "web-pub"
+_SHARE_PAGE = "pub-share-landing"
 CASELESS_PAGES = frozenset({
     "home", "beer-prices", "beer-prices-city", "beer-list", "beer-brand", "beer", "web-pubs", "web-pubs-city",
     "web-rankings", "web-rankings-region", "web-news", "web-tours", "web-beer-index", "web-search",
@@ -81,6 +83,25 @@ def _address(path: str) -> str:
         if (meant in CASELESS_PAGES and asked in (None, *CASELESS_PAGES)) or (meant == _PUB_PAGE and asked is None):
             path = lower
     return path
+
+
+def _pub_address(path: str, request: HttpRequest) -> str:
+    """A pub page or an app's /h/ link already at the address its view would send it on to, so that is one 301 too."""
+
+    match = resolve(path)
+    page = base_name(match.url_name or "")
+    if page not in (_PUB_PAGE, _SHARE_PAGE):
+        return path
+    from pubs.web import pubs_data
+
+    key = match.kwargs["key"]
+    if page == _SHARE_PAGE:
+        target = pubs_data.pub_key_for_hint(key.lower(), request.GET.get("n", "")[:120])
+        lang = normalize_locale(translation.get_language_from_request(request))
+    else:
+        target = pubs_data.find_pub(key).get("redirect")
+        lang = "en" if match.kwargs.get("lang") == "en" else "cs"
+    return web_reverse(_PUB_PAGE, lang, key=target) if target else path
 
 
 def canonical_address_middleware(get_response):
@@ -107,6 +128,12 @@ def canonical_address_middleware(get_response):
             target, query = region_path(params.pop("kraj")[-1], lang), params.urlencode()
         if target == path and not old_kraj:
             return get_response(request)
+        page = None if old_kraj else _page(target)
+        if page in (_PUB_PAGE, _SHARE_PAGE):
+            target = _pub_address(target, request)
+            if page == _SHARE_PAGE:
+                # Like the /h/ view itself: ?n= only picks the pub and the pub page has no use for it.
+                query = ""
         location = request.path[: len(request.path) - len(path)] + target
         return HttpResponsePermanentRedirect(f"{location}?{query}" if query else location)
 

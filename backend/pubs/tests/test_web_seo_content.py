@@ -96,7 +96,8 @@ def test_a_pub_page_links_its_beers_its_neighbours_and_the_prices_of_its_city(cl
 
 def test_prague_districts_get_their_own_pages(client):
     for index in range(3):
-        _place(f"Sedmička {index}", lat=50.1000 + index * 0.001, lng=14.4300, city="Praha 7")
+        pub = _place(f"Sedmička {index}", lat=50.1000 + index * 0.001, lng=14.4300, city="Praha 7")
+    _menu(pub)
     _place("Jednička", lat=50.0870, lng=14.4210, city="Praha 1")
     _place("Další jednička", lat=50.0880, lng=14.4220, city="Praha 1")
     _place("Pivnice Pegas", lat=49.1950, lng=16.6080, city="Brno-město")
@@ -164,7 +165,7 @@ def test_the_beer_index_aims_at_the_trend_and_links_the_city_prices(client):
 
     html = client.get("/pivni-index").content.decode()
 
-    assert "<title>Pivní index Česka: cena piva po krajích a v čase | Na pivo</title>" in html
+    assert "<title>Pivní index Na pivo: cena piva po krajích a v čase | Na pivo</title>" in html
     assert 'href="/ceny"' in html and 'href="/o-appce#ceny"' in html
 
 
@@ -252,7 +253,7 @@ def test_a_district_shares_a_card_of_its_own(client, monkeypatch):
 
     drawn = []
     monkeypatch.setattr(pubs_views, "og_image", lambda **payload: drawn.append(payload) or b"png")
-    for index in range(3):
+    for index in range(5):
         pub = _place(f"Sedmička {index}", lat=50.1000 + index * 0.001, lng=14.4300, city="Praha 7")
         _menu(pub, beers=[{"name": "Kozel 11°", "price_czk": 40 + index, "volume_ml": 500}])
     for index in range(4):
@@ -267,8 +268,8 @@ def test_a_district_shares_a_card_of_its_own(client, monkeypatch):
     assert response["Content-Type"] == "image/png"
     czech, in_english = drawn
     assert czech["title"] == "Hospody v Praze 7" and czech["kicker"] == "Praha"
-    # Three pubs of Praha 7, not the seven of the whole city.
-    assert czech["figures"][0] == ("3", "hospody") and czech["hero"] == "41 Kč"
+    # Five pubs of Praha 7, not the nine of the whole city; five priced pubs, as many as /ceny needs.
+    assert czech["figures"][0] == ("5", "hospod") and czech["hero"] == "42 Kč"
     assert czech["address"].endswith("/hospody/praha-7")
     assert in_english["title"] == "Pubs in Prague 7"
     assert client.get("/hospody/praha-99/og.png").status_code == 404
@@ -294,8 +295,12 @@ def test_every_navigation_has_its_own_name(client):
 def test_every_indexable_district_is_linked_from_its_city_and_the_other_districts(client):
     for number in range(1, 11):
         for index in range(3):
-            _place(f"Hospůdka {number}-{index}", lat=50.0 + number * 0.01 + index * 0.001, lng=14.42, city=f"Praha {number}")
+            pub = _place(f"Hospůdka {number}-{index}", lat=50.0 + number * 0.01 + index * 0.001, lng=14.42, city=f"Praha {number}")
+            if index == 0:
+                _menu(pub)
     _place("Jen jedna", lat=50.2, lng=14.5, city="Praha 11")
+    for index in range(3):
+        _place(f"Bez lístku {index}", lat=50.3 + index * 0.001, lng=14.5, city="Praha 12")
 
     city = client.get("/hospody/praha").content.decode()
     district = client.get("/hospody/praha-1").content.decode()
@@ -303,8 +308,9 @@ def test_every_indexable_district_is_linked_from_its_city_and_the_other_district
     for number in range(1, 11):
         assert f'href="/hospody/praha-{number}"' in city
     assert all(f'href="/hospody/praha-{number}"' in district for number in range(2, 11))
-    # A district too small to be listed by search engines gets no tile.
+    # A district too small to be listed by search engines gets no tile, nor one without a menu or a price.
     assert 'href="/hospody/praha-11"' not in city
+    assert 'href="/hospody/praha-12"' not in district
 
 
 def test_a_pub_named_after_its_kind_does_not_say_it_twice(client):

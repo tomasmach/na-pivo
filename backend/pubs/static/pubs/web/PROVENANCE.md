@@ -24,3 +24,9 @@ LICENSE file there).
 - The map tiles, style, glyphs and sprites come from OpenFreeMap
   (https://openfreemap.org, no key) in the visitor's browser; their data is
   © OpenMapTiles © OpenStreetMap contributors, credited on every map.
+
+# Home page phones
+
+- `home-phones-720.webp`, `home-phones-720.avif` (720 × 740, 1x) and `home-phones.webp`,
+  `home-phones.avif` (1440 × 1480, 2x) are rendered from `home-phones-src/phones.html`;
+  `home-phones-src/README.md` says how to render and encode them again.

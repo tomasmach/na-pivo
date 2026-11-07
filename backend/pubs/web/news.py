@@ -26,7 +26,7 @@ from pubs.models import (
     PubContributionLog,
     UserAddedPub,
 )
-from pubs.price_map import PUBLIC_MIN_CZK
+from pubs.price_map import public_floor, shows_price
 from pubs.pub_events import PubEvent
 from pubs.web.dates import time_tag, with_times
 from pubs.web.pages import render_page, web_page
@@ -72,6 +72,7 @@ def _menu_changes(start: datetime, end: datetime) -> list[dict]:
         .values_list("cache_key", "name", "payload", "created_at")[:2000]
     )
     keys = {write[0] for write in writes}
+    floor = public_floor()
     previous: dict[str, tuple[str, list[dict]]] = {}
     for key, name, payload in (
         PubContributionLog.objects.filter(
@@ -103,7 +104,7 @@ def _menu_changes(start: datetime, end: datetime) -> list[dict]:
             elif (
                 isinstance(beer.get("price_czk"), int)
                 and isinstance(current.get("price_czk"), int)
-                and min(beer["price_czk"], current["price_czk"]) >= PUBLIC_MIN_CZK
+                and all(shows_price(seen["price_czk"], seen.get("volume_ml"), floor) for seen in (beer, current))
                 and beer["price_czk"] != current["price_czk"]
             ):
                 changes.append({
@@ -138,7 +139,7 @@ def _feed(week: int) -> dict:
             items.append({
                 "kind": "tap", "key": tap.cache_key, "name": tap.pub_name, "at": tap.observed_at,
                 "beer": tap.product.name,
-                "price": price if (volume or 500) == 500 and (price or 0) >= PUBLIC_MIN_CZK else None,
+                "price": price if (volume or 500) == 500 and price and shows_price(price, 500, public_floor()) else None,
             })
         items += _menu_changes(start, end)
         for pub in UserAddedPub.objects.filter(active=True, created_at__gte=start, created_at__lt=end).order_by(

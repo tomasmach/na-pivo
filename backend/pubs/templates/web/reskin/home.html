@@ -15,7 +15,7 @@
       {% include "web/reskin/_stores.html" %}
     </div>
   </div>
-  <picture class="rs-hero__picture"><source type="image/avif" srcset="{% asset "home-phones.avif" %}"><img class="rs-hero__phones" src="{% asset "home-phones.webp" %}" width="720" height="740" fetchpriority="high" alt="{% translate "Deník v appce: piva za týden a detail jednoho večera." %}"></picture>
+  <picture class="rs-hero__picture"><source type="image/avif" srcset="{% asset "home-phones-720.avif" %} 1x, {% asset "home-phones.avif" %} 2x"><img class="rs-hero__phones" src="{% asset "home-phones-720.webp" %}" srcset="{% asset "home-phones-720.webp" %} 1x, {% asset "home-phones.webp" %} 2x" width="720" height="740" fetchpriority="high" alt="{% translate "Deník v appce: piva za týden a detail jednoho večera." %}"></picture>
 </section>
 
 <section class="rs-year" aria-labelledby="year-title">

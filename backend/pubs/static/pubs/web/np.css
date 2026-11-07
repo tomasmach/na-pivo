@@ -239,6 +239,8 @@ a.np-row:hover { background: var(--np-tint); color: var(--np-white); }
 .np-crumbs a:hover { color: var(--np-white); }
 .np-crumbs [aria-current="page"] { color: var(--np-white); }
 .np-crumbs .np-icon { width: 14px; height: 14px; }
+/* At least 24 px to tap. The padding a block link gets its margin takes back, and an inline link's padding does not move the line. */
+.np-crumbs a, .np-footer__lang { padding-block: 3px; margin-block: -3px; }
 
 /* Empty state */
 .np-empty {

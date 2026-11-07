@@ -181,7 +181,10 @@ def test_every_page_of_a_city_is_its_own_canonical_with_only_its_pubs(client):
     assert f'hreflang="en" href="{ORIGIN}/en/pubs/praha?page=2"' in second
     assert 'href="?page=3#h41" data-more' in second
 
-    last = client.get("/en/pubs/praha?page=9").content.decode()
+    # A page past the end, from a link made when the list was longer, leads to the last page.
+    past = client.get("/en/pubs/praha?page=9")
+    assert past.status_code == 301 and past["Location"] == "/en/pubs/praha?page=3"
+    last = client.get("/en/pubs/praha?page=3").content.decode()
     assert last.count('class="np-pubrow"') == 5 and _canonical(last) == f"{ORIGIN}/en/pubs/praha?page=3"
     assert "data-more" not in last.split('data-more-foot')[1]
     # A filtered list stays the city's page.

@@ -51,9 +51,16 @@ from pubs.models import (
     UserAddedPub,
 )
 from pubs.price_index import compute_reference_price
-from pubs.price_map import PUBLIC_MIN_CZK, WINDOW_DAYS, city_slug, prague_district
+from pubs.price_map import (
+    PUBLIC_MIN_CZK,
+    WINDOW_DAYS,
+    city_slug,
+    prague_district,
+    public_floor,
+    shows_price,
+)
 from pubs.pub_events import PubEvent
-from pubs.web.places import municipality
+from pubs.web.places import is_private_pub, municipality
 
 PRAGUE = ZoneInfo("Europe/Prague")
 CATALOGUE_TTL = 60 * 60
@@ -173,7 +180,8 @@ def _build_catalogue() -> dict:
             merged[posted] = pub["c"]
         pub["d"] = district_name(pub["raw"])
         pub["f"] = fold(f"{pub['n']} {city} {pub['d']}")
-        if pub["c"]:
+        pub["x"] = is_private_pub(pub["n"])
+        if pub["c"] and not pub["x"]:
             spellings[pub["c"]][city] += 1
             if pub["d"]:
                 districts[pub["c"]][pub["d"]] += 1
@@ -284,13 +292,15 @@ def _community(keys) -> dict[str, dict]:
 
 def _prices(keys) -> dict[str, dict]:
     since = timezone.now() - timedelta(days=WINDOW_DAYS)
+    floor = public_floor()
     rows = {}
     for chunk in _chunks(keys):
         for row in PubPriceIndex.objects.filter(
             cache_key__in=chunk, active=True, observed_at__gte=since, source__in=_PRICE_SOURCES,
             price_czk__gte=PUBLIC_MIN_CZK,
         ).values("cache_key", "name", "price_czk", "volume_ml", "observed_at"):
-            rows[row["cache_key"]] = row
+            if shows_price(row["price_czk"], row["volume_ml"], floor):
+                rows[row["cache_key"]] = row
     return rows
 
 
@@ -361,14 +371,16 @@ def half_litre(price: int, volume: int | None) -> float:
 
 def _menu_rows(beers) -> list[dict]:
     rows = []
+    floor = public_floor()
     for beer in beers if isinstance(beers, list) else []:
         if not isinstance(beer, dict) or not isinstance(beer.get("name"), str) or not beer["name"].strip():
             continue
         price, volume = beer.get("price_czk"), beer.get("volume_ml")
+        volume = volume if isinstance(volume, int) and not isinstance(volume, bool) and volume > 0 else None
         rows.append({
             "name": beer["name"].strip()[:120],
-            "price": price if isinstance(price, int) and not isinstance(price, bool) and price >= PUBLIC_MIN_CZK else None,
-            "volume": volume if isinstance(volume, int) and not isinstance(volume, bool) and volume > 0 else None,
+            "price": price if isinstance(price, int) and not isinstance(price, bool) and shows_price(price, volume, floor) else None,
+            "volume": volume,
         })
     return rows[:30]
 
@@ -446,17 +458,15 @@ def city_pubs(slug: str) -> dict | None:
     cache_key = f"web:pubs:city:{slug}"
     data = cache.get(cache_key)
     if data is None:
-        pubs = _enrich([pub for pub in catalogue()["pubs"] if pub["c"] == slug])
+        pubs = _enrich([pub for pub in catalogue()["pubs"] if pub["c"] == slug and not pub["x"]])
         brand_counts: Counter = Counter()
         brand_names: dict[str, str] = {}
         for pub in pubs:
             brand_counts.update(pub["brands"])
             brand_names.update(pub.pop("brand_names"))
-        priced = [half_litre(pub["price"], pub["volume"]) for pub in pubs if pub["price"]]
         data = {
             **city,
             "list": pubs,
-            "typical_price": round(statistics.median(priced)) if len(priced) >= MIN_RATERS else None,
             "brands": [
                 {"key": key, "name": brand_names[key], "pubs": count}
                 for key, count in brand_counts.most_common(12)
@@ -531,7 +541,7 @@ def _neighbours(pub: dict) -> list[tuple[float, float]]:
     return [
         (row["lat"], row["lng"])
         for row in catalogue()["pubs"]
-        if abs(row["lat"] - lat) < 0.006 and abs(row["lng"] - lng) < 0.009 and row is not pub
+        if abs(row["lat"] - lat) < 0.006 and abs(row["lng"] - lng) < 0.009 and row is not pub and not row["x"]
     ]
 
 
@@ -547,7 +557,7 @@ def _nearby(pub: dict, limit: int = 5) -> list[dict]:
         (
             (_metres(lat, lng, row), row)
             for row in catalogue()["pubs"]
-            if abs(row["lat"] - lat) < 0.015 and abs(row["lng"] - lng) < 0.022 and row["k"] != pub["k"]
+            if abs(row["lat"] - lat) < 0.015 and abs(row["lng"] - lng) < 0.022 and row["k"] != pub["k"] and not row["x"]
         ),
         key=lambda item: item[0],
     )[: limit * 3]
@@ -657,7 +667,7 @@ def todays_event(cache_key: str, now: datetime | None = None) -> dict | None:
 
 def _pub_hits(tokens: list[str]) -> list[dict]:
     pubs = catalogue()["pubs"]
-    hits = [pub for pub in pubs if all(token in pub["f"] for token in tokens)]
+    hits = [pub for pub in pubs if not pub["x"] and all(token in pub["f"] for token in tokens)]
     phrase = " ".join(tokens)
 
     def rank(pub):
@@ -675,6 +685,8 @@ def _similar_pubs(tokens: list[str]) -> list[dict]:
         return []
     scored = []
     for pub in catalogue()["pubs"]:
+        if pub["x"]:
+            continue
         name = fold(pub["n"])
         score = sum(1 for stem in stems if stem in name)
         if score:
@@ -756,7 +768,7 @@ def search_counts() -> dict:
     data = cache.get("web:pubs:search-counts")
     if data is None:
         data = {
-            "pubs": len(catalogue()["pubs"]),
+            "pubs": sum(1 for pub in catalogue()["pubs"] if not pub["x"]),
             "beers": BeerProduct.objects.filter(active=True, brand__active=True).count(),
             "cities": len(catalogue()["cities"]) + sum(len(c["districts"]) for c in catalogue()["cities"].values()),
         }
@@ -769,15 +781,21 @@ MIN_INDEXED_CITY_PUBS = 3
 
 
 def has_content(pub: dict) -> bool:
-    """Whether a pub page has something to read: a menu or a price. Decides the sitemap and noindex alike."""
+    """Whether a pub page is worth a search result: a public pub with a menu or a price. Decides the sitemap and noindex alike."""
 
-    return bool(pub["beers"]) or pub["price"] is not None
+    return (bool(pub["beers"]) or pub["price"] is not None) and not is_private_pub(pub["name"])
 
 
 def city_indexed(city: dict) -> bool:
     """A town page is indexed with enough pubs and at least one with content, decides the sitemap and noindex alike."""
 
     return city["pubs"] >= MIN_INDEXED_CITY_PUBS and city["slug"] in _indexed()["cities"]
+
+
+def district_indexed(city_slug: str, district: str, pubs: int) -> bool:
+    """The same rule for a district of a big city: enough pubs and at least one with content."""
+
+    return pubs >= MIN_INDEXED_CITY_PUBS and (city_slug, district) in _indexed()["districts"]
 
 
 def indexed_pubs() -> dict[str, datetime | None]:
@@ -787,14 +805,14 @@ def indexed_pubs() -> dict[str, datetime | None]:
 
 
 def _indexed() -> dict:
-    data = cache.get("web:pubs:indexed")
+    data = cache.get("web:pubs:indexed:2")
     if data is None:
         with_data = set(PubCommunityData.objects.exclude(beers=[]).values_list("cache_key", flat=True)) | set(
             PubPriceIndex.objects.filter(active=True, source__in=_PRICE_SOURCES).values_list("cache_key", flat=True)
         )
         rows = _enrich([pub for pub in catalogue()["pubs"] if pub["k"] in with_data])
         # Two spellings of one name in a cell share an address. Like find_pub, the first one is the page.
-        pubs, cities, seen = {}, set(), set()
+        pubs, cities, districts, seen = {}, set(), set(), set()
         for row in rows:
             if row["key"] in seen:
                 continue
@@ -802,6 +820,7 @@ def _indexed() -> dict:
             if has_content(row):
                 pubs[row["key"]] = row["changed_at"]
                 cities.add(row["city_slug"])
-        data = {"pubs": pubs, "cities": cities}
-        cache.set("web:pubs:indexed", data, CATALOGUE_TTL)
+                districts.add((row["city_slug"], row["district"]))
+        data = {"pubs": pubs, "cities": cities, "districts": districts}
+        cache.set("web:pubs:indexed:2", data, CATALOGUE_TTL)
     return data

@@ -1,4 +1,4 @@
-"""Response compression: JSON is gzipped on request, streams never are."""
+"""Response compression: JSON is gzipped on request, streams, images and fonts never are."""
 
 from __future__ import annotations
 
@@ -56,6 +56,19 @@ def test_streamed_responses_pass_through_untouched():
     buffered_sse = HttpResponse(b"data: x\n\n" * 100, content_type="text/event-stream")
     assert middleware.process_response(request, buffered_sse) is buffered_sse
     assert not buffered_sse.has_header("Content-Encoding")
+
+
+def test_images_and_fonts_are_sent_as_they_are_but_svg_is_gzipped():
+    request = RequestFactory().get("/", HTTP_ACCEPT_ENCODING="gzip")
+    middleware = BufferedGZipMiddleware(lambda request: None)
+
+    # Repetitive bytes gzip well, so only the content type keeps these as they are.
+    for content_type in ("image/webp", "image/avif", "image/png", "font/woff2"):
+        response = HttpResponse(b"x" * 5000, content_type=content_type)
+        assert middleware.process_response(request, response) is response
+        assert not response.has_header("Content-Encoding"), content_type
+    svg = middleware.process_response(request, HttpResponse(b"<svg>" + b"x" * 5000, content_type="image/svg+xml"))
+    assert svg["Content-Encoding"] == "gzip"
 
 
 @pytest.fixture
