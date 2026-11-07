@@ -8,7 +8,8 @@ import re
 import pytest
 
 PAGES = [
-    ("/ochrana-soukromi", "/en/privacy", ["kdo-jsme", "data", "pouziti", "treti-strany", "smazani-uctu", "prava", "kontakt"]),
+    ("/ochrana-soukromi", "/en/privacy", ["kdo-jsme", "data", "pouziti", "treti-strany", "uchovani", "smazani-uctu", "prava", "deti",
+                                                "zmeny-zasad", "kontakt"]),
     ("/podminky", "/en/terms", ["uvod", "popis", "alkohol", "ucty", "obsah", "pravidla", "moderace", "setkani",
                                 "verejne-tour", "fotosoutez", "ai", "presnost", "dostupnost", "odpovednost", "pravo",
                                 "obchody", "zmeny", "kontakt"]),
@@ -34,6 +35,8 @@ def test_each_document_is_indexed_in_both_languages_with_every_anchor_the_app_li
         assert f'<link rel="alternate" hreflang="cs" href="https://na-pivo.cz{cs}">' in html
         assert f'<link rel="alternate" hreflang="en" href="https://na-pivo.cz{en}">' in html
         assert re.findall(r'<h2 id="([^"]+)"', html) == anchors
+        # Every section is in both the side contents and the folded one on a phone.
+        assert re.findall(r'<a href="#([^"]+)">', html) == anchors * 2
         page = next(
             node
             for block in re.findall(r'<script type="application/ld\+json">(.*?)</script>', html)

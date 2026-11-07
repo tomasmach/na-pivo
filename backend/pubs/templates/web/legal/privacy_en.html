@@ -3,6 +3,10 @@
   <h1 class="np-h1">Privacy Policy</h1>
   <p class="pp-legal__updated">Last updated: 6 November 2026</p>
   <p class="pp-legal__updated">This is an English translation for convenience. The Czech version is the binding one.</p>
+  <details class="pp-legal__contents">
+    <summary class="pp-select__bar">Contents{% icon "chevron-down" %}</summary>
+    <nav aria-label="Table of contents">{% include "web/legal/privacy_en_toc.html" %}</nav>
+  </details>
 
   <h2 id="kdo-jsme">Who we are</h2>
   <p>The <strong>Na pivo</strong> app is operated by a natural person (a solo developer), referred to below as “we” or “the operator”. This policy explains what data the app processes, what it uses the data for and what rights you have when it comes to privacy. We try to collect as little data as possible: we do not store continuous GPS history or your movement route, and we use no advertising or external analytics tools.</p>
@@ -136,7 +140,7 @@
   <h3>External navigation</h3>
   <p>When you ask for navigation to a pub, an external map app opens (Apple Maps, Google Maps or Mapy.cz) and the destination is handed over to it. This only ever happens when you tap.</p>
 
-  <h2>How long we keep data</h2>
+  <h2 id="uchovani">How long we keep data</h2>
   <p>Individual operational, product and error events are kept for <strong>90 days</strong> at most and then deleted automatically. We delete short-lived social data on an ongoing basis: expired plans and live activities within 7 days of ending, delivered notifications within 45 days, expired invitations and rejected requests within 14 days.</p>
   <p>The content of your account (Beer Diary, visits, ratings, photos, evenings, profile) is kept until you delete it yourself or delete the whole account. Third-party services keep any data under their own policies.</p>
   <p>When you delete a beer, a visit or a pub rating, or remove a favourite pub in the app, we keep only a short deletion record until you delete your account. For a beer or a visit it holds a random identifier, for a rating or a favourite the approximate location of the pub (a map cell of about 40 × 20 m), plus the time of deletion. It stops another of your devices that still has the entry from bringing it back. These records are also part of your data export.</p>
@@ -157,10 +161,10 @@
   </ul>
   <p>In the app you can request an export of the main content of your account by email (diary, visits, ratings, profile, social data) and also <a href="{% web_url "web-delete-account" %}">delete</a> the account and its data. When you use the app anonymously, your installation has a temporary device account on our server under a random UUID. The Beer Diary and other content sync to it, but without you signing in we know neither your name nor your email address. With any other question or request, get in touch at the contact address below.</p>
 
-  <h2>Children</h2>
+  <h2 id="deti">Children</h2>
   <p>The app is not meant for children. Given the subject (finding pubs) it is meant for adult users and we knowingly collect no data about children.</p>
 
-  <h2>Changes to this policy</h2>
+  <h2 id="zmeny-zasad">Changes to this policy</h2>
   <p>We can update this policy from time to time. We will let you know about material changes by updating this page and changing the “Last updated” date in the header. We recommend checking the policy from time to time.</p>
 
   <h2 id="kontakt">Contact us</h2>
@@ -168,11 +172,5 @@
   </article>
   <aside class="pp-legal__toc" aria-label="Table of contents">
     <p class="pp-legal__toc-title">Contents</p>
-    <a href="#kdo-jsme">Who we are</a>
-    <a href="#data">What data we process</a>
-    <a href="#pouziti">How we use data</a>
-    <a href="#treti-strany">Third-party services</a>
-    <a href="#smazani-uctu">Deleting your account</a>
-    <a href="#prava">Your rights</a>
-    <a href="#kontakt">Contact us</a>
+    {% include "web/legal/privacy_en_toc.html" %}
   </aside>
