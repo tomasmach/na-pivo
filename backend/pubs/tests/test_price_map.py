@@ -24,6 +24,7 @@ from pubs.models import (
     PubPriceSnapshot,
 )
 from pubs.price_map import build_price_map, city_slug, prague_district
+from pubs.tests.prague_points import DISTRICT_POINTS
 from pubs.tests.sitemaps import sitemap_xml
 from pubs.web.pages import _csp
 
@@ -140,9 +141,9 @@ def test_prague_district_reads_the_number_or_the_named_district():
 
 def test_cities_and_districts_show_from_five_pubs():
     for index, price in enumerate(range(40, 45)):
-        _price("Praha 2 - Vinohrady" if index % 2 else "Praha 2", price)
+        _price("Praha 2 - Vinohrady" if index % 2 else "Praha 2", price, DISTRICT_POINTS["Praha 2"])
     for _ in range(4):
-        _price("Praha 5", 60)
+        _price("Praha 5", 60, DISTRICT_POINTS["Praha 5"])
     for _ in range(4):
         _price("Brno-střed", 45, BRNO)
 
@@ -290,7 +291,7 @@ def test_the_catalogue_country_beats_the_coverage_polygon():
 
 
 def test_cheapest_pubs_are_named_only_from_the_catalogue_per_half_litre():
-    _catalog(_price("Praha 7 - Holešovice", 36, volume_ml=None), "U Lacina")
+    _catalog(_price("Praha 7 - Holešovice", 36, DISTRICT_POINTS["Praha 7"], volume_ml=None), "U Lacina")
     _catalog(_price("Brno-střed", 30, BRNO, volume_ml=400), "Pod Špilberkem")
     _catalog(_price("Praha", 12), "Překlep")
     _price("Praha", 25)
@@ -303,13 +304,14 @@ def test_cheapest_pubs_are_named_only_from_the_catalogue_per_half_litre():
 
 
 def test_prague_districts_are_listed_by_number():
-    for district in ("Praha-Libuš", "Praha 10", "Praha 2"):
+    # Libuš is a part of Praha 12, where its pubs stand.
+    for address, district in (("Praha-Libuš", "Praha 12"), ("Praha 10", "Praha 10"), ("Praha 2", "Praha 2")):
         for _ in range(5 if district != "Praha 2" else 8):
-            _price(district, 50)
+            _price(address, 50, DISTRICT_POINTS[district])
 
     names = [area["name"] for area in build_price_map()["prague_districts"]]
 
-    assert names == ["Praha 2", "Praha 10", "Praha-Libuš"]
+    assert names == ["Praha 2", "Praha 10", "Praha 12"]
 
 
 def test_snapshot_is_computed_once_a_day():
@@ -330,8 +332,8 @@ def test_snapshot_is_computed_once_a_day():
 def test_price_page_serves_the_snapshot_and_only_its_own_files(client, settings):
     settings.PUBLIC_WEB_ORIGIN = "https://na-pivo.cz"
     for price in range(40, 55):
-        _price("Praha 2", price)
-    _catalog(_price("Praha 7", 33), "U Lacina")
+        _price("Praha 2", price, DISTRICT_POINTS["Praha 2"])
+    _catalog(_price("Praha 7", 33, DISTRICT_POINTS["Praha 7"]), "U Lacina")
     call_command("snapshot_beer_prices", stdout=StringIO())
     day = timezone.localdate().isoformat()
 
@@ -482,7 +484,8 @@ def test_the_official_name_of_prague_counts_as_praha():
     data = build_price_map()
 
     assert [(city["name"], city["pubs"]) for city in data["cities"]] == [("Praha", 5)]
-    assert data["prague_districts"] == []
+    # Neither address names a district; where the pubs stand does.
+    assert [(area["name"], area["pubs"]) for area in data["prague_districts"]] == [("Praha 1", 5)]
 
 
 def test_each_city_keeps_its_own_cheapest_pubs():
@@ -535,8 +538,8 @@ def _city_snapshot() -> None:
         _price("Brno", price, BRNO)
     _catalog(_price("Brno-střed", 35, BRNO), "Pod Špilberkem")
     for price in range(50, 56):
-        _price("Praha 2", price)
-    _catalog(_price("Praha 7", 33), "U Lacina")
+        _price("Praha 2", price, DISTRICT_POINTS["Praha 2"])
+    _catalog(_price("Praha 7", 33, DISTRICT_POINTS["Praha 7"]), "U Lacina")
     call_command("snapshot_beer_prices", stdout=StringIO())
 
 

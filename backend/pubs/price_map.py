@@ -34,6 +34,7 @@ from pubs.models import (
     PubPriceIndex,
     PubPriceSnapshot,
 )
+from pubs.prague_districts import district_at, near_district
 from pubs.web.places import municipality
 
 # A year is how long the app itself shows a pub's price; older ones count as gone.
@@ -135,14 +136,24 @@ def _confirmed_since(rows: list[PubPriceIndex], since: datetime) -> dict[str, da
     return confirmed
 
 
-def prague_district(raw: str) -> str:
-    """"Praha 2 - Vinohrady" is Praha 2, "Praha-Libuš" stays itself, plain "Praha" has none."""
+def prague_district(raw: str, lat: float | None = None, lng: float | None = None) -> str:
+    """The district of a pub in Prague, from its position when it has one in Prague.
+
+    The address alone: "Praha 2 - Vinohrady" is Praha 2, "Praha-Libuš" stays itself,
+    plain "Praha" has none. With a position in Prague the pub is in the numbered
+    district it stands in; a numbered address still wins when the pub stands within
+    a few metres of that district, since the border runs along streets.
+    """
 
     city = " ".join((raw or "").split())
-    if city == "Praha" or city in CITY_ALIASES or city_name(city) != "Praha":
+    if city_name(city) != "Praha":
         return ""
     numbered = _PRAGUE_NUMBERED.match(city)
-    return f"Praha {numbered.group(1)}" if numbered else city
+    said = "" if city == "Praha" or city in CITY_ALIASES else f"Praha {numbered.group(1)}" if numbered else city
+    located = district_at(lat, lng)
+    if not located or (numbered and near_district(said, lat, lng)):
+        return said
+    return located
 
 
 def city_slug(name: str) -> str:
@@ -217,7 +228,7 @@ def _cheapest(rows: list[PubPriceIndex], in_city: str = "") -> list[dict]:
                 "cache_key": row.pub_key,
                 "name": place["name"],
                 # The same city names the tables use.
-                "city": prague_district(city) or city_name(city),
+                "city": prague_district(city, place["lat"], place["lng"]) or city_name(city),
                 "price_czk": row.price_czk,
                 "volume_ml": row.volume_ml or 500,
                 "stale": row.stale,
@@ -278,7 +289,7 @@ def build_price_map(now: datetime | None = None) -> dict:
             spellings[slug][city] += 1
             if (posted := city_slug(city_name(row.city))) != slug:
                 merged[posted] = slug
-        if district := prague_district(row.city):
+        if district := prague_district(row.city, row.lat, row.lng):
             districts[district].append(row)
     cities = {spellings[slug].most_common(1)[0][0]: group for slug, group in by_slug.items()}
     return {

@@ -8,6 +8,7 @@ Firmy.cz enrichment (its hours and ratings stay inside the app).
 
 from __future__ import annotations
 
+import logging
 import math
 import re
 import statistics
@@ -54,6 +55,8 @@ from pubs.price_index import compute_reference_price
 from pubs.price_map import PUBLIC_MIN_CZK, WINDOW_DAYS, city_slug, prague_district
 from pubs.pub_events import PubEvent
 from pubs.web.places import municipality
+
+logger = logging.getLogger(__name__)
 
 PRAGUE = ZoneInfo("Europe/Prague")
 CATALOGUE_TTL = 60 * 60
@@ -104,12 +107,15 @@ def merged_city(slug: str) -> str:
     return catalogue()["merged"].get(slug, "")
 
 
-def district_name(raw_city: str) -> str:
-    """Praha 2, Brno-střed: the part of a city the catalogue names, if it names one."""
+def district_name(raw_city: str, lat: float | None = None, lng: float | None = None) -> str:
+    """Praha 2, Brno-střed: the part of a city the pub is in, if the catalogue knows one.
+
+    In Prague the pub's position decides; see ``prague_district``.
+    """
 
     city = " ".join((raw_city or "").split())
     if city_name(city) == "Praha":
-        return prague_district(city)
+        return prague_district(city, lat, lng)
     return city if city and city_name(city) != city else ""
 
 
@@ -166,17 +172,26 @@ def _build_catalogue() -> dict:
     districts: dict[str, Counter] = defaultdict(Counter)
     # The address a town would have under its post office name ("louny-1"), leading to the town.
     merged: dict[str, str] = {}
+    # Pubs whose address names another Prague district than the one they stand in.
+    moved: list[str] = []
     for pub in pubs:
         city = town_name(pub["raw"])
         pub["c"] = city_slug(city) if city else ""
         if pub["c"] and (posted := city_slug(city_name(pub["raw"]))) != pub["c"]:
             merged[posted] = pub["c"]
-        pub["d"] = district_name(pub["raw"])
+        pub["d"] = district_name(pub["raw"], pub["lat"], pub["lng"])
+        if pub["c"] == "praha" and (said := prague_district(pub["raw"])) and said != pub["d"] and said[-1].isdigit():
+            moved.append(f"{pub['k']} {said} -> {pub['d']}")
         pub["f"] = fold(f"{pub['n']} {city} {pub['d']}")
         if pub["c"]:
             spellings[pub["c"]][city] += 1
             if pub["d"]:
                 districts[pub["c"]][pub["d"]] += 1
+    if moved:
+        logger.info(
+            "Prague district from position differs from the address for %d pubs: %s",
+            len(moved), ", ".join(moved[:10]),
+        )
     cities = {
         slug: {
             "slug": slug,
@@ -484,7 +499,7 @@ def _candidates(cache_key: str) -> list[dict]:
         if row and row["name"]:
             return [{
                 "k": cache_key, "n": row["name"], "raw": row["city"] or "", "lat": row["lat"], "lng": row["lng"],
-                "a": "", "c": city_slug(town_name(row["city"] or "")), "d": district_name(row["city"] or ""),
+                "a": "", "c": city_slug(town_name(row["city"] or "")), "d": district_name(row["city"] or "", row["lat"], row["lng"]),
             }]
     return []
 

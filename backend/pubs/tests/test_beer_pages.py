@@ -26,6 +26,7 @@ from pubs.models import (
     PubDirectory,
     PubHours,
 )
+from pubs.tests.prague_points import DISTRICT_POINTS
 from pubs.tests.sitemaps import sitemap_xml
 from pubs.web.pages import _csp
 
@@ -54,14 +55,15 @@ def _pub(
     *,
     city: str = "Praha 2",
     days_ago: int = 1,
-    at: tuple[float, float] = PRAGUE,
+    at: tuple[float, float] = DISTRICT_POINTS["Praha 2"],
     country: str = "cz",
     rotates: bool = False,
 ) -> str:
     """A catalogue pub whose menu someone submitted ``days_ago``."""
 
     index = next(_cells)
-    lat, lng = at[0] + index * 0.0007, at[1]
+    # Each pub its own cell, all within ~600 m of ``at`` so they stay in its district.
+    lat, lng = at[0] + index % 8 * 0.0007, at[1] + index // 8 % 8 * 0.0011
     directory = PubDirectory.objects.create(
         name=name,
         lat=lat,
@@ -134,7 +136,7 @@ def _drink(
 def _three_fresh_pubs() -> None:
     _pub("U Kalicha", [("Testovar 11°", 52, 500)], days_ago=3)
     _pub("Na Růžku", [("Testovar 11", 58, 500)], city="Brno", days_ago=10)
-    _pub("U Lípy", [("testovar 11.", 64, 500)], city="Praha 7 - Holešovice", days_ago=40)
+    _pub("U Lípy", [("testovar 11.", 64, 500)], city="Praha 7 - Holešovice", days_ago=40, at=DISTRICT_POINTS["Praha 7"])
 
 
 def _second_beer() -> None:
@@ -173,7 +175,7 @@ def test_spellings_of_one_beer_are_one_page_with_prices_cities_and_dates():
         "price_czk": 52,
         "volume_ml": 500,
         "lat": beer["listed"][0]["lat"],
-        "lng": PRAGUE[1],
+        "lng": beer["listed"][0]["lng"],
         "confirmed": timezone.localdate(timezone.now() - timedelta(days=3)).isoformat(),
         "fresh": True,
         "rotates": False,
