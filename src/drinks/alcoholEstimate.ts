@@ -135,6 +135,7 @@ function simulate(doses: Dose[], scenario: Scenario, untilMs: number): Run {
   let peak = 0;
   let peakAt = untilMs;
   let lastZeroMs = -Infinity;
+  let wasAbsorbing = false;
   for (let ms = firstMs; ; ms += STEP_MS) {
     let absorbed = 0;
     let starting = false;
@@ -147,7 +148,8 @@ function simulate(doses: Dose[], scenario: Scenario, untilMs: number): Run {
       }
     }
     // A weak drink can absorb slower than the level falls, so zero alone does not end a bout.
-    if (starting && !carried && level <= 0) lastZeroMs = ms - STEP_MS;
+    if (starting && !carried && !wasAbsorbing && level <= 0) lastZeroMs = ms - STEP_MS;
+    wasAbsorbing = absorbed > 0;
     level = Math.max(0, level + absorbed - (level > 0 ? eliminationPerStep : 0));
     if (ms <= untilMs) at = level;
     else if (level > peak) {
@@ -201,10 +203,10 @@ export function estimateAlcohol(
   const zeroAtMs = Math.ceil(mid.zeroAt / HALF_HOUR_MS) * HALF_HOUR_MS;
   if (zeroAtMs <= nowMs) return null;
 
-  const low = simulate(doses, LOW, nowMs);
-  const high = simulate(doses, HIGH, nowMs);
-  // Minute steps can leave a lower run a hair above a higher one, so the earliest bout start wins.
-  const lastZeroMs = Math.min(high.lastZeroMs, mid.lastZeroMs, low.lastZeroMs);
+  // The app already said zero once the middle run got there, so what came before is a closed night for every run.
+  const bout = doses.filter((dose) => dose.startMs > mid.lastZeroMs);
+  const low = simulate(bout, LOW, nowMs);
+  const high = simulate(bout, HIGH, nowMs);
   const absorbing = nowMs < doses[doses.length - 1].startMs + ABSORPTION_MIN * STEP_MS;
   return {
     now: mid.at,
@@ -213,6 +215,6 @@ export function estimateAlcohol(
     zeroAt: new Date(zeroAtMs),
     absorbing,
     rising: absorbing && mid.peak > mid.at ? { promile: mid.peak, at: new Date(mid.peakAt) } : null,
-    drinks: counted.filter((drink) => Date.parse(drink.at) > lastZeroMs),
+    drinks: counted.filter((drink) => Date.parse(drink.at) > mid.lastZeroMs),
   };
 }

@@ -174,6 +174,22 @@ describe('estimateAlcohol', () => {
     ]);
   });
 
+  it('starts a new night once the shown estimate was at zero, even while the slow run is not', () => {
+    const lastNight = ['18:00', '18:40', '19:20', '20:00', '20:40', '21:20', '22:00', '22:40'].map((time, i) => ({
+      ...beer(`y${i}`, time),
+      at: at(time, 16),
+    }));
+    expect(estimateAlcohol(lastNight, PROFILE, Date.parse(at('11:00')))).toBeNull();
+
+    const fresh = beer('new', '15:00');
+    const estimate = estimateAlcohol([...lastNight, fresh], PROFILE, Date.parse(at('15:30')))!;
+    const alone = estimateAlcohol([fresh], PROFILE, Date.parse(at('15:30')))!;
+
+    expect(estimate.drinks.map((drink) => drink.id)).toEqual(['new']);
+    expect(estimate.high).toBeCloseTo(alone.high, 2);
+    expect(estimate.low).toBeCloseTo(alone.low, 2);
+  });
+
   it('ignores drinks timed in the future', () => {
     expect(estimateAlcohol([beer('f', '23:00')], PROFILE, Date.parse(at('21:00')))).toBeNull();
   });
