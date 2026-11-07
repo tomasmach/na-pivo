@@ -67,6 +67,8 @@ interface ActivityPayload {
   /** New-look plan: a pub, home or custom place. Missing on legacy ops. For a
    *  home or custom place `pub` only carries the title and 0/0 coordinates. */
   place?: { kind: PlaceKind; address: string };
+  /** Cinknutí to one friend that joins my live ping. Missing on legacy ops. */
+  addRecipients?: boolean;
 }
 
 /** One pending Parta write, keyed (and deduped) by {@link dedupKey}. */
@@ -244,7 +246,7 @@ async function deliver(item: FriendQueueItem): Promise<QueueSyncResult> {
           })
         : scheduledFor
         ? await createFriendPlan(pub, scheduledFor, message, item.clientId, item.payload.recipientIds)
-        : await shareFriendPubActivity(pub, message, item.clientId, item.payload.recipientIds, item.payload.startedAt, item.payload.tour);
+        : await shareFriendPubActivity(pub, message, item.clientId, item.payload.recipientIds, item.payload.startedAt, item.payload.tour, item.payload.addRecipients === true);
       const verdict = classify(result);
       if (verdict === 'ok') await markDelivered(item.clientId);
       return verdict;

@@ -30,6 +30,7 @@ export const stamgastEn: typeof stamgastCs = {
   quickBackfill: 'Add past',
   quickPhoto: 'Photo',
   quickPing: 'Ping',
+  tablemates: (names: string) => `Your crew here: ${names}`,
   quickDone: 'Done',
   nothingYet: 'Nothing poured today yet.',
   stickerTitle: (n: number) => `Beer number ${n}. Put it on your story?`,
