@@ -110,7 +110,7 @@ def _both(path: str, lastmod=None) -> dict:
 
 
 def _pages() -> dict[str, list[dict]]:
-    from pubs.web import beer_index, news, pubs_views, rankings, tours
+    from pubs.web import about, beer_index, news, pubs_views, rankings, tours
 
     origin = settings.PUBLIC_WEB_ORIGIN
     snapshot = PubPriceSnapshot.objects.only("data").first()
@@ -131,7 +131,7 @@ def _pages() -> dict[str, list[dict]]:
             "urls": {lang: f"{origin}{page_path(kind, key, lang)}" for lang in BEER_PATHS},
             "lastmod": beers.get((kind, key)),
         })
-    for module in (pubs_views, rankings, news, beer_index, tours):
+    for module in (pubs_views, rankings, news, beer_index, tours, about):
         pages += [_both(path) for path in module.sitemap_paths()]
     pubs = [
         {"urls": {lang: f"{origin}{web_reverse('web-pub', lang, key=key)}" for lang in _LANGS}, "lastmod": _day(changed)}

@@ -5398,3 +5398,202 @@ msgstr "half a litre for %(price)s"
 
 msgid "Trasa"
 msgstr "Directions"
+
+msgid "pivo s vlastní stránkou"
+msgstr "beer with its own page"
+
+msgid "piva s vlastní stránkou"
+msgstr "beers with their own page"
+
+msgid "hospoda je čepuje"
+msgstr "pub pours them"
+
+msgid "hospody je čepují"
+msgstr "pubs pour them"
+
+msgid "pivo na stránce"
+msgstr "beer on the page"
+
+msgid "piva na stránce"
+msgstr "beers on the page"
+
+msgid "hospoda ho čepuje"
+msgstr "pub pours it"
+
+msgid "hospody ho čepují"
+msgstr "pubs pour it"
+
+msgid "O appce"
+msgstr "About the app"
+
+msgid "Na pivo je pivní deníček do kapsy: kompas na nejbližší hospodu, počítadlo piv, deník a parta. Je zdarma a bez reklam."
+msgstr "Na pivo is a beer diary for your pocket: a compass to the nearest pub, a beer counter, a diary and your crew. It is free and has no ads."
+
+msgid "Kdo za tím je"
+msgstr "Who makes it"
+
+msgid "Instagram @jsem_mach"
+msgstr "Instagram @jsem_mach"
+
+msgid "Odkud jsou data a ceny"
+msgstr "Where the data and prices come from"
+
+msgid "Lístky a otevírací doba"
+msgstr "Menus and opening hours"
+
+msgid "Zapisují je lidi, kteří v hospodě zrovna sedí. U lístku ukazuju, kdy ho někdo naposledy ověřil."
+msgstr "People who are sitting in the pub write them down. Next to each menu I show when somebody last checked it."
+
+msgid "Z každé hospody beru nejlevnější pivo od 0,4 l, které někdo zapsal za poslední rok. Město ukážu, až mám ceny aspoň z 5 tamních hospod. Přepočítávám je každý den."
+msgstr "From each pub I take the cheapest beer of 0.4 l or more that somebody logged in the last year. I show a town once I have prices from at least 5 of its pubs. I recalculate them every day."
+
+msgid "Hodnocení"
+msgstr "Ratings"
+
+msgid "Průměr piva v hospodě ukážu, až ho ohodnotí aspoň 3 lidi. Jeden nadšenec ani jeden naštvaný host číslo neudělá."
+msgstr "I show the average for a beer in a pub once at least 3 people have rated it. One fan or one grumpy guest cannot make the number."
+
+msgid "Vidíš u hospody špatnou cenu, chybí ti tu nějaká hospoda nebo chceš čísla do článku? Napiš mi, čtu to sám."
+msgstr "Spotted a wrong price, missing a pub, or need numbers for an article? Write to me, I read it myself."
+
+msgid "Stáhni si Na pivo"
+msgstr "Get Na pivo"
+
+msgid "Zdarma pro iPhone i Android."
+msgstr "Free for iPhone and Android."
+
+msgid "Kolik stojí pivo ve tvém městě a kde ho čepují nejlevněji:"
+msgstr "What a beer costs in your town and where it is cheapest:"
+
+msgid "Kdo index počítá a odkud data jsou"
+msgstr "Who calculates the index and where the data come from"
+
+msgid "Hospody poblíž"
+msgstr "Pubs nearby"
+
+msgid "Medián a nejlevnější hospody"
+msgstr "Median and the cheapest pubs"
+
+msgid "Jak se cena piva mění v čase a jak jsou na tom kraje, ukazuje"
+msgstr "How the price of beer changes over time and how the regions compare:"
+
+msgid "O appce Na pivo a kdo ji dělá"
+msgstr "About Na pivo and who makes it"
+
+msgid "Na pivo dělá jeden člověk, Tomáš Mach. Odkud jsou hospody, lístky a ceny, jak je počítám a jak mi napsat."
+msgstr "One person makes Na pivo: Tomáš Mach. Where the pubs, menus and prices come from, how I count them and how to reach me."
+
+msgid "Hospody: %(city)s"
+msgstr "Pubs in %(city)s"
+
+msgid "%(city)s: %(pubs)s"
+msgstr "%(city)s: %(pubs)s"
+
+msgid "půllitr kolem %(price)s"
+msgstr "a half litre around %(price)s"
+
+msgid "Lístek mám u %(count)s z nich."
+msgstr "I have the menu of %(count)s of them."
+
+msgid "Je tu %(names)s."
+msgstr "The pub here: %(names)s."
+
+msgid "Jsou tu %(names)s."
+msgstr "Pubs here: %(names)s."
+
+msgid "Třeba %(names)s."
+msgstr "Among them %(names)s."
+
+msgid "Další čtvrti"
+msgstr "Other districts"
+
+msgid "Hospoda bez jména"
+msgstr "Pub without a name"
+
+msgid "Co čepují v hospodě %(name)s, %(place)s: %(beers)s"
+msgstr "What %(name)s in %(place)s pours: %(beers)s"
+
+msgid "Co čepují v hospodě bez jména, %(place)s: %(beers)s"
+msgstr "What a pub without a name in %(place)s pours: %(beers)s"
+
+msgid "od %(price)s Kč"
+msgstr "from %(price)s CZK"
+
+msgid "lístek z %(date)s"
+msgstr "menu from %(date)s"
+
+msgid "%(name)s, %(place)s: pivo od %(price)s Kč podle zápisů v Na pivo."
+msgstr "%(name)s, %(place)s: beer from %(price)s CZK, as people logged it in Na pivo."
+
+msgid "%(name)s, %(place)s. Co tu čepují, zatím nevím. Lístek může doplnit každý, kdo tu sedí."
+msgstr "%(name)s, %(place)s. I don't know yet what they pour. Anyone sitting here can add the menu."
+
+msgid "Hodnocení piv od lidí z Na pivo."
+msgstr "Beer ratings from people on Na pivo."
+
+msgctxt "heading"
+msgid "Kolik stojí pivo %(in_city)s"
+msgstr "What a beer costs %(in_city)s"
+
+msgid "Cena piva %(year)s po městech: kolik stojí pivo v hospodě"
+msgstr "Beer prices %(year)s by town: what a beer costs in a pub"
+
+msgid "Kde se čepuje %(brand)s: %(pubs)s, %(beers)s s vlastní stránkou. U každé hospody cena a datum posledního potvrzení."
+msgstr "Where %(brand)s is poured: %(pubs)s, %(beers)s with their own page. Each pub with its price and the date it was last confirmed."
+
+msgid "hospoda za 3 měsíce"
+msgstr "pub in 3 months"
+
+msgid "hospody za 3 měsíce"
+msgstr "pubs in 3 months"
+
+msgid "hospoda čepuje"
+msgstr "pub pouring"
+
+msgid "hospody čepují"
+msgstr "pubs pouring"
+
+msgid "Pivní index Česka: cena piva po krajích a v čase"
+msgstr "Czech Beer Index: beer prices by region and over time"
+
+msgid "Zavřenou hospodu nebo podnik, který hospodou není, nahlásíš v appce. Zmizí, až ho nahlásí %(n)s různých lidí."
+msgstr "Report a closed pub or a place that is not a pub in the app. It disappears once %(n)s different people report it."
+
+msgid "Zdroj: Pivní index Česka, Na pivo"
+msgstr "Source: Czech Beer Index, Na pivo"
+
+msgid "Jmenuju se Tomáš Mach a Na pivo dělám sám, appku i tenhle web."
+msgstr "I'm Tomáš Mach and I make Na pivo on my own, the app and this website."
+
+msgid "Najdeš tu i otevírací dobu."
+msgstr "Opening hours are on the page too."
+
+msgid "Zavřenou hospodu nebo podnik, který hospodou není, nahlásíš v appce. Zmizí, až ho nahlásí %(n)s různí lidé."
+msgstr "Report a closed pub or a place that is not a pub in the app. It disappears once %(n)s different people report it."
+
+msgid "Zavřenou hospodu nebo podnik, který hospodou není, nahlásíš v appce. Zmizí, až ho nahlásí %(n)s člověk."
+msgstr "Report a closed pub or a place that is not a pub in the app. It disappears once %(n)s person reports it."
+
+msgid "Seznam hospod skládám z veřejných zdrojů a z hospod, které do appky přidali lidi."
+msgstr "I put the list of pubs together from public sources and from pubs people added in the app."
+
+msgid "Spodní lišta"
+msgstr "Bottom bar"
+
+msgid "s lístkem"
+msgstr "with a menu"
+
+msgid "Takovou hospodu ani město tu s touhle značkou nemám."
+msgstr "I don't have a pub or town like that with this brand."
+
+msgid "Co čepuje %(name)s, %(place)s: %(beers)s"
+msgstr "What %(name)s in %(place)s pours: %(beers)s"
+
+msgid "Hospody, kde čepují %(brand)s"
+msgstr "Pubs pouring %(brand)s"
+
+msgid "polovina hospod mezi %(low)s a %(high)s Kč"
+msgstr "half of pubs between %(low)s and %(high)s CZK"
+
+msgid "hlavně ceny starší 3 měsíců"
+msgstr "mostly prices over 3 months old"

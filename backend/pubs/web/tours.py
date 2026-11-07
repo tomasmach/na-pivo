@@ -24,6 +24,7 @@ from pubs.models import FriendBlock, PubPriceIndex, TourPublication
 from pubs.price_map import _SOURCES, PUBLIC_MIN_CZK, WINDOW_DAYS
 from pubs.tours import fresh_people_count, readable_publications
 from pubs.web.pages import render_page, web_page
+from pubs.web.places import place_name, pub_name
 from pubs.web.pub_map import live_map
 from pubs.web.public_common import (
     PAGE_CACHE_SECONDS,
@@ -86,7 +87,7 @@ def _route_svg(stops: list[dict], width: int, height: int, pad: int) -> dict:
     off_y = (height - (max(ys) - min(ys)) * scale) / 2
     points = [
         {"x": round(off_x + (x - min(xs)) * scale), "y": round(off_y + (y - min(ys)) * scale), "n": index + 1,
-         "name": stops[index]["name"], "right": (off_x + (x - min(xs)) * scale) < width * 0.62}
+         "name": pub_name(stops[index]["name"]), "right": (off_x + (x - min(xs)) * scale) < width * 0.62}
         for index, (x, y) in enumerate(zip(xs, ys, strict=True))
     ]
     return {"w": width, "h": height, "points": points, "path": " ".join(f"{p['x']},{p['y']}" for p in points)}
@@ -98,8 +99,8 @@ def _card(publication: TourPublication, prices: dict[str, int]) -> dict:
     return {
         "token": publication.token,
         "title": publication.title,
-        "city": city_name(publication.city) or publication.city,
-        "area": publication.city,
+        "city": place_name(city_name(publication.city) or publication.city),
+        "area": place_name(publication.city),
         "stops": publication.stop_count,
         "walk_m": publication.walk_m,
         "avg": round(sum(known) / len(known)) if known else None,
@@ -108,8 +109,8 @@ def _card(publication: TourPublication, prices: dict[str, int]) -> dict:
         "owner_id": publication.plan.owner_id,
         "map": _route_svg(stops, 360, 150, 22),
         "map_big": _route_svg(stops, 640, 400, 80),
-        "live_map": live_map([{"lat": stop["lat"], "lng": stop["lon"], "label": stop["name"]} for stop in stops], kind="route"),
-        "names": " · ".join(stop["name"] for stop in stops[:3]) + (" …" if len(stops) > 3 else ""),
+        "live_map": live_map([{"lat": stop["lat"], "lng": stop["lon"], "label": pub_name(stop["name"])} for stop in stops], kind="route"),
+        "names": " · ".join(pub_name(stop["name"]) for stop in stops[:3]) + (" …" if len(stops) > 3 else ""),
     }
 
 
@@ -175,7 +176,7 @@ def tours(request: HttpRequest) -> HttpResponse:
     except ValueError:
         page = 1
     data = _listing(city, stops)
-    city_label = data["cities"].get(city, "")
+    city_label = place_name(data["cities"].get(city, ""))
     city = city if city_label else ""
     hidden = _hidden_authors(request.web_account)
     cards = [_card_view(card) for card in data["cards"] if card["owner_id"] not in hidden]
@@ -193,7 +194,7 @@ def tours(request: HttpRequest) -> HttpResponse:
         for key in STOP_BUCKETS
     ]
     city_links = [{"label": gettext("Všechna města"), "url": url(mesto=""), "current": not city}] + [
-        {"label": name, "url": url(mesto=slug), "current": slug == city} for slug, name in data["cities"].items()
+        {"label": place_name(name), "url": url(mesto=slug), "current": slug == city} for slug, name in data["cities"].items()
     ]
     crumbs, crumb_graph = breadcrumbs([("Na pivo", web_reverse("home")), (gettext("Trasy"), base)])
     graph = [crumb_graph]
@@ -267,7 +268,7 @@ def _detail(publication: TourPublication) -> dict:
             walk_minutes += leg[1]
         rows.append({
             "n": index + 1,
-            "name": stop["name"],
+            "name": pub_name(stop["name"]),
             "area": stop.get("address") or "",
             "challenge": stop.get("challenge") or "",
             "price": prices.get(stop.get("cache_key") or ""),
@@ -304,7 +305,7 @@ def tour(request: HttpRequest, tour_id: str) -> HttpResponse:
     city_url = f"{base}?mesto={slugify(city)}" if city else base
     crumb_items = [("Na pivo", web_reverse("home")), (gettext("Trasy"), base)]
     if city:
-        crumb_items.append((city, city_url))
+        crumb_items.append((place_name(city), city_url))
     crumb_items.append((publication.title, web_reverse("web-tour", tour_id=publication.token)))
     crumbs, crumb_graph = breadcrumbs(crumb_items)
     origin = settings.PUBLIC_WEB_ORIGIN
@@ -338,7 +339,7 @@ def tour(request: HttpRequest, tour_id: str) -> HttpResponse:
         f"&origin={stops[0]['lat']},{stops[0]['lon']}&destination={stops[-1]['lat']},{stops[-1]['lon']}"
         + (f"&waypoints={quote(waypoints, safe=',')}" if waypoints else "")
     )
-    meta = [city or publication.city, gettext("sestavil @%(nick)s") % {"nick": publication.plan.owner.nickname}]
+    meta = [place_name(city or publication.city), gettext("sestavil @%(nick)s") % {"nick": publication.plan.owner.nickname}]
     if people:
         meta.append(plural(people, gettext("prošel ji %(n)s člověk"), gettext("prošli ji %(n)s lidé"),
                            gettext("prošlo ji %(n)s lidí")) % {"n": thousands(people)})
@@ -364,7 +365,7 @@ def tour(request: HttpRequest, tour_id: str) -> HttpResponse:
             "map_phone": _route_svg(stops, 390, 240, 34),
             "live_map": live_map(
                 [
-                    {"lat": stop["lat"], "lng": stop["lon"], "label": stop["name"], "name": stop["name"], "url": row["url"]}
+                    {"lat": stop["lat"], "lng": stop["lon"], "label": row["name"], "name": row["name"], "url": row["url"]}
                     for stop, row in zip(stops, detail["rows"], strict=True)
                 ],
                 kind="route",
@@ -373,7 +374,7 @@ def tour(request: HttpRequest, tour_id: str) -> HttpResponse:
             "app_url": f"/t/{quote(publication.token, safe='')}",
             "share_url": page_url,
             "nearby": nearby,
-            "city": city,
+            "city": place_name(city),
             "city_url": city_url,
             "structured_data": structured(crumb_graph, trip),
             "og_image": f"{origin}{web_reverse('tour-og', tour_id=publication.token)}?v={publication.revision}",
@@ -408,7 +409,7 @@ def tour_og(request: HttpRequest, tour_id: str, lang: str = "cs") -> HttpRespons
             if detail["avg"]:
                 figures.append((f"{detail['avg']} {gettext('Kč')}", gettext("průměrný půllitr")))
             return og_image(
-                kicker=" · ".join(part for part in (publication.city, f"@{publication.plan.owner.nickname}") if part),
+                kicker=" · ".join(part for part in (place_name(publication.city), f"@{publication.plan.owner.nickname}") if part),
                 title=publication.title,
                 hero=str(publication.stop_count),
                 hero_label=_pubs_word(publication.stop_count),

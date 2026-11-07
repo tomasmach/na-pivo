@@ -10,6 +10,7 @@ from __future__ import annotations
 from django.conf import settings
 from django.urls import path
 
+from pubs.web.about import about
 from pubs.web.account_views import (
     account_deleted,
     add_pub,
@@ -74,6 +75,8 @@ urlpatterns = [
     *bilingual("trasy/<str:tour_id>/og.png", "en/tours/<str:tour_id>/og.png", tour_og, "tour-og"),
 
     *bilingual("pivni-index", "en/beer-index", beer_index, "web-beer-index"),
+
+    *bilingual("o-appce", "en/about", about, "web-about"),
     *bilingual("pivni-index/og.png", "en/beer-index/og.png", beer_index_og, "beer-index-og"),
 
     *bilingual("smazat-ucet", "en/delete-account", delete_account, "web-delete-account"),

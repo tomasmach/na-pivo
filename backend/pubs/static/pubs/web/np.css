@@ -301,7 +301,8 @@ a.np-row:hover { background: var(--np-tint); color: var(--np-white); }
 .np-footer__about { display: grid; align-content: start; gap: 22px; }
 .np-footer__about p { color: var(--np-muted); font-size: 15px; line-height: 1.6; }
 .np-footer__cols { display: flex; gap: 64px; }
-.np-footer__col h2 { margin-bottom: 14px; color: var(--np-muted); font-size: 13px; font-weight: 600; }
+/* A column label names its links for screen readers; it is not part of the page's outline. */
+.np-footer__title { margin-bottom: 14px; color: var(--np-muted); font-size: 13px; font-weight: 600; }
 .np-footer__col ul { display: grid; gap: 11px; padding: 0; margin: 0; list-style: none; }
 .np-footer__col a { color: var(--np-text-2); font-size: 15px; }
 .np-footer__col a:hover { color: var(--np-white); }
