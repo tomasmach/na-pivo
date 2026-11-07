@@ -1,6 +1,6 @@
 {% load i18n %}{% comment %}
 The foot of a pub list that goes on over pages: how many show, and a link to the next page that web.js appends here.
 {% endcomment %}<div class="rs-more-foot" data-more-foot>
-  <span>{{ pubs_page.count_label }}</span>
-  {% if pubs_page.more_url %}<a class="np-link" href="{{ pubs_page.more_url }}" data-more>{% translate "Načíst další" %} ›</a>{% endif %}
+  <span data-count data-from-start="{{ pubs_page.count.from_start }}" data-range="{{ pubs_page.count.range }}">{{ pubs_page.count.label }}</span>
+  {% if pubs_page.more_url %}<a class="np-link" href="{{ pubs_page.more_url }}"{% if pubs_page.query or pubs_page.sort %} rel="nofollow"{% endif %} data-more>{% translate "Načíst další" %} ›</a>{% endif %}
 </div>

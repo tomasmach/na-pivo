@@ -12,7 +12,7 @@ from collections import defaultdict
 from datetime import date, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
-from urllib.parse import quote
+from urllib.parse import quote, urlencode
 
 from django.conf import settings
 from django.core.cache import cache
@@ -62,12 +62,12 @@ from pubs.models import (
     PubPriceSnapshot,
 )
 from pubs.price_map import PATHS as PRICE_PATHS
-from pubs.price_map import city_slug, headline_prices, render_city_og_image
+from pubs.price_map import city_slug, half_litre_czk, headline_prices, render_city_og_image
 from pubs.web.dates import time_tag, with_times
 from pubs.web.pages import login_url, render_page, web_page
 from pubs.web.places import in_place, place_name, pub_name
 from pubs.web.routes import web_reverse
-from pubs.web.words import plural
+from pubs.web.words import list_count, plural
 
 # Lists longer than this get search and sorting, and start folded to this many rows.
 _FOLDED_ROWS = 12
@@ -729,12 +729,14 @@ def _price_facts(data: dict, area: dict | None, country: dict | None, city_urls:
     if cheapest:
         pub = cheapest[0]
         facts.append({
-            "title": gettext("Nejlevněji"),
+            # The same half litre the list of the cheapest pubs is ordered by and shows.
+            "title": gettext("Nejlevněji za 0,5 l"),
             "meta": ", ".join(part for part in (pub_name(pub["name"]), place_name(pub["city"])) if part),
             "url": _pub_url(pub),
-            "value": f"{pub['price_czk']} {unit}",
-            "value_meta": "" if pub["volume_ml"] == 500 else gettext("za %(litres)s l") % {
-                "litres": _litres(pub["volume_ml"])
+            "value": f"{half_litre_czk(pub)} {unit}",
+            # Under the pub's name, like in the list, so the price column stays one number wide.
+            "note": "" if pub["volume_ml"] == 500 else gettext("na lístku %(price)s Kč za %(litres)s l") % {
+                "price": pub["price_czk"], "litres": _litres(pub["volume_ml"])
             },
         })
     if stats and stats["p25"] != stats["p75"]:
@@ -868,7 +870,7 @@ def beer_prices(request: HttpRequest, city: str = "") -> HttpResponse:
                 {
                     **pub, "litres": _litres(pub["volume_ml"]), "url": _pub_url(pub), "name": pub_name(pub["name"]),
                     # The list is ordered by this, so it is the number each row shows.
-                    "per_half_litre": round(pub["price_czk"] * 500 / pub["volume_ml"]),
+                    "per_half_litre": half_litre_czk(pub),
                 }
                 for pub in (area.get("cheapest", []) if area else data.get("cheapest", []))
             ],
@@ -1074,6 +1076,28 @@ def _about(rating: dict | None) -> list[dict]:
     return [row for row in rows if row["value"]]
 
 
+def _find_pubs(rows: list[dict], query: str, sort: str) -> list[dict]:
+    """The pubs of a beer or brand list matching a search for a name or a city, in the order asked for.
+
+    The same rules as reskin.js uses on a short list: accents and case do not matter, and the cheapest
+    order keeps fresh pubs before old ones and pubs without a price last.
+    """
+
+    from pubs.web.pubs_data import fold
+
+    words = fold(query).split()
+    found = [row for row in rows if all(word in fold(f"{row['name']} {row.get('city', '')}") for word in words)]
+    if sort == "cheap":
+        found = sorted(found, key=lambda row: (not row["fresh"], not row["per_half_litre"], row["per_half_litre"] or 0))
+    first_old = next((index for index, row in enumerate(found) if not row["fresh"]), None)
+    return [{**row, "first_old": index == first_old} for index, row in enumerate(found)]
+
+
+def _pubs_query(query: str, sort: str, number: int) -> str:
+    params = {key: value for key, value in (("q", query), ("sort", sort), ("page", number if number > 1 else "")) if value}
+    return f"?{urlencode(params)}" if params else ""
+
+
 @web_page
 def beer_pages(request: HttpRequest, kind: str = BeerPage.Kind.LIST, key: str = "") -> HttpResponse:
     """The list of beers, a beer or a brand, read as is from the newest daily run."""
@@ -1118,21 +1142,33 @@ def beer_pages(request: HttpRequest, kind: str = BeerPage.Kind.LIST, key: str = 
         for pub in live.get("pubs", [])
     ]
     pub_rows = listed if kind == BeerPage.Kind.BEER else brand_pubs
+    # A long list is searched and sorted by the server, over all its pubs; a short one by reskin.js in the page.
+    server_tools = len(pub_rows) > PUBS_PER_PAGE
+    query = request.GET.get("q", "").strip()[:80] if server_tools else ""
+    sort = "cheap" if server_tools and request.GET.get("sort") == "cheap" else ""
+    if query or sort:
+        pub_rows = _find_pubs(pub_rows, query, sort)
     last_page = max(1, -(-len(pub_rows) // PUBS_PER_PAGE))
     try:
         number = max(int(request.GET.get("page", "1")), 1)
     except ValueError:
         number = 1
     if page and number > last_page:
-        return HttpResponsePermanentRedirect(path + (f"?page={last_page}" if last_page > 1 else ""))
+        return HttpResponsePermanentRedirect(path + _pubs_query(query, sort, last_page))
     start = (number - 1) * PUBS_PER_PAGE
     shown = pub_rows[start:start + PUBS_PER_PAGE]
     for index, row in enumerate(shown, start=start + 1):
         row["anchor"] = f"h{index}"
     pubs_page = {
         "paged": last_page > 1,
-        "count_label": gettext("%(shown)s z %(total)s") % {"shown": _grouped(start + len(shown)), "total": _grouped(len(pub_rows))},
-        "more_url": f"{path}?page={number + 1}#h{start + len(shown) + 1}" if number < last_page else "",
+        "server": server_tools,
+        "query": query,
+        "sort": sort,
+        "count": list_count(start, len(shown), len(pub_rows)),
+        "more_url": f"{path}{_pubs_query(query, sort, number + 1)}#h{start + len(shown) + 1}" if number < last_page else "",
+        "default_url": path + _pubs_query(query, "", 1),
+        "cheap_url": path + _pubs_query(query, "cheap", 1),
+        "clear_url": path + _pubs_query("", sort, 1),
     }
 
     def with_rating(beer: dict) -> dict:
@@ -1258,7 +1294,11 @@ def beer_pages(request: HttpRequest, kind: str = BeerPage.Kind.LIST, key: str = 
         ),
         section="beer",
         status=429 if wait else 404 if missing else 200,
-        canonical_params={"page": number} if number > 1 else None,
+        # A search or another order is the same list for search engines: not indexed, the canonical without them.
+        indexable=not (query or sort),
+        follow=True,
+        canonical_params={"page": number} if number > 1 and not (query or sort) else None,
+        canonical_noindex=bool(query or sort),
     )
     response["Referrer-Policy"] = "no-referrer"
     if wait:

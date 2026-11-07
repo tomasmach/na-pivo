@@ -20,6 +20,7 @@ from pubs.models import (
     PubPriceSnapshot,
     UserAddedPub,
 )
+from pubs.price_map import half_litre_czk
 from pubs.web.dates import time_tag, with_times
 from pubs.web.pages import render_page, web_page
 from pubs.web.places import pub_name
@@ -129,7 +130,7 @@ def _side_numbers() -> dict:
         added = UserAddedPub.objects.filter(
             active=True, created_at__gte=timezone.now() - timedelta(days=30)
         ).count()
-        return {"cheapest": cheapest["price_czk"] if cheapest else None, "new_pubs": added}
+        return {"cheapest": half_litre_czk(cheapest) if cheapest else None, "new_pubs": added}
 
     return cache.get_or_set("web:rankings:side", build, PAGE_CACHE_SECONDS)
 

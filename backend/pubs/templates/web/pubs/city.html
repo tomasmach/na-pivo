@@ -28,7 +28,7 @@
     {% if rows %}
     <div class="np-pubs-list__rows" data-more-rows>{% for row in rows %}{% include "web/pubs/_pub_row.html" %}{% endfor %}</div>
     <div class="np-pubs-list__foot" data-more-foot>
-      <span>{{ count_label }}</span>
+      <span data-count data-from-start="{{ count.from_start }}" data-range="{{ count.range }}">{{ count.label }}</span>
       {% if more_url %}<a class="np-link" href="{{ more_url }}"{% if more_nofollow %} rel="nofollow"{% endif %} data-more>{% translate "Načíst další" %} ›</a>{% endif %}
     </div>
     {% else %}

@@ -6,8 +6,10 @@
 <meta name="theme-color" content="#0A0A0A">
 <title>{{ page.title }} | Na pivo</title>
 {% if page.description %}<meta name="description" content="{{ page.description }}">{% endif %}
-{% if page.indexable %}
+{% if page.indexable or page.canonical_noindex %}
 <link rel="canonical" href="{{ page.canonical_url }}">
+{% endif %}
+{% if page.indexable %}
 <link rel="alternate" hreflang="cs" href="{{ page.alternate_urls.cs }}">
 <link rel="alternate" hreflang="en" href="{{ page.alternate_urls.en }}">
 <link rel="alternate" hreflang="x-default" href="{{ page.alternate_urls.cs }}">

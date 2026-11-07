@@ -23,7 +23,7 @@
   <aside class="np-card rs-facts" aria-labelledby="facts-title">
     <h2 class="np-title" id="facts-title">{% if area %}{% blocktranslate with city=area_name %}Za kolik se čepuje: {{ city }}{% endblocktranslate %}{% else %}{% translate "Za kolik se čepuje" %}{% endif %}</h2>
     <div class="np-list">
-      {% for fact in facts %}{% include "web/components/row.html" with title=fact.title meta=fact.meta value=fact.value value_meta=fact.value_meta href=fact.url %}{% endfor %}
+      {% for fact in facts %}{% include "web/components/row.html" with title=fact.title meta=fact.meta note=fact.note value=fact.value value_meta=fact.value_meta href=fact.url %}{% endfor %}
     </div>
   </aside>
   {% endif %}
@@ -56,16 +56,17 @@
   <div class="np-card__head">
     {# A small city lists all its pubs, so the list can't promise they are all cheap. #}
     <h2 class="np-title" id="cheapest-title">{% if area %}{% translate "Hospody od nejlevnější" %}{% else %}{% translate "Nejlevnější hospody" %}{% endif %}</h2>
-    {% if area %}<a class="np-link np-small" href="{% web_url "web-pubs-city" city=city %}">{% blocktranslate with city=area_name %}Všechny hospody: {{ city }}{% endblocktranslate %} ›</a>{% endif %}
+    <span class="np-muted np-small">{% translate "cena za 0,5 l" %}</span>
   </div>
   <ol class="rs-ranked" role="list">
     {% for pub in cheapest %}<li class="rs-ranked__row{% if pub.url %} rs-row--link{% endif %}">
       <span class="rs-ranked__rank" aria-hidden="true">{{ forloop.counter }}</span>
-      <span class="rs-ranked__who"><span class="rs-ranked__name">{% if pub.url %}<a class="rs-row__link" href="{{ pub.url }}">{{ pub.name }}</a>{% else %}{{ pub.name }}{% endif %}</span>{% if pub.city and pub.city != area.name %}<span class="rs-ranked__meta city">{{ pub.city|place }}</span>{% endif %}{% if pub.stale %}<span class="rs-ranked__meta">{% translate "cena starší 3 měsíců" %}</span>{% endif %}</span>
-      <span class="rs-ranked__price">{{ pub.per_half_litre }} {% translate "Kč" %}{% if pub.volume_ml != 500 %}<span class="rs-ranked__meta">{% translate "za 0,5 l" %}</span><span class="rs-ranked__meta">{% blocktranslate with price=pub.price_czk litres=pub.litres %}na lístku {{ price }} Kč za {{ litres }} l{% endblocktranslate %}</span>{% endif %}</span>
+      <span class="rs-ranked__who"><span class="rs-ranked__name">{% if pub.url %}<a class="rs-row__link" href="{{ pub.url }}">{{ pub.name }}</a>{% else %}{{ pub.name }}{% endif %}</span>{% if pub.city and pub.city != area.name %}<span class="rs-ranked__meta city">{{ pub.city|place }}</span>{% endif %}{% if pub.volume_ml != 500 %}<span class="rs-ranked__meta">{% blocktranslate with price=pub.price_czk litres=pub.litres %}na lístku {{ price }} Kč za {{ litres }} l{% endblocktranslate %}</span>{% endif %}{% if pub.stale %}<span class="rs-ranked__meta">{% translate "cena starší 3 měsíců" %}</span>{% endif %}</span>
+      <span class="rs-ranked__price">{{ pub.per_half_litre }} {% translate "Kč" %}</span>
       {% if pub.url %}<span class="rs-row__chevron">{% icon "chevron-right" "np-icon--s" %}</span>{% endif %}
     </li>{% endfor %}
   </ol>
+  {% if area %}<a class="np-link np-small rs-ranked__all" href="{% web_url "web-pubs-city" city=city %}">{% blocktranslate with city=area_name %}Všechny hospody: {{ city }}{% endblocktranslate %} ›</a>{% endif %}
 </section>
 {% endif %}
 
