@@ -36,7 +36,6 @@ export const partaCs = {
   pingNoFriends: 'V partě zatím nikoho nemáš, tak není komu cinknout.',
   pingPartyOffline: 'Partu teď nenačtu. Zkus to, až chytíš signál.',
   ping: 'Cinknout',
-  pinged: 'Cinknuto',
   cheer: 'Na zdraví',
   cheerCount: (n: number) => `Na zdraví · ${n}`,
   cheered: 'Ťuk! Na zdraví.',
@@ -44,7 +43,6 @@ export const partaCs = {
   cheerOfflineSub: 'Připiju, až bude signál.',
   cheersAt: (pub: string, n: number) => `${pub} · ${n}× na zdraví`,
   pingedToast: 'Cinknuto!',
-  pingedSub: (name: string) => `${name} ví, že ti chybí u stolu.`,
   liveSub: (pub: string, n: number) => `${pub} · ${n} ${beers(n)}`,
   atSomeonesHome: 'U někoho doma',
 
@@ -156,7 +154,7 @@ export const partaCs = {
   saved: 'Plán je upravený.',
   savedSub: 'Pozvaným jsem dal vědět.',
 
-  pingFriendSub: (name: string) => `${name} o tom ví.`,
+  pingAlreadyKnown: (who: string) => `${who} už o tom ví.`,
   levelLine: (nick: string, title: string, level: number) => `@${nick} · ${title}, level ${level}`,
   sitsNow: (pub: string, n: number) => `Teď sedí ${pub} · ${n} ${beers(n)}`,
   sitsAtHome: 'Teď je u někoho doma',

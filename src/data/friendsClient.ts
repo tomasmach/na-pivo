@@ -1307,7 +1307,9 @@ export async function shareFriendPubActivity(
   startedAt?: string,
   /** From a Tour de pub run: only changes the push wording, the server stores nothing. */
   tour?: TourPing,
-): Promise<FriendActionResult> {
+  /** Join my live ping at the same pub and tell only the friends new to it. */
+  addRecipients?: boolean,
+): Promise<{ ok: true; notified?: number | null } | FriendActionError> {
   const now = startedAt ? new Date(startedAt) : new Date();
   const expires = new Date(now.getTime() + 4 * 60 * 60 * 1000);
   const targetIds = recipientIds && recipientIds.length > 0 ? recipientIds : undefined;
@@ -1325,6 +1327,7 @@ export async function shareFriendPubActivity(
       expires_at: expires.toISOString(),
       ...(targetIds ? { recipient_ids: targetIds } : {}),
       ...(tour ? { tour_title: tour.title, tour_heading: tour.heading } : {}),
+      ...(addRecipients ? { add_recipients: true } : {}),
     },
   });
   if (res.ok && res.data.applied === false) {
@@ -1332,7 +1335,8 @@ export async function shareFriendPubActivity(
     // report a silent server no-op as a delivered broadcast.
     return { ok: false, code: 'visit_pending', detail: t.clientErrors.save };
   }
-  return res.ok ? { ok: true } : res.result;
+  // Older backends do not say how many friends heard about it.
+  return res.ok ? { ok: true, notified: typeof res.data.notified_count === 'number' ? res.data.notified_count : null } : res.result;
 }
 
 export async function respondToActivity(

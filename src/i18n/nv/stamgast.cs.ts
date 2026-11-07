@@ -34,6 +34,7 @@ export const stamgastCs = {
   quickBackfill: 'Dopsat',
   quickPhoto: 'Fotka',
   quickPing: 'Cinknout',
+  tablemates: (names: string) => `Z party tu sedí: ${names}`,
   quickDone: 'Dopito',
   nothingYet: 'Dneska ještě nic nepadlo.',
   stickerTitle: (n: number) => `${n}. pivo. Hoď to na story?`,

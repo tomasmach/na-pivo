@@ -1110,6 +1110,9 @@ class FriendActivityRequestSerializer(_Pub200NameValidationMixin, PubInputSerial
     )
     # True while the crew is still walking to the stop rather than sitting in it.
     tour_heading = serializers.BooleanField(required=False, default=False)
+    # Cinknutí to one friend from their profile: join my live ping at the same pub instead of
+    # replacing its audience, and tell only the friends who were not in it yet.
+    add_recipients = serializers.BooleanField(required=False, default=False)
 
 
 class FriendshipSerializer(serializers.ModelSerializer):
