@@ -8,6 +8,7 @@ Firmy.cz enrichment (its hours and ratings stay inside the app).
 
 from __future__ import annotations
 
+import math
 import re
 import statistics
 import unicodedata
@@ -28,7 +29,7 @@ from pubs.api.pub_beers_views import (
     weekly_pub_beers,
 )
 from pubs.api.views import _globally_reported_pub_cache_keys, _with_pub_name_corrections
-from pubs.beer_catalog import suggest_beers
+from pubs.beer_catalog import BeerCatalogMatchCache, match_beer, suggest_beers
 from pubs.enrichment import names_match
 from pubs.identity import normalize_pub_name, pub_identity_key
 from pubs.models import (
@@ -179,7 +180,7 @@ def _build_catalogue() -> dict:
     cities = {
         slug: {
             "slug": slug,
-            "name": counter.most_common(1)[0][0],
+            "name": municipality(counter.most_common(1)[0][0]),
             "pubs": sum(counter.values()),
             "districts": dict(districts[slug]),
         }
@@ -534,6 +535,30 @@ def _neighbours(pub: dict) -> list[tuple[float, float]]:
     ]
 
 
+def _metres(lat: float, lng: float, other: dict) -> int:
+    return round(math.hypot((other["lat"] - lat) * 111_000, (other["lng"] - lng) * 111_000 * math.cos(math.radians(lat))))
+
+
+def _nearby(pub: dict, limit: int = 5) -> list[dict]:
+    """The closest pubs within a walk, the ones with a menu or a price first."""
+
+    lat, lng = pub["lat"], pub["lng"]
+    close = sorted(
+        (
+            (_metres(lat, lng, row), row)
+            for row in catalogue()["pubs"]
+            if abs(row["lat"] - lat) < 0.015 and abs(row["lng"] - lng) < 0.022 and row["k"] != pub["k"]
+        ),
+        key=lambda item: item[0],
+    )[: limit * 3]
+    rows = [{**row, "metres": metres} for (metres, _), row in zip(close, _enrich([row for _, row in close]), strict=True)]
+    rows.sort(key=lambda row: (not (row["price"] or row["beers"]), row["metres"]))
+    return [
+        {key: row[key] for key in ("key", "name", "metres", "price", "volume", "beers")}
+        for row in rows[:limit]
+    ]
+
+
 def find_pub(key: str) -> dict:
     """Resolve a pub address.
 
@@ -571,6 +596,20 @@ def pub_key_for_hint(cache_key: str, name_hint: str) -> str | None:
     return pub_key(chosen["n"], cache_key)
 
 
+def _with_beer_pages(rows: list[dict]) -> list[dict]:
+    """Each beer on the menu with the key of its beer page, when it has one."""
+
+    match_cache = BeerCatalogMatchCache()
+    matches = {row["name"]: match_beer(row["name"], fuzzy=False, match_cache=match_cache) for row in rows}
+    keys = {match.product.key for match in matches.values() if match and match.product}
+    with_page = set(BeerPage.objects.filter(kind=BeerPage.Kind.BEER, key__in=keys).values_list("key", flat=True))
+    for row in rows:
+        match = matches[row["name"]]
+        key = match.product.key if match and match.product else ""
+        row["beer_page"] = key if key in with_page else ""
+    return rows
+
+
 def pub_detail(pub: dict) -> dict:
     """Everything the pub page shows that does not change with the clock, cached."""
 
@@ -584,13 +623,14 @@ def pub_detail(pub: dict) -> dict:
         city = catalogue()["cities"].get(pub["c"])
         data = {
             **base,
-            "city": city["name"] if city else city_name(pub["raw"]),
+            "city": city["name"] if city else municipality(city_name(pub["raw"])),
             "city_slug": pub["c"] if city else "",
-            "menu": _menu_rows(menu["beers"]) if menu else [],
+            "menu": _with_beer_pages(_menu_rows(menu["beers"])) if menu else [],
             "menu_updated_at": menu["beers_updated_at"] if menu else None,
             "beer_ratings": _beer_ratings(pub["k"], pub["n"]),
             "week_beers": weekly_pub_beers()["pubs"].get(pub["k"]),
             "neighbours": _neighbours(pub),
+            "nearby": _nearby(pub),
         }
         cache.set(cache_name, data, PUB_TTL)
     return data

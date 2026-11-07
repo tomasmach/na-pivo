@@ -42,7 +42,7 @@
   <aside class="np-pubs-side">
     {% if map %}<div class="np-map">{% include "web/components/map.html" with live=live_map fallback="web/pubs/_map.html" label=h1 %}</div>{% endif %}
     {% if district_tiles %}<section class="np-pubs-section">
-      <h2 class="np-pubs-section__title">{% translate "Hospody podle čtvrtí" %}</h2>
+      <h2 class="np-pubs-section__title">{{ district_title }}</h2>
       <div class="np-pubs-tiles">{% for item in district_tiles %}<a class="np-tile" href="{{ item.url }}">{{ item.label }}{% icon "chevron-right" %}</a>{% endfor %}</div>
     </section>{% endif %}
     {% if other_cities %}<section class="np-pubs-section">

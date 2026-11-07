@@ -190,13 +190,14 @@
   /* Pub page: one column, the app button right under the map. */
   .np-pub { display: flex; flex-direction: column; align-items: stretch; gap: 28px; }
   .np-pub__main, .np-pub__side { display: contents; }
-  .np-pub__map { order: 1; }
-  .np-pub__cta { order: 2; }
-  .np-pub__stats { order: 3; }
-  .np-pub__menu { order: 4; }
-  .np-pub__hours { order: 5; }
+  .np-pub__stats { order: 1; }
+  .np-pub__menu { order: 2; }
+  .np-pub__hours { order: 3; }
+  .np-pub__map { order: 4; }
+  .np-pub__cta { order: 5; }
   .np-pub__ratings { order: 6; }
-  .np-pub__where { order: 7; }
+  .np-pub__nearby { order: 7; }
+  .np-pub__where { order: 8; }
   .np-pub-stats { grid-template-columns: 1fr; border: 0; }
   .np-pub-stat { grid-template-columns: auto 1fr; align-items: baseline; gap: 14px; padding: 14px 0; border-top: 1px solid var(--np-hairline); }
   .np-pub-stat + .np-pub-stat { padding-left: 0; border-left: 0; }

@@ -22,6 +22,7 @@ from pubs.models import (
 )
 from pubs.web.dates import time_tag, with_times
 from pubs.web.pages import render_page, web_page
+from pubs.web.places import pub_name
 from pubs.web.public_common import (
     PAGE_CACHE_SECONDS,
     REGION_BY_SLUG,
@@ -177,13 +178,13 @@ def _pubs_line(row: dict) -> str:
         return ""
     others = row["pubs"] - 1
     if not others:
-        return row["pub_name"]
+        return pub_name(row["pub_name"])
     return plural(
         others,
         gettext("%(pub)s a %(n)s další hospoda"),
         gettext("%(pub)s a %(n)s další hospody"),
         gettext("%(pub)s a dalších %(n)s hospod"),
-    ) % {"pub": row["pub_name"], "n": thousands(others)}
+    ) % {"pub": pub_name(row["pub_name"]), "n": thousands(others)}
 
 
 def _region_description(place: str, data: dict) -> str:
