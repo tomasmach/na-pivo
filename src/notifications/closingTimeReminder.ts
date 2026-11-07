@@ -22,7 +22,8 @@ const CATEGORY_ID = 'closing-time-pubs';
 const REMINDER_ID = 'closing-time-reminder';
 const KIND = 'closing_time';
 const ACTION_PREFIX = 'pub-';
-const CANDIDATE_LIMIT = 15;
+// Enough that a cluster of pubs closing together still leaves later ones in reach.
+const CANDIDATE_LIMIT = 30;
 const CANDIDATE_RADIUS_KM = 2;
 // Hours do not move during an evening; ask the server again only now and then.
 const REFRESH_AFTER_MS = 15 * 60 * 1000;
@@ -61,6 +62,7 @@ const Notifications = loadNotifications();
 let installed = false;
 let operationQueue: Promise<void> = Promise.resolve();
 let lastLookup: { eveningKey: string; nextAtMs: number; plan: ClosingPlan | null } | null = null;
+let retryTimer: ReturnType<typeof setTimeout> | null = null;
 
 function serialize(operation: () => Promise<void>): Promise<void> {
   const result = operationQueue.then(operation, operation);
@@ -182,21 +184,26 @@ async function syncInternal(): Promise<void> {
   // This evening already got its ping; later lookups must not ring again.
   if (eveningKey && existing?.eveningKey === eveningKey && existing.fireAtMs <= Date.now()) return;
 
+  // A delivered ping stays on record, so a resumed evening does not ring twice.
+  const dropPending = async () => {
+    if (existing && existing.fireAtMs > Date.now()) await cancelExisting();
+  };
   const enabled = useSettingsStore.getState().closingTimeReminderEnabled;
   if (!enabled || !Notifications || !session || !eveningKey || !(await notificationsGranted())) {
-    if (existing) await cancelExisting();
+    await dropPending();
     return;
   }
 
   if (!lastLookup || lastLookup.eveningKey !== eveningKey || Date.now() >= lastLookup.nextAtMs) {
     const result = await lookupPlan(session);
     lastLookup = result ? { eveningKey, nextAtMs: Date.now() + result.retryAfterMs, plan: result.plan } : null;
+    if (!result || result.retryAfterMs === RETRY_AFTER_MS) retryLater();
   }
   // The evening may have changed while the hours were loading.
   if (eveningKeyFor(useTallyStore.getState().current) !== eveningKey) return;
   const plan = lastLookup?.plan;
   if (!plan) {
-    if (existing) await cancelExisting();
+    await dropPending();
     return;
   }
 
@@ -239,6 +246,15 @@ export function syncClosingTimeReminder(): Promise<void> {
   return serialize(syncInternal);
 }
 
+/** Unknown hours get one more look later even when nothing else happens in the app. */
+function retryLater(): void {
+  if (retryTimer) return;
+  retryTimer = setTimeout(() => {
+    retryTimer = null;
+    void syncClosingTimeReminder();
+  }, RETRY_AFTER_MS);
+}
+
 function validPub(value: unknown): ClosingTimePub | null {
   const { key, name, lat, lng } = (value ?? {}) as Record<string, unknown>;
   if (typeof key !== 'string' || !/^[0-9a-z]{8}$/.test(key)) return null;
@@ -256,21 +272,33 @@ export function closingTimePub(response: NotificationResponse | null): ClosingTi
   return Number.isInteger(index) ? validPub(data.pubs[index]) : null;
 }
 
+// A launch tap can surface through both the cold-start read and the live event.
+// The identifier is reused every evening, so the delivery time tells taps apart.
+const handledTaps = new Set<string>();
+function claimTap(response: NotificationResponse): boolean {
+  const id = `${response.notification.request.identifier}|${response.notification.date}|${response.actionIdentifier}`;
+  if (handledTaps.has(id)) return false;
+  if (handledTaps.size >= 32) handledTaps.clear();
+  handledTaps.add(id);
+  return true;
+}
+
 export function subscribeClosingTimeTap(onTap: (pub: ClosingTimePub) => void): ExpoNotifications.Subscription {
   if (!Notifications) return { remove: () => undefined };
   return Notifications.addNotificationResponseReceivedListener((response) => {
     const pub = closingTimePub(response);
-    if (pub) onTap(pub);
+    if (pub && claimTap(response)) onTap(pub);
   });
 }
 
 export async function consumeInitialClosingTimeTap(onTap: (pub: ClosingTimePub) => void): Promise<void> {
   if (!Notifications) return;
   try {
-    const pub = closingTimePub(await Notifications.getLastNotificationResponseAsync());
-    if (!pub) return;
+    const response = await Notifications.getLastNotificationResponseAsync();
+    const pub = closingTimePub(response);
+    if (!pub || !response) return;
     await Notifications.clearLastNotificationResponseAsync();
-    onTap(pub);
+    if (claimTap(response)) onTap(pub);
   } catch {
     // No launch notification, or the API is unavailable.
   }

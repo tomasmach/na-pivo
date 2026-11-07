@@ -8,6 +8,8 @@ const mockSetNotificationCategoryAsync = jest.fn<Promise<unknown>, [string, unkn
 const mockGetPermissionsAsync = jest.fn(async () => ({ granted: true, status: 'granted' }));
 const mockFindNearbyPubs = jest.fn();
 const mockFetchPubHours = jest.fn();
+const mockGetLastNotificationResponseAsync = jest.fn();
+let mockResponseListener: ((response: unknown) => void) | null = null;
 
 jest.mock('@react-native-async-storage/async-storage', () =>
   // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -22,6 +24,12 @@ jest.mock('expo-notifications', () => ({
   setNotificationCategoryAsync: mockSetNotificationCategoryAsync,
   scheduleNotificationAsync: mockScheduleNotificationAsync,
   cancelScheduledNotificationAsync: jest.fn(async () => undefined),
+  getLastNotificationResponseAsync: mockGetLastNotificationResponseAsync,
+  clearLastNotificationResponseAsync: jest.fn(async () => undefined),
+  addNotificationResponseReceivedListener: (listener: (response: unknown) => void) => {
+    mockResponseListener = listener;
+    return { remove: jest.fn() };
+  },
 }));
 
 jest.mock('@/data/pubs', () => ({ findNearbyPubs: mockFindNearbyPubs }));
@@ -91,7 +99,13 @@ type Scheduled = {
 };
 const scheduled = () => mockScheduleNotificationAsync.mock.calls.map(([request]) => request as Scheduled);
 
+// Lets the background retry and the serialized sync settle under fake timers.
+const flush = async () => {
+  for (let i = 0; i < 20; i += 1) await new Promise((resolve) => jest.requireActual('timers').setImmediate(resolve));
+};
+
 beforeEach(async () => {
+  jest.useFakeTimers({ doNotFake: ['Date', 'setImmediate'] });
   jest.clearAllMocks();
   jest.spyOn(Date, 'now').mockReturnValue(NOW);
   await AsyncStorage.clear();
@@ -100,7 +114,11 @@ beforeEach(async () => {
   mockFetchPubHours.mockImplementation(async (pubs: Pub[]) => new Map(pubs.map((pub) => [pub.id, hoursById.get(pub.id)!])));
 });
 
-afterEach(() => jest.restoreAllMocks());
+afterEach(() => {
+  jest.clearAllTimers();
+  jest.useRealTimers();
+  jest.restoreAllMocks();
+});
 
 it('rings an hour before closing with buttons for the nearest pubs open longer', async () => {
   const { reminder } = load();
@@ -128,6 +146,20 @@ it('rings once per evening, also after the app comes back later', async () => {
   // After the ping went off, a fresh lookup must not plan another one.
   jest.spyOn(Date, 'now').mockReturnValue(CLOSES_AT - 30 * 60_000);
   await reminder.syncClosingTimeReminder();
+  expect(mockScheduleNotificationAsync).toHaveBeenCalledTimes(1);
+});
+
+it('does not ring again when a finished evening is resumed', async () => {
+  const { reminder, tally } = load();
+  const evening = tally.useTallyStore.getState().current!;
+  await reminder.syncClosingTimeReminder();
+  jest.spyOn(Date, 'now').mockReturnValue(CLOSES_AT - 50 * 60_000);
+
+  tally.useTallyStore.setState({ current: null });
+  await reminder.syncClosingTimeReminder();
+  tally.useTallyStore.setState({ current: evening });
+  await reminder.syncClosingTimeReminder();
+
   expect(mockScheduleNotificationAsync).toHaveBeenCalledTimes(1);
 });
 
@@ -165,6 +197,20 @@ it('stays quiet when the setting is off or the evening is not in a pub', async (
   expect(mockScheduleNotificationAsync).not.toHaveBeenCalled();
 });
 
+it('looks again by itself while the server is still filling in the hours', async () => {
+  mockFetchPubHours.mockImplementationOnce(
+    async (pubs: Pub[]) => new Map(pubs.map((pub) => [pub.id, { ...hoursById.get(pub.id)!, status: 'pending' }])),
+  );
+  const { reminder } = load();
+  await reminder.syncClosingTimeReminder();
+  expect(mockScheduleNotificationAsync).not.toHaveBeenCalled();
+
+  jest.spyOn(Date, 'now').mockReturnValue(NOW + 2 * 60_000);
+  jest.advanceTimersByTime(2 * 60_000);
+  await flush();
+  expect(mockScheduleNotificationAsync).toHaveBeenCalledTimes(1);
+});
+
 it('asks again on the next sync when the pubs around were not loaded yet', async () => {
   mockFindNearbyPubs.mockReturnValueOnce([]);
   const { reminder } = load();
@@ -190,4 +236,26 @@ it('opens the pub of the pressed button, and the nearest one on a plain tap', ()
   expect(reminder.closingTimePub(response('pub-1'))).toEqual(pubs[1]);
   expect(reminder.closingTimePub(response('expo.modules.notifications.actions.DEFAULT'))).toEqual(pubs[0]);
   expect(reminder.closingTimePub(response('pub-7'))).toBeNull();
+});
+
+it('opens the pub once when a launch tap arrives through both routes', async () => {
+  const { reminder } = load();
+  const response = {
+    actionIdentifier: 'pub-0',
+    notification: {
+      date: NOW,
+      request: {
+        identifier: 'closing-time-reminder',
+        content: { data: { kind: 'closing_time', pubs: [{ key: 'u2fkbnh1', name: 'Lokál', lat: 50.09, lng: 14.42 }] } },
+      },
+    },
+  };
+  mockGetLastNotificationResponseAsync.mockResolvedValue(response);
+  const onTap = jest.fn();
+
+  reminder.subscribeClosingTimeTap(onTap);
+  await reminder.consumeInitialClosingTimeTap(onTap);
+  mockResponseListener?.(response);
+
+  expect(onTap).toHaveBeenCalledTimes(1);
 });
