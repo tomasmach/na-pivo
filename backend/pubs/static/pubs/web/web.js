@@ -82,7 +82,18 @@
       var first = nextRows.firstElementChild;
       rows.append.apply(rows, Array.from(nextRows.children));
       foot.replaceChildren.apply(foot, Array.from(nextFoot.childNodes));
-      if (first) first.focus({ preventScroll: true });
+      // The next page's foot counts only its own rows; with them appended the list runs from its first row on.
+      var count = foot.querySelector("[data-count]");
+      var row = function (element) { var anchor = element && (element.id ? element : element.querySelector("[id^='h']")); return anchor ? Number(anchor.id.slice(1)) : 0; };
+      var from = row(rows.firstElementChild), to = row(rows.lastElementChild);
+      if (count && from && to) {
+        var lang = document.documentElement.lang;
+        count.textContent = (from === 1 ? count.dataset.fromStart : count.dataset.range)
+          .replace("{first}", from.toLocaleString(lang)).replace("{last}", to.toLocaleString(lang));
+      }
+      // A pub list row is a link or holds one; the focus goes where the keyboard can carry on.
+      var focusable = first && (first.matches("a") ? first : first.querySelector("a"));
+      if (focusable) focusable.focus({ preventScroll: true });
     } catch (e) {
       location.href = link.href;
     }

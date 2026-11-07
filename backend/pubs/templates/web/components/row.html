@@ -1,6 +1,6 @@
 {% comment %}
 List row. title; optional href (row becomes a link with a chevron), icon (lucide name
-in a tile on the left), meta (grey line), status (yellow line, e.g. "otevřeno do 23:30"),
+in a tile on the left), meta (grey line), note (a second grey line), status (yellow line, e.g. "otevřeno do 23:30"),
 value (big number on the right), value_meta (small line under the value).
 Put rows inside <div class="np-list">, usually inside a .np-card.np-card--tight.
 {% endcomment %}{% load web %}<{% if href %}a href="{{ href }}"{% else %}div{% endif %} class="np-row">
@@ -8,6 +8,7 @@ Put rows inside <div class="np-list">, usually inside a .np-card.np-card--tight.
   <span class="np-row__body">
     <span class="np-row__title">{{ title }}</span>
     {% if meta %}<span class="np-row__meta">{{ meta }}</span>{% endif %}
+    {% if note %}<span class="np-row__meta">{{ note }}</span>{% endif %}
     {% if status %}<span class="np-row__meta np-row__meta--open">{{ status }}</span>{% endif %}
   </span>
   {% if value %}<span class="np-row__end"><span class="np-row__value">{{ value }}</span>{% if value_meta %}<span class="np-row__meta">{{ value_meta }}</span>{% endif %}</span>{% endif %}

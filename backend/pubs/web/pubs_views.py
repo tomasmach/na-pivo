@@ -29,7 +29,8 @@ from pubs.beer_pages import page_path
 from pubs.home_views import HOME_OG_PATH, breadcrumb_list, ld_json
 from pubs.i18n import current_locale
 from pubs.models import BeerPage, PubPriceSnapshot
-from pubs.price_map import city_slug
+from pubs.price_map import MIN_PUBS as PRICES_MIN_PUBS
+from pubs.price_map import city_slug, half_litre_czk
 from pubs.web import pubs_data
 from pubs.web.dates import time_tag, with_times
 from pubs.web.pages import render_page, web_page
@@ -38,13 +39,11 @@ from pubs.web.pub_map import live_map, pub_map
 from pubs.web.public_common import og_image
 from pubs.web.pubs_og import render_pub_og
 from pubs.web.routes import web_reverse
-from pubs.web.words import plural
+from pubs.web.words import list_count, plural
 from pubs.web_views import _short_date
 
 PAGE_SIZE = 20
 MAX_PAGES = 50
-# A list of fewer pubs says too little to be worth a search result; the sitemap uses the same bar.
-MIN_LISTED = 3
 CHEAP_CZK = 55
 SORTS = ("", "price", "name")
 SEARCH_TYPES = ("all", "pubs", "beers", "cities")
@@ -236,14 +235,18 @@ def indexed_district_url(district: str) -> str:
     """The district's own page when search engines may list it, else nothing."""
 
     found = _district(slugify(district)) if district else None
-    return web_reverse("web-pubs-city", city=found["slug"]) if found and found["pubs"] >= MIN_LISTED else ""
+    return web_reverse("web-pubs-city", city=found["slug"]) if found and _district_indexed(found) else ""
+
+
+def _district_indexed(district: dict) -> bool:
+    return pubs_data.district_indexed(district["city"]["slug"], district["name"], district["pubs"])
 
 
 def district_sitemap_paths() -> list[str]:
     return [
         web_reverse("web-pubs-city", "cs", city=district["slug"])
         for district in districts_with_pages()
-        if district["pubs"] >= MIN_LISTED
+        if _district_indexed(district)
     ]
 
 
@@ -466,8 +469,11 @@ def pubs_city(request: HttpRequest, city: str) -> HttpResponse:
     elif chosen["district"] and _district(chosen["district"]):
         # The filter came before the districts had pages of their own.
         rest = {key: ("1" if chosen[key] is True else chosen[key]) for key in _FILTERS if chosen[key] and key != "district"}
+        # The district's page lists the same pubs in the same order, so page 2 stays page 2.
+        page = request.GET.get("page", "")
+        query = _query(rest, page=page if page.isdigit() and int(page) > 1 else "")
         target = web_reverse("web-pubs-city", city=chosen["district"])
-        return HttpResponsePermanentRedirect(target + (_query(rest) if rest else ""))
+        return HttpResponsePermanentRedirect(target + query.rstrip("?"))
     params = {
         key: ("1" if chosen[key] is True else chosen[key])
         for key in _FILTERS if chosen[key] and not (district and key == "district")
@@ -482,9 +488,14 @@ def pubs_city(request: HttpRequest, city: str) -> HttpResponse:
     visible = _apply(rows, chosen)
     last_page = max(1, -(-len(visible) // PAGE_SIZE))
     try:
-        page = min(max(int(request.GET.get("page", "1")), 1), last_page)
+        page = max(int(request.GET.get("page", "1")), 1)
     except ValueError:
         page = 1
+    if page > last_page:
+        # The list got shorter since the link was made; its last page is what is left of it.
+        return HttpResponsePermanentRedirect(
+            web_reverse("web-pubs-city", city=city) + _query(params, page=str(last_page) if last_page > 1 else "").rstrip("?")
+        )
     # Each page lists only its own pubs, so a crawler reaches every pub; "Načíst další" appends the next page.
     start = (page - 1) * PAGE_SIZE
     shown = [_pub_row(row, now, place_name(data["name"])) for row in visible[start:start + PAGE_SIZE]]
@@ -551,7 +562,7 @@ def pubs_city(request: HttpRequest, city: str) -> HttpResponse:
     else:
         lead = f"{_pubs_count(total)}."
     prices_area = None if district else _prices_area(city_page)
-    typical_price = _typical_price(data, prices_area) if not district else None
+    typical_price = _typical_price(prices_area) if not district else None
     if typical_price:
         lead += " " + gettext("Půllitr tu stojí kolem %(price)s.") % {"price": _price_label(typical_price)}
 
@@ -585,7 +596,7 @@ def pubs_city(request: HttpRequest, city: str) -> HttpResponse:
     district_tiles = [
         {"label": place_name(other["name"]), "url": web_reverse("web-pubs-city", city=other["slug"])}
         for other in sorted(districts_with_pages(), key=lambda other: _natural(other["name"]))
-        if other["city"]["slug"] == city_page and other["pubs"] >= MIN_LISTED and other["name"] != name
+        if other["city"]["slug"] == city_page and _district_indexed(other) and other["name"] != name
     ]
     for item in [*chips, *extra_chips, *(item for menu in (menu_district, menu_beer, menu_sort) if menu for item in menu["items"])]:
         item["nofollow"] = _facet(item["url"])
@@ -604,7 +615,7 @@ def pubs_city(request: HttpRequest, city: str) -> HttpResponse:
             "menu_beer": menu_beer,
             "menu_sort": menu_sort,
             "rows": shown,
-            "count_label": gettext("%(shown)s z %(total)s") % {"shown": num(start + len(shown)), "total": num(len(visible))},
+            "count": list_count(start, len(shown), len(visible)),
             "more_url": _query(params, page=str(page + 1)) + f"#h{start + len(shown) + 1}" if page < last_page else "",
             "more_nofollow": _facet(_query(params)),
             "filtered": bool(params),
@@ -624,7 +635,7 @@ def pubs_city(request: HttpRequest, city: str) -> HttpResponse:
             + _city_description(name, rows, typical_price)
         ),
         section="pubs",
-        indexable=total >= MIN_LISTED if district else pubs_data.city_indexed(data),
+        indexable=_district_indexed(district) if district else pubs_data.city_indexed(data),
         follow=True,
         # A filtered list stays the city's page; an unfiltered next page is a page of its own.
         canonical_params={"page": page} if page > 1 and not params else None,
@@ -641,21 +652,21 @@ def _prices_area(city: str) -> dict | None:
     return next((area for area in cities if city_slug(area["name"]) == city), None)
 
 
-def _typical_price(data: dict, prices_area: dict | None) -> int | None:
-    # A city with its own /ceny page shows that page's median, so the two never disagree.
-    return prices_area["median"] if prices_area else data["typical_price"]
+def _typical_price(prices_area: dict | None) -> int | None:
+    # Only /ceny says what beer costs in a city: a city it does not list yet has too few priced pubs.
+    return prices_area["median"] if prices_area else None
 
 
 def _city_og_payload(data: dict, prices_area: dict | None) -> dict:
     """What the city's share image draws: its size and, once /ceny knows it, what beer costs there."""
 
-    price = _typical_price(data, prices_area)
+    price = _typical_price(prices_area)
     figures = []
     if prices_area:
         figures.append((num(prices_area["pubs"]), gettext("hospod s cenou")))
         figures.append((f"{prices_area['p25']}–{_price_label(prices_area['p75'])}", gettext("polovina hospod")))
         if prices_area.get("cheapest"):
-            figures.append((_price_label(prices_area["cheapest"][0]["price_czk"]), gettext("nejlevněji")))
+            figures.append((_price_label(half_litre_czk(prices_area["cheapest"][0])), gettext("nejlevněji za 0,5 l")))
     total = len(data["list"])
     if not figures:
         figures.append((num(total), plural(total, gettext("hospoda"), gettext("hospody"), gettext("hospod"))))
@@ -674,7 +685,7 @@ def _district_og_payload(data: dict, district: dict) -> dict:
 
     pubs = [pub for pub in data["list"] if pub["district"] == district["name"]]
     priced = [pubs_data.half_litre(pub["price"], pub["volume"]) for pub in pubs if pub["price"]]
-    price = round(statistics.median(priced)) if len(priced) >= pubs_data.MIN_RATERS else None
+    price = round(statistics.median(priced)) if len(priced) >= PRICES_MIN_PUBS else None
     figures = [(num(len(pubs)), plural(len(pubs), gettext("hospoda"), gettext("hospody"), gettext("hospod")))]
     with_menu = sum(1 for pub in pubs if pub["beers"])
     if with_menu:
@@ -772,6 +783,9 @@ def _price_range(pub: dict) -> str:
     return f"{prices[0]}–{_price_label(prices[-1])}"
 
 
+_POSTAL_CODE = re.compile(r"(?P<street>.+?),\s*(?P<code>\d{3}\s?\d{2})(?:\s+\D.*)?")
+
+
 def _pub_structured(pub: dict, url: str, crumbs: list[tuple[str, str]], map_url: str) -> dict:
     """Only what the page itself shows: no visitors, no ratings from elsewhere, nothing guessed."""
 
@@ -785,8 +799,13 @@ def _pub_structured(pub: dict, url: str, crumbs: list[tuple[str, str]], map_url:
         "hasMap": map_url,
     }
     locality = pub["district"] or pub["city"]
+    street, postal_code = pub["address"], ""
+    # "Na Zderaze 266/11, 120 00": the street, then a Czech or Slovak postal code, sometimes the town after it.
+    if found := _POSTAL_CODE.fullmatch(street or ""):
+        street, postal_code = found["street"], f"{found['code'][:3]} {found['code'][-2:]}"
     address = {
-        **({"streetAddress": pub["address"]} if pub["address"] and pub["address"] != locality else {}),
+        **({"streetAddress": street} if street and street != locality else {}),
+        **({"postalCode": postal_code} if postal_code else {}),
         **({"addressLocality": locality} if locality else {}),
         **({"addressCountry": pub["country"]} if pub["country"] else {}),
     }
