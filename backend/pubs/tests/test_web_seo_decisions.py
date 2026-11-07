@@ -196,3 +196,18 @@ def test_a_private_tap_keeps_its_page_but_no_list_or_search_engine_gets_it(clien
                  f"/hospoda/hospudka-vedle-{neighbour.cache_key}"):
         assert "Plotovka" not in client.get(path).content.decode(), path
     assert all("Plotovka" not in pub["name"] for pub in PubPriceSnapshot.objects.first().data["cheapest"])
+
+
+def test_the_web_search_does_not_find_a_private_tap(client):
+    private = _pub("Plotovka Louny - soukromý výčep", lat=50.0870, lng=14.4260, city="Praha 1")
+    _menu(private)
+    _pub("Plotovka u nádraží", lat=50.0880, lng=14.4270, city="Praha 1")
+
+    found = client.get("/hledat?q=plotovka").content.decode()
+    assert "Plotovka u nádraží" in found and "soukromý výčep" not in found
+    # Nor among the pubs a search that found nothing suggests instead.
+    similar = client.get("/hledat?q=plotovkaa").content.decode()
+    assert "soukromý výčep" not in similar
+    assert f"plotovka-louny-soukromy-vycep-{private.cache_key}" not in found + similar
+    assert client.get(f"/hospoda/plotovka-louny-soukromy-vycep-{private.cache_key}").status_code == 200
+

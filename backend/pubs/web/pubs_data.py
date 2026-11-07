@@ -682,7 +682,7 @@ def todays_event(cache_key: str, now: datetime | None = None) -> dict | None:
 
 def _pub_hits(tokens: list[str]) -> list[dict]:
     pubs = catalogue()["pubs"]
-    hits = [pub for pub in pubs if all(token in pub["f"] for token in tokens)]
+    hits = [pub for pub in pubs if not pub["x"] and all(token in pub["f"] for token in tokens)]
     phrase = " ".join(tokens)
 
     def rank(pub):
@@ -700,6 +700,8 @@ def _similar_pubs(tokens: list[str]) -> list[dict]:
         return []
     scored = []
     for pub in catalogue()["pubs"]:
+        if pub["x"]:
+            continue
         name = fold(pub["n"])
         score = sum(1 for stem in stems if stem in name)
         if score:
@@ -781,7 +783,7 @@ def search_counts() -> dict:
     data = cache.get("web:pubs:search-counts")
     if data is None:
         data = {
-            "pubs": len(catalogue()["pubs"]),
+            "pubs": sum(1 for pub in catalogue()["pubs"] if not pub["x"]),
             "beers": BeerProduct.objects.filter(active=True, brand__active=True).count(),
             "cities": len(catalogue()["cities"]) + sum(len(c["districts"]) for c in catalogue()["cities"].values()),
         }
