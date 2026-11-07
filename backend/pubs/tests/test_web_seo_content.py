@@ -241,7 +241,7 @@ def test_districts_with_a_page_are_linked_from_prices_and_from_their_pubs(client
     pub = PubDirectory.objects.get(name="Pankrácká 0")
     detail = client.get(f"/hospoda/pankracka-0-{pub.cache_key}").content.decode()
 
-    assert '<a href="/hospody/praha-4">Praha 4</a>' in prices
+    assert '<a class="rs-row__link" href="/hospody/praha-4">Praha 4</a>' in prices
     assert 'href="/hospody/praha-4">Hospody v Praze 4 ›</a>' in detail
 
 

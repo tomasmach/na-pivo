@@ -46,7 +46,7 @@
   {% translate "Praha podle městských částí" as title %}{% translate "Podle čísla" as default_sort %}{% translate "Najdi městskou část" as search_label %}
   {% blocktranslate with count=districts|length asvar more_label %}Ukázat všechny městské části ({{ count }}){% endblocktranslate %}
   {% translate "Tuhle část tu zatím nemám. Ukážu ji, až budu mít ceny aspoň z 5 tamních hospod." as empty_text %}
-  {% translate "Městská část" as name_label %}{% include "web/reskin/_area_list.html" with areas=districts list_id="districts" %}
+  {% translate "Městská část" as name_label %}{% include "web/reskin/_area_list.html" with areas=districts list_id="districts" linked_rows=True %}
   {% endif %}
 </div>
 {% endif %}
