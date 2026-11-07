@@ -34,6 +34,19 @@ celé plochy jen u sheetu. Pro nový vzhled tím neplatí pružiny a přejetí z
   dál jedou s klávesnicí, aby je nezakryla.
 - Nativní chování platformy (gumový okraj posouvání, přechody stacku) zůstává.
 
+## Live Activity (7. 11. 2026)
+
+Live Activity kopíruje sekci „Live Activity“ v návrhu 9 · Sdílení
+(`na-pivo-redesign.pen`). Na zamčené obrazovce je černá karta `#0A0A0A`: vlevo ve
+sloupci 76 bodů velké žluté číslo `#FFC400` (Sofia Sans Extra Condensed 800,
+116 bodů) a pod ním „piva“, vpravo hospoda s útratou, poslední pivo s časem,
+žluté tlačítko „Ještě jedno“ přes celou šířku a řádek se spojem domů. Neznámá
+útrata ani chybějící spoj nenechávají prázdné místo. Always-On tlumí žlutou na
+`#A8891C` a tlačítko je jen obrys. Dynamic Island má vlevo pivo a vpravo
+„3 piva“, rozbalený ostrov číslo, hospodu a tlačítko. Písma Sofia jsou přibalená
+v rozšíření widgetu (`plugins/withLiveActivityFonts.js`). Hnědá paleta Live
+Activity nemění.
+
 ## Web na na-pivo.cz (3. 11. 2026)
 
 Web je šedý jako nový vzhled appky, jen tmavý režim. Stojí na Djangu (šablony, žádný
@@ -74,7 +87,7 @@ její pin. Rozložené okno drží kompas a mapu vedle sebe beze změny.
 Celá appka leží na zemi stránky hospody. Stouty mají znovu hodnoty z §2.1:
 `stout` `#15120F`, `stout2` `#1C1815`, `stout3` `#262019`, `border` `#3A322A`.
 Jantar, pěna i texty zůstávají. Samostatný `Colors.canvas` zanikl, jeho
-obrazovky leží na `Colors.stout`. Ikona appky, splash a Live Activity mají
+obrazovky leží na `Colors.stout`. Ikona appky a splash mají
 pozadí `#15120F`; tmavé pásy mezi sekcemi a ztmavení pod sheety jsou
 `Colors.deep` (`#0E0C0A`). Web na na-pivo.cz je taky šedý (viz Web). Jantar s nízkou alfou na
 šedé zemi vypadá olivově hnědě, proto klidové plochy nesou neutrální pěnu:
@@ -85,7 +98,7 @@ kontrastem jako hnědá hlína `#A8896A`, kterou si nechává hnědá paleta.
 
 Hnědá zůstává jako neudržovaná volba v Nastavení → Vzhled
 (`src/theme/palette.ts`). Čte se synchronně při startu jako jazyk a přepnutí
-restartuje appku. Mění stouty, `deep`, Live Activity a na iOS i ikonu
+restartuje appku. Mění stouty, `deep` a na iOS i ikonu
 (`expo-alternate-app-icons`, alternativní ikona `Brown`). Android ikonu
 nemění, protože jeho alias nemá filtr `napivo://`. Splash zůstává šedý.
 Ilustrace mají průhledné pozadí a zrno z pěny s alfou ~3 %, takže sedí na

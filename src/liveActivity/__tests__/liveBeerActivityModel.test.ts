@@ -50,7 +50,6 @@ describe('buildBeerEveningLiveActivityProps', () => {
         few: t.liveActivity.beerWord(2),
         many: t.liveActivity.beerWord(5),
       },
-      totalPriceLabel: t.liveActivity.total('65 Kč'),
       latestBeerLabel: 'Plzeň 12°',
       latestTimeLabel: t.liveActivity.latestAt(latestBeerAt),
       latestTimeTemplate: t.liveActivity.latestAt('{time}'),
@@ -95,7 +94,6 @@ describe('buildBeerEveningLiveActivityProps', () => {
     expect(result).toMatchObject({
       pubName: t.liveActivity.pubFallback,
       totalPrice: '',
-      totalPriceLabel: '',
       latestBeerName: 'Domácí ležák',
       repeatBeerName: 'Domácí ležák',
     });

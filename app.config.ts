@@ -194,7 +194,7 @@ export default ({ config }: ConfigContext): ExpoConfig => {
     // Activity, adds NSSupportsLiveActivities and configures its shared app
     // group. Local `npm run dev` deliberately skips it to keep simulator builds
     // lightweight; release/native builds include it by default.
-    plugins.push([
+    plugins.push('./plugins/withLiveActivityFonts', [
       'expo-widgets',
       {
         bundleIdentifier: 'com.tomasmach.na-pivo.widgets',

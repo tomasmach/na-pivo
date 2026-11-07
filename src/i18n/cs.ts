@@ -1329,15 +1329,14 @@ export const cs = {
     beerFallback: 'Pivo',
     beerWord: (count: number) =>
       czechPlural(count, { one: 'pivo', few: 'piva', many: 'piv' }),
-    total: (amount: string) => `Celkem ${amount}`,
     latestBeerFallback: 'Poslední pivo',
     latestAt: (time: string) => `zapsáno v ${time}`,
     firstBeerPouring: 'První pivo se teprve čepuje',
-    addBeer: 'Přidat další',
+    addBeer: 'Ještě jedno',
     addBeerA11y: 'Přidat stejné pivo',
     openCounter: 'Otevřít počítadlo',
     homeTransit: (time: string, stop: string) =>
-      `Poslední spoj domů ${time}${stop ? ` · ${stop}` : ''}`,
+      `Domů ${time}${stop ? ` · ${stop}` : ''}`,
     homeTransitCountdown: 'za',
     homeTransitMissed: 'Už jedeš nočkou',
     homeTransitA11y: (time: string, stop: string, line: string) =>

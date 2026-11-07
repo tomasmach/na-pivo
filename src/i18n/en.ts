@@ -1158,7 +1158,6 @@ export const en: Strings = {
     pubFallback: 'Beer night',
     beerFallback: 'Beer',
     beerWord: (count: number) => beerNoun(count),
-    total: (amount: string) => `Total ${amount}`,
     latestBeerFallback: 'Last beer',
     latestAt: (time: string) => `logged at ${time}`,
     firstBeerPouring: 'Still pouring the first one',
@@ -1166,7 +1165,7 @@ export const en: Strings = {
     addBeerA11y: 'Log the same beer',
     openCounter: 'Open the counter',
     homeTransit: (time: string, stop: string) =>
-      `Last ride home ${time}${stop ? ` · ${stop}` : ''}`,
+      `Home ${time}${stop ? ` · ${stop}` : ''}`,
     homeTransitCountdown: 'in',
     homeTransitMissed: 'Night bus it is',
     homeTransitA11y: (time: string, stop: string, line: string) =>
