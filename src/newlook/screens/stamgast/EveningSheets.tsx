@@ -4,7 +4,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { nvBack } from '@/newlook/navigation';
 
 import { countDrink, placeKey, type CountPlace } from '@/counter/countDrink';
-import { cautiousCeil, formatClock, formatPromile, formatZeroAt, isMorning, useAlcoholEstimate } from '@/counter/useAlcoholEstimate';
+import { formatClock, formatPromile, formatZeroAt, isMorning, useAlcoholEstimate } from '@/counter/useAlcoholEstimate';
 import { decodeGeohash8 } from '@/data/geohash';
 import type { Pub } from '@/data/pubs';
 import { BODY_LIMITS, drinkAbv, isBodyValueValid, type BodyProfile, type BodySex } from '@/drinks/alcoholEstimate';
@@ -714,23 +714,17 @@ export function OdhadSheet() {
             ? copy.odhadZeroAt(formatZeroAt(estimate.zeroAt, nowMs))
             : copy.odhadNow(formatPromile(estimate.low), formatPromile(estimate.high))}
       </T>
-      {estimate ? (
+      {estimate && !morning ? (
         <Card>
-          {morning ? (
-            <Row last leading={<Icon name="sunrise" size={20} />} title={copy.odhadMorning(formatPromile(cautiousCeil(estimate.high)))} titleWeight={700} sub={copy.odhadMorningSub} />
-          ) : (
-            <>
-              {estimate.rising ? (
-                <Row
-                  leading={<Icon name="trending-up" size={20} />}
-                  title={copy.odhadRising(formatPromile(estimate.rising.promile), formatClock(estimate.rising.at))}
-                  titleWeight={700}
-                  sub={copy.odhadRisingSub}
-                />
-              ) : null}
-              <Row last leading={<Icon name="moon" size={20} />} title={copy.odhadZero(formatZeroAt(estimate.zeroAt, nowMs))} titleWeight={700} sub={copy.odhadZeroSub} />
-            </>
-          )}
+          {estimate.rising ? (
+            <Row
+              leading={<Icon name="trending-up" size={20} />}
+              title={copy.odhadRising(formatPromile(estimate.rising.promile), formatClock(estimate.rising.at))}
+              titleWeight={700}
+              sub={copy.odhadRisingSub}
+            />
+          ) : null}
+          <Row last leading={<Icon name="moon" size={20} />} title={copy.odhadZero(formatZeroAt(estimate.zeroAt, nowMs))} titleWeight={700} sub={copy.odhadZeroSub} />
         </Card>
       ) : null}
       <T s={15} w={700} c={C.muted}>

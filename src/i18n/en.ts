@@ -1158,8 +1158,6 @@ export const en: Strings = {
     pubFallback: 'Beer night',
     beerFallback: 'Beer',
     beerWord: (count: number) => beerNoun(count),
-    beerCountA11y: (count: number) => beerCountLabel(count),
-    total: (amount: string) => `Total ${amount}`,
     latestBeerFallback: 'Last beer',
     latestAt: (time: string) => `logged at ${time}`,
     firstBeerPouring: 'Still pouring the first one',
@@ -1167,7 +1165,7 @@ export const en: Strings = {
     addBeerA11y: 'Log the same beer',
     openCounter: 'Open the counter',
     homeTransit: (time: string, stop: string) =>
-      `Last ride home ${time}${stop ? ` · ${stop}` : ''}`,
+      `Home ${time}${stop ? ` · ${stop}` : ''}`,
     homeTransitCountdown: 'in',
     homeTransitMissed: 'Night bus it is',
     homeTransitA11y: (time: string, stop: string, line: string) =>
@@ -1204,6 +1202,16 @@ export const en: Strings = {
     homeTransitTitle: 'Your last direct ride home leaves in 20 minutes',
     homeTransitBody: (line: string, time: string, stop: string) =>
       `${line ? `Line ${line} leaves` : 'It leaves'}${stop ? ` ${stop}` : ''} at ${time}.`,
+    closingTimeChannel: 'Closing time',
+    closingTimeTitle: (pubName: string, time: string) => `${pubName || 'Your pub'} closes at ${time}`,
+    closingTimeBody: (places: string[]) =>
+      places.length === 1
+        ? `${places[0]} is open later.`
+        : `${places.slice(0, -1).join(', ')} and ${places[places.length - 1]} are open later.`,
+    closingTimeBodyHidden: (count: number) =>
+      count === 1 ? 'One more pub nearby is open later.' : `${count} more pubs nearby are open later.`,
+    closingTimePlace: (pubName: string, distance: string) => `${pubName} (${distance})`,
+    closingTimeAction: (pubName: string, distance: string) => `${pubName || 'Pub'} · ${distance}`,
   },
 
   pubDetail: {

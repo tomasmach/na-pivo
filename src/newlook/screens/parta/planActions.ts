@@ -9,7 +9,7 @@ import {
   type FriendProfile,
 } from '@/data/friendsClient';
 import { enqueueFriendOp, isRetriableFriendError } from '@/data/friendsQueue';
-import { pingFriend, type PartaPlan } from '@/data/partaPlansClient';
+import type { PartaPlan } from '@/data/partaPlansClient';
 import { t } from '@/i18n';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { buildNavigationUrl } from '@/utils/maps';
@@ -82,17 +82,6 @@ export async function respondToPlan(plan: PartaPlan, response: ActivityResponseK
   }
   store.setMyResponse(plan.id, previous);
   toast({ kind: 'error', title: result.detail, icon: 'circle-alert' });
-  return false;
-}
-
-/** Direct cinknutí. Resolves to whether it went out. */
-export async function pingPerson(profile: FriendProfile): Promise<boolean> {
-  const result = await pingFriend(profile.id);
-  if (result.ok) {
-    toast({ kind: 'saved', title: t.nv.parta.pingedToast, sub: t.nv.parta.pingedSub(personName(profile)), icon: 'beer' });
-    return true;
-  }
-  toast({ kind: 'error', title: result.code === 'network' || result.code === 'offline' ? t.clientErrors.offline : result.detail, icon: 'circle-alert' });
   return false;
 }
 
