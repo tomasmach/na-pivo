@@ -32,7 +32,7 @@ import { useMe } from '../profil/profilModel';
 import { joinNames, personInitial, personName, planTitle, shortDay } from './partaModel';
 import { CheerButton } from './cheer';
 import { usePartaStore } from './partaStore';
-import { addPlanToCalendar, openNavigation, pingPerson } from './planActions';
+import { addPlanToCalendar, openNavigation } from './planActions';
 import { FriendPhotosSection } from './PartaPhotos';
 
 export { NovaPozvankaScreen } from './NovaPozvanka';
@@ -104,7 +104,7 @@ export function KamosScreen() {
           right={shareUrl ? <IconButton icon="share" size={40} iconSize={18} label={t.nv.parta.share} onPress={() => void Share.share({ message: shareUrl })} /> : undefined}
         />
       }
-      footer={detail.isFriend ? <Button label={t.nv.parta.ping} icon="bell-ring" onPress={() => void pingPerson(profile)} /> : undefined}
+      footer={detail.isFriend ? <Button label={t.nv.parta.ping} icon="bell-ring" onPress={() => router.push({ pathname: '/nv/cinknout', params: { friend: profile.id } })} /> : undefined}
     >
       <View style={[s.row, { gap: 16 }]}>
         <Person initial={personInitial(profile)} uri={profile.avatarUrl} size={84} />

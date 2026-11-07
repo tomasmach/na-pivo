@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { View } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 
 import { generateUuidV4 } from '@/data/account';
 import { shareFriendPubActivity, updateFriendSettings } from '@/data/friendsClient';
@@ -33,13 +33,17 @@ function startingPub(): Pub | null {
   return me && me.lat != null && me.lng != null ? { id: '', name: me.pubName, lat: me.lat, lng: me.lng, city: me.pubCity } : null;
 }
 
-/** "Cinknout partě" from the Parta header, my row in Parta and the Štamgast counter. */
+/**
+ * "Cinknout partě" from the Parta header and the Štamgast counter. With `friend` it is the
+ * cinknutí to one kámoš from Parta or their profile: it joins my live ping at the same pub.
+ */
 export function PingSheet() {
   const router = useRouter();
+  const { friend } = useLocalSearchParams<{ friend?: string }>();
   const party = useParty();
   const [pub, setPub] = useState<Pub | null>(startingPub);
   const [open, setOpen] = useState<Open>(() => (pub ? null : 'where'));
-  const [picked, setPicked] = useState<string[] | null>(null);
+  const [picked, setPicked] = useState<string[] | null>(friend ? [friend] : null);
   const [note, setNote] = useState('');
   const [busy, setBusy] = useState(false);
   const sending = useRef(false);
@@ -98,13 +102,15 @@ export function PingSheet() {
     }
     // The server takes 200 characters of name and 128 of id; anything longer would be dropped for good.
     const target: Pub = { ...pub, name: pub.name.slice(0, 200), id: pub.id.length > 128 ? '' : pub.id };
-    // Everyone picked means the whole party, as the server reads a missing list.
-    const recipientIds = chosen.length === friends.length ? undefined : chosen;
+    const addRecipients = !!friend;
+    // Everyone picked means the whole party, as the server reads a missing list. Joining my
+    // ping needs the names, or the server would replace the ping instead.
+    const recipientIds = !addRecipients && chosen.length === friends.length ? undefined : chosen;
     const message = note.trim();
     const clientId = generateUuidV4();
     const startedAt = new Date().toISOString();
     trackUiInteraction('parta_activity_share', 'submit');
-    const res = await shareFriendPubActivity(target, message, clientId, recipientIds, startedAt);
+    const res = await shareFriendPubActivity(target, message, clientId, recipientIds, startedAt, undefined, addRecipients);
     trackUiInteraction('parta_activity_share', res.ok || isRetriableFriendError(res) ? 'success' : 'failure');
     if (!res.ok && !isRetriableFriendError(res)) {
       done();
@@ -113,10 +119,14 @@ export function PingSheet() {
     }
     if (res.ok) {
       const who = !recipientIds ? undefined : recipientIds.length === 1 ? personName(friends.find((f) => f.id === recipientIds[0]) ?? null) : t.nv.parta.peopleN(recipientIds.length);
-      toast({ kind: 'saved', title: t.nv.parta.pingedToast, sub: t.nv.parta.pingSentSub(target.name, who), icon: 'bell-ring' });
+      toast(
+        addRecipients && who && res.notified === 0
+          ? { kind: 'info', title: t.nv.parta.pingAlreadyKnown(who), icon: 'bell-ring' }
+          : { kind: 'saved', title: t.nv.parta.pingedToast, sub: t.nv.parta.pingSentSub(target.name, who), icon: 'bell-ring' },
+      );
       void usePartaStore.getState().reload();
     } else {
-      await enqueueFriendOp({ op: 'activity', clientId, payload: { pub: target, message, recipientIds, startedAt } });
+      await enqueueFriendOp({ op: 'activity', clientId, payload: { pub: target, message, recipientIds, startedAt, ...(addRecipients ? { addRecipients } : {}) } });
       toast({ kind: 'offline', title: t.nv.parta.pingQueued, icon: 'cloud-off' });
     }
     nvBack(router);
@@ -127,7 +137,7 @@ export function PingSheet() {
 
   return (
     <Sheet
-      title={t.nv.parta.pingParty}
+      title={friend ? t.nv.parta.ping : t.nv.parta.pingParty}
       footer={
         <Button
           label={ghost ? t.nv.parta.pingGhostSend : t.nv.parta.pingPartyShort}
