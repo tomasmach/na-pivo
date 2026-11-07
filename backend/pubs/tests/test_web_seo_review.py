@@ -224,3 +224,25 @@ def test_a_pub_renamed_or_merged_into_a_private_tap_leaves_the_medians_and_the_f
 
     call_command("snapshot_beer_prices", stdout=StringIO())
     assert beer_index._index()["regions"]["CZ010"]["pubs"] == 5
+
+
+def test_a_district_median_counts_a_pub_where_the_catalogue_puts_it():
+    from pubs.tests.test_price_map import _catalog
+
+    border = (50.09837, 14.45275)
+    for index in range(5):
+        # The index wrote plain "Praha", so the position alone says Praha 8; the catalogue's address says Praha 7.
+        row = _indexed_price("Praha", 50 + index, border)
+        _catalog(row, f"Na hranici {index}")
+        PubDirectory.objects.filter(cache_key=row.cache_key).update(city="Praha 7")
+
+    districts = [(area["name"], area["pubs"]) for area in build_price_map()["prague_districts"]]
+
+    assert districts == [("Praha 7", 5)]
+    assert {pub["d"] for pub in pubs_data.catalogue()["pubs"]} == {"Praha 7"}
+
+
+def test_a_point_on_the_line_between_two_districts_belongs_to_one():
+    from pubs.prague_districts import district_at
+
+    assert district_at(50.080575, 14.446475) == "Praha 2"

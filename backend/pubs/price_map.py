@@ -155,10 +155,12 @@ def prague_district(raw: str, lat: float | None = None, lng: float | None = None
         return ""
     numbered = _PRAGUE_NUMBERED.match(city)
     said = "" if city == "Praha" or city in CITY_ALIASES else f"Praha {numbered.group(1)}" if numbered else city
-    located = district_at(lat, lng)
-    if not located or (numbered and near_district(said, lat, lng)):
+    if lat is None or lng is None:
         return said
-    return located
+    # With a position, the address counts only where it can be true: in its district or a few metres off it.
+    if numbered and near_district(said, lat, lng):
+        return said
+    return district_at(lat, lng)
 
 
 def city_slug(name: str) -> str:
@@ -321,6 +323,25 @@ def _one_price_per_pub(rows: list[PubPriceIndex], since: datetime, fresh_since: 
     ]
 
 
+def _catalogue_districts(rows: list[PubPriceIndex]) -> dict[str, str]:
+    """The Prague district the catalogue gives each priced pub it lists, so a district's median counts the pubs its pages show."""
+
+    from pubs.web.pubs_data import catalogue
+
+    by_cell: dict[str, list[dict]] = defaultdict(list)
+    for pub in catalogue()["pubs"]:
+        by_cell[pub["k"]].append(pub)
+    found = {}
+    for row in rows:
+        pub = next(
+            (pub for pub in by_cell.get(row.pub_key, ()) if any(names_match(pub["n"], name) for name in (row.name, *row.alias_names))),
+            None,
+        )
+        if pub is not None:
+            found[row.cache_key] = pub["d"] if city_name(pub["d"]) == "Praha" else ""
+    return found
+
+
 def build_price_map(now: datetime | None = None) -> dict:
     """Median, quartiles and pub count per city and Prague district, plus the cheapest pubs.
 
@@ -343,6 +364,7 @@ def build_price_map(now: datetime | None = None) -> dict:
         [row for row in rows if shows_price(row.price_czk, row.volume_ml, floor)], since, fresh_since
     )
 
+    listed = _catalogue_districts(rows)
     # Spellings that share an address ("Plzen", "Plzeň") are one city under its most common name.
     by_slug: dict[str, list[PubPriceIndex]] = defaultdict(list)
     spellings: dict[str, Counter] = defaultdict(Counter)
@@ -355,7 +377,7 @@ def build_price_map(now: datetime | None = None) -> dict:
             spellings[slug][city] += 1
             if (posted := city_slug(city_name(row.city))) != slug:
                 merged[posted] = slug
-        if district := prague_district(row.city, row.lat, row.lng):
+        if district := listed.get(row.cache_key, prague_district(row.city, row.lat, row.lng)):
             districts[district].append(row)
     cities = {spellings[slug].most_common(1)[0][0]: group for slug, group in by_slug.items()}
     return {

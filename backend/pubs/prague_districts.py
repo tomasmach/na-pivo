@@ -18,6 +18,7 @@ _DATA = Path(__file__).with_name("data") / "prague_districts.json"
 # the simplified line is off by up to 5 m and geocoded positions by a few tens.
 ADDRESS_SLACK_M = 50
 _METRES_PER_DEGREE = 111_320
+_ON_BORDER_M = 0.5
 
 
 @cache
@@ -44,7 +45,8 @@ def district_at(lat: float | None, lng: float | None) -> str:
     for name, ((min_x, min_y, max_x, max_y), rings) in _districts().items():
         if min_x <= lng <= max_x and min_y <= lat <= max_y and _contains(rings, lat, lng):
             return name
-    return ""
+    # A point on the line two districts share is inside neither ring; the first of them takes it.
+    return next((name for name in _districts() if near_district(name, lat, lng, _ON_BORDER_M)), "")
 
 
 def _metres_to_edge(rings: list[list[list[float]]], lat: float, lng: float) -> float:
