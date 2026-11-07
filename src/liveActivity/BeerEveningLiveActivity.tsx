@@ -5,11 +5,9 @@ import {
   accessibilityLabel,
   activityBackgroundTint,
   background,
-  buttonBorderShape,
   buttonStyle,
-  clipShape,
   contentTransition,
-  controlSize,
+  fixedSize,
   font,
   foregroundStyle,
   frame,
@@ -20,11 +18,7 @@ import {
   multilineTextAlignment,
   padding,
   privacySensitive,
-  resizable,
-  shadow,
   shapes,
-  textCase,
-  tint,
 } from '@expo/ui/swift-ui/modifiers';
 import { createLiveActivity, type LiveActivityEnvironment } from 'expo-widgets';
 
@@ -56,14 +50,14 @@ export interface BeerEveningLiveActivityProps {
   latestBeerAt: string;
   /** The noun under the numeral, already declined for `beerCount`. */
   beerWordLabel: string;
-  /** VoiceOver label for the bare number in the compact/minimal presentations. */
-  beerCountA11yLabel: string;
-  /** The running total as a whole line; empty when the total is unknown. */
-  totalPriceLabel: string;
+  /** Forms of `beerWordLabel` for 1, 2–4 and 5+. */
+  beerWordForms?: { one: string; few: string; many: string };
   /** The latest beer's name, or the fallback when it has none. */
   latestBeerLabel: string;
   /** When the latest beer was counted, or the line for an evening with none. */
   latestTimeLabel: string;
+  /** `latestTimeLabel` with `{time}` in place of `latestBeerAt`. */
+  latestTimeTemplate?: string;
   addBeerLabel: string;
   addBeerA11yLabel: string;
   openCounterLabel: string;
@@ -74,10 +68,6 @@ export interface BeerEveningLiveActivityProps {
   repeatBeerServingType?: string;
   /** AppIntent buttons work on iOS 17+; iOS 16 gets a deep-link fallback. */
   supportsInteractiveAdd?: boolean;
-  /** `file://` URI of the staged app icon in the app-group container. */
-  iconUri?: string;
-  /** The earlier brown palette is picked in settings. */
-  brownPalette?: boolean;
   /** Tonight's last direct connection home; absent without home or outside PID. */
   homeTransitLabel?: string;
   /** Departure as epoch ms. The countdown runs natively, so it stays right while the app sleeps. */
@@ -97,320 +87,310 @@ const BeerEveningLiveActivity = (
 ) => {
   'widget';
 
-  // Always-On renders the Lock Screen with reduced luminance and without
-  // animations. The palette keeps the warm pub character while avoiding a
-  // large bright patch on the dimmed display.
-  const isDimmed = environment.isLuminanceReduced === true;
-  const accent = isDimmed ? '#A98E58' : '#FFB84D';
-  const primaryText = isDimmed ? '#CFC5B3' : '#FFF7E8';
-  // Brown is the earlier palette, picked in settings; gray is the default.
-  const brown = props.brownPalette === true;
-  const secondaryText = brown
-    ? isDimmed ? '#817767' : '#C4AE8E'
-    : isDimmed ? '#7C776F' : '#B8B1A8';
-  const activityBackground = brown
-    ? isDimmed ? '#080604' : '#150D06'
-    : isDimmed ? '#090807' : '#15120F';
-  const raisedSurface = brown
-    ? isDimmed ? '#17120C' : '#2E1C0D'
-    : isDimmed ? '#1C1815' : '#262019';
-  const buttonText = brown ? '#241404' : '#15120F';
+  // The serialized layout cannot see module scope, so every constant lives here.
+  // Fonts are bundled into the widget extension by plugins/withLiveActivityFonts.js.
+  const displayFont = 'SofiaSansExtraCondensed-ExtraBold';
+  const semiboldFont = 'SofiaSans-SemiBold';
+  const boldFont = 'SofiaSans-Bold';
+  const extraboldFont = 'SofiaSans-ExtraBold';
   const counterDeepLink = 'napivo://beer';
-  // Poured-beer gold gradient for the hero number; flat on the dimmed display.
-  const countStyle:
-    | string
-    | {
-        type: 'linearGradient';
-        colors: string[];
-        startPoint: { x: number; y: number };
-        endPoint: { x: number; y: number };
-      } = isDimmed
-    ? accent
-    : {
-        type: 'linearGradient',
-        colors: ['#FFD98F', '#FFB84D', '#E8953A'],
-        startPoint: { x: 0.5, y: 0 },
-        endPoint: { x: 0.5, y: 1 },
-      };
 
-  // Every word below arrives finished from `liveBeerActivityModel`: this
-  // runtime is isolated from the app, so it has no strings file and no locale.
-  // Running total sits under the pub name; the latest beer with its wall-clock
-  // time lives next to the button so the freshest info is closest to the action.
-  const beerWord = props.beerWordLabel;
-  const priceLabel = props.totalPriceLabel;
-  const latestBeerLabel = props.latestBeerLabel;
-  const latestTimeLabel = props.latestTimeLabel;
+  // Always-On dims the Lock Screen; the yellow there would be a bright patch.
+  const isDimmed = environment.isLuminanceReduced === true;
+  const c = isDimmed
+    ? {
+        ground: '#000000',
+        count: '#A8891C',
+        word: '#A3A39D',
+        primary: '#C9C9C3',
+        secondary: '#A3A39D',
+        muted: '#6B6B66',
+        ctaFill: '#141414',
+        ctaEdge: '#A8891C66',
+        ctaText: '#A8891C',
+      }
+    : {
+        ground: '#0A0A0A',
+        count: '#FFC400',
+        word: '#D4D4CE',
+        primary: '#F7F7F2',
+        secondary: '#D4D4CE',
+        muted: '#8F8F8A',
+        ctaFill: '#FFC400',
+        ctaEdge: '#FFC400',
+        ctaText: '#0A0A0A',
+      };
+  // The Dynamic Island is never dimmed.
+  const island = { count: '#FFC400', primary: '#F7F7F2', secondary: '#D4D4CE', muted: '#8F8F8A' };
+
+  // Every word arrives from `liveBeerActivityModel`: this runtime has no strings
+  // file and no locale. The native `+ pivo` intent bumps only `beerCount`,
+  // `latestBeerAt` and clears `totalPrice`, so lines depending on them are put
+  // together here.
+  const count = props.beerCount;
+  const forms = props.beerWordForms;
+  const beerWord = !forms
+    ? props.beerWordLabel
+    : count === 1
+      ? forms.one
+      : count >= 2 && count <= 4
+        ? forms.few
+        : forms.many;
+  const countA11y = `${count} ${beerWord}`;
+  const latestTimeLabel =
+    props.latestBeerAt && props.latestTimeTemplate
+      ? props.latestTimeTemplate.replace('{time}', props.latestBeerAt)
+      : props.latestTimeLabel;
   const departsAtMs = props.homeTransitDepartsAtMs;
   // The system redraws a stale activity at the departure even while the app
   // sleeps; a later update knows it from the clock.
-  const isStale = environment.isStale === true;
   const transitMissed =
     !!props.homeTransitMissedLabel &&
-    (isStale || typeof departsAtMs !== 'number' || departsAtMs <= Date.now());
+    (environment.isStale === true || typeof departsAtMs !== 'number' || departsAtMs <= Date.now());
   const showHomeTransit =
     !transitMissed && !!props.homeTransitLabel && typeof departsAtMs === 'number';
   // The countdown only shrinks, so a width picked now stays wide enough.
   const transitLeftMs = (departsAtMs ?? 0) - Date.now();
   const transitTimerWidth =
-    transitLeftMs < 60 * 60 * 1000 ? 38 : transitLeftMs < 10 * 60 * 60 * 1000 ? 50 : 60;
+    transitLeftMs < 60 * 60 * 1000 ? 34 : transitLeftMs < 10 * 60 * 60 * 1000 ? 44 : 52;
+
+  // A 116 pt numeral needs more than its line height allows, so the text keeps
+  // its own height and the frame trims the empty ascender and descender space.
+  const bigNumber = (size: number, height: number, color: string, tracking: number) => (
+    <Text
+      modifiers={[
+        font({ family: displayFont, size }),
+        foregroundStyle(color),
+        kerning(tracking),
+        lineLimit(1),
+        minimumScaleFactor(0.5),
+        fixedSize({ vertical: true }),
+        frame({ height }),
+        contentTransition('numericText'),
+        accessibilityLabel(countA11y),
+      ]}
+    >
+      {count}
+    </Text>
+  );
+
+  const pubHead = (nameSize: number, primary: string, secondary: string) => (
+    <HStack alignment="center" spacing={8} modifiers={[frame({ maxWidth: 1000 })]}>
+      <Text
+        modifiers={[
+          font({ family: boldFont, size: nameSize }),
+          foregroundStyle(primary),
+          lineLimit(1),
+          privacySensitive(),
+        ]}
+      >
+        {props.pubName}
+      </Text>
+      <Spacer />
+      {props.totalPrice ? (
+        <Text
+          modifiers={[
+            font({ family: boldFont, size: 15 }),
+            foregroundStyle(secondary),
+            lineLimit(1),
+            fixedSize(),
+            privacySensitive(),
+          ]}
+        >
+          {props.totalPrice}
+        </Text>
+      ) : null}
+    </HStack>
+  );
+
+  // A long beer name gets cut, never the time after it.
+  const latest = (color: string) => (
+    <HStack spacing={0}>
+      <Text
+        modifiers={[
+          font({ family: semiboldFont, size: 13 }),
+          foregroundStyle(color),
+          lineLimit(1),
+          privacySensitive(),
+        ]}
+      >
+        {props.latestBeerLabel}
+      </Text>
+      <Text
+        modifiers={[
+          font({ family: semiboldFont, size: 13 }),
+          foregroundStyle(color),
+          lineLimit(1),
+          fixedSize(),
+          privacySensitive(),
+        ]}
+      >
+        {` · ${latestTimeLabel}`}
+      </Text>
+    </HStack>
+  );
+
+  const ctaShape = (radius: number) =>
+    shapes.roundedRectangle({ cornerRadius: radius, roundedCornerStyle: 'continuous' });
+  const cta = (label: string, colors: { fill: string; edge: string; text: string }) => (
+    <HStack
+      alignment="center"
+      spacing={6}
+      modifiers={[
+        frame({ maxWidth: 1000, minHeight: 38, maxHeight: 38 }),
+        background(colors.fill, ctaShape(19)),
+        padding({ all: 1 }),
+        background(colors.edge, ctaShape(20)),
+      ]}
+    >
+      {props.supportsInteractiveAdd === true ? (
+        <Image systemName="plus" size={15} color={colors.text} />
+      ) : null}
+      <Text
+        modifiers={[
+          font({ family: extraboldFont, size: 15 }),
+          foregroundStyle(colors.text),
+          lineLimit(1),
+        ]}
+      >
+        {label}
+      </Text>
+    </HStack>
+  );
+  // AppIntent buttons work on iOS 17+; iOS 16 opens the counter instead.
+  const action = (colors: { fill: string; edge: string; text: string }) =>
+    props.supportsInteractiveAdd === true ? (
+      <Button
+        target="add-beer"
+        modifiers={[buttonStyle('plain'), accessibilityLabel(props.addBeerA11yLabel)]}
+      >
+        {cta(props.addBeerLabel, colors)}
+      </Button>
+    ) : (
+      <Link
+        destination={counterDeepLink}
+        modifiers={[accessibilityLabel(props.openCounterLabel)]}
+      >
+        {cta(props.openCounterLabel, colors)}
+      </Link>
+    );
 
   return {
     banner: (
-      <VStack
-        alignment="leading"
-        spacing={11}
+      <HStack
+        alignment="center"
+        spacing={14}
         modifiers={[
-          padding({ horizontal: 14, top: 14, bottom: 12 }),
-          frame({ maxWidth: 1000, alignment: 'leading' }),
-          foregroundStyle(primaryText),
-          activityBackgroundTint(activityBackground),
+          padding({ top: 12, bottom: 12, leading: 12, trailing: 16 }),
+          frame({ maxWidth: 1000 }),
+          // iOS 26 lets the wallpaper show through the tint; the card is solid black.
+          background(c.ground),
+          activityBackgroundTint(c.ground),
         ]}
       >
-        <HStack
-          alignment="center"
-          spacing={12}
-          modifiers={[frame({ maxWidth: 1000 })]}
-        >
-          {props.iconUri && !isDimmed ? (
-            <Image
-              uiImage={props.iconUri}
-              modifiers={[
-                resizable(),
-                frame({ width: 42, height: 42 }),
-                clipShape('roundedRectangle', 13),
-              ]}
-            />
-          ) : (
-            <Image
-              systemName="mug.fill"
-              size={20}
-              modifiers={[
-                foregroundStyle(countStyle),
-                frame({ width: 42, height: 42 }),
-                background(
-                  raisedSurface,
-                  shapes.roundedRectangle({
-                    cornerRadius: 13,
-                    roundedCornerStyle: 'continuous',
-                  }),
-                ),
-              ]}
-            />
-          )}
-          <VStack
-            alignment="leading"
-            spacing={3}
-            modifiers={[frame({ maxWidth: 1000, alignment: 'leading' })]}
+        <VStack alignment="center" spacing={2} modifiers={[frame({ width: 76 })]}>
+          {bigNumber(116, 99, c.count, -3)}
+          <Text
+            modifiers={[
+              font({ family: boldFont, size: 13 }),
+              foregroundStyle(c.word),
+              lineLimit(1),
+              minimumScaleFactor(0.8),
+            ]}
           >
-            <Text
+            {beerWord}
+          </Text>
+        </VStack>
+
+        <VStack
+          alignment="leading"
+          spacing={8}
+          modifiers={[frame({ maxWidth: 1000, alignment: 'leading' })]}
+        >
+          {pubHead(17, c.primary, c.secondary)}
+          {latest(c.muted)}
+          {action({ fill: c.ctaFill, edge: c.ctaEdge, text: c.ctaText })}
+
+          {showHomeTransit ? (
+            <HStack
+              alignment="center"
+              spacing={6}
               modifiers={[
-                font({ size: 19, weight: 'bold', design: 'rounded' }),
-                lineLimit(1),
-                minimumScaleFactor(0.72),
-                privacySensitive(),
+                padding({ horizontal: 2 }),
+                frame({ maxWidth: 1000 }),
+                accessibilityLabel(props.homeTransitA11yLabel ?? props.homeTransitLabel ?? ''),
               ]}
             >
-              {props.pubName}
-            </Text>
-            {priceLabel ? (
+              <Image
+                systemName={props.homeTransitSymbol ?? 'bus.fill'}
+                size={12}
+                color={c.muted}
+              />
               <Text
                 modifiers={[
-                  font({ size: 12, weight: 'medium', design: 'rounded' }),
-                  foregroundStyle(secondaryText),
+                  font({ family: semiboldFont, size: 12 }),
+                  foregroundStyle(c.secondary),
                   lineLimit(1),
+                  minimumScaleFactor(0.8),
                   privacySensitive(),
                 ]}
               >
-                {priceLabel}
+                {props.homeTransitLabel}
               </Text>
-            ) : null}
-          </VStack>
-          <Spacer />
-          <VStack alignment="trailing" spacing={-2}>
-            <Text
-              modifiers={[
-                font({ size: 40, weight: 'heavy', design: 'rounded' }),
-                foregroundStyle(countStyle),
-                monospacedDigit(),
-                contentTransition('numericText'),
-                // Soft golden glow so the tally reads like backlit taproom
-                // signage; skipped on the dimmed Always-On display.
-                ...(isDimmed
-                  ? []
-                  : [shadow({ radius: 10, y: 1, color: '#FFB84D55' })]),
-                accessibilityLabel(`${props.beerCount} ${beerWord}`),
-              ]}
-            >
-              {props.beerCount}
-            </Text>
-            <Text
-              modifiers={[
-                font({ size: 10, weight: 'bold', design: 'rounded' }),
-                foregroundStyle(secondaryText),
-                textCase('uppercase'),
-                kerning(1.4),
-              ]}
-            >
-              {beerWord}
-            </Text>
-          </VStack>
-        </HStack>
+              <Spacer />
+              <Text
+                modifiers={[
+                  font({ family: semiboldFont, size: 12 }),
+                  foregroundStyle(c.muted),
+                ]}
+              >
+                {props.homeTransitCountdownPrefix ?? ''}
+              </Text>
+              {/* Counts down to the departure and stops at 0:00 once it leaves.
+                  The lower bound only has to be in the past: a departure is
+                  always before the next 04:00, so less than a day away. */}
+              <Text
+                timerInterval={{
+                  lower: new Date(departsAtMs - 24 * 60 * 60 * 1000),
+                  upper: new Date(departsAtMs),
+                }}
+                countsDown
+                modifiers={[
+                  font({ family: extraboldFont, size: 12 }),
+                  foregroundStyle(c.primary),
+                  monospacedDigit(),
+                  multilineTextAlignment('trailing'),
+                  // Just wide enough for the digits, so "za" stays next to them.
+                  frame({ width: transitTimerWidth, alignment: 'trailing' }),
+                ]}
+              />
+            </HStack>
+          ) : null}
 
-        <HStack
-          alignment="center"
-          spacing={12}
-          modifiers={[
-            padding({ leading: 14, trailing: 8, vertical: 8 }),
-            frame({ maxWidth: 1000 }),
-            background(
-              raisedSurface,
-              shapes.roundedRectangle({
-                cornerRadius: 18,
-                roundedCornerStyle: 'continuous',
-              }),
-            ),
-          ]}
-        >
-          <VStack
-            alignment="leading"
-            spacing={2}
-            modifiers={[frame({ maxWidth: 1000, alignment: 'leading' })]}
-          >
-            <Text
+          {transitMissed ? (
+            <HStack
+              alignment="center"
+              spacing={6}
               modifiers={[
-                font({ size: 13, weight: 'semibold', design: 'rounded' }),
-                lineLimit(1),
-                minimumScaleFactor(0.8),
-                privacySensitive(),
+                padding({ horizontal: 2 }),
+                frame({ maxWidth: 1000, alignment: 'leading' }),
+                accessibilityLabel(props.homeTransitMissedLabel ?? ''),
               ]}
             >
-              {latestBeerLabel}
-            </Text>
-            <Text
-              modifiers={[
-                font({ size: 11, weight: 'medium', design: 'rounded' }),
-                foregroundStyle(secondaryText),
-                lineLimit(1),
-                privacySensitive(),
-              ]}
-            >
-              {latestTimeLabel}
-            </Text>
-          </VStack>
-          <Spacer />
-          {props.supportsInteractiveAdd === true ? (
-            <Button
-              label={props.addBeerLabel}
-              systemImage="plus"
-              target="add-beer"
-              modifiers={[
-                font({ size: 15, weight: 'semibold', design: 'rounded' }),
-                buttonStyle('borderedProminent'),
-                buttonBorderShape('capsule'),
-                controlSize('regular'),
-                tint(accent),
-                foregroundStyle(buttonText),
-                accessibilityLabel(props.addBeerA11yLabel),
-              ]}
-            />
-          ) : (
-            <Link
-              label={props.openCounterLabel}
-              destination={counterDeepLink}
-              modifiers={[
-                font({ size: 15, weight: 'semibold', design: 'rounded' }),
-                buttonStyle('borderedProminent'),
-                buttonBorderShape('capsule'),
-                controlSize('regular'),
-                tint(accent),
-                foregroundStyle(buttonText),
-                accessibilityLabel(props.openCounterLabel),
-              ]}
-            />
-          )}
-        </HStack>
-
-        {showHomeTransit ? (
-          <HStack
-            alignment="center"
-            spacing={6}
-            modifiers={[
-              // Lines up with the beer name and the button edge of the row above.
-              padding({ leading: 14, trailing: 8 }),
-              frame({ maxWidth: 1000 }),
-              accessibilityLabel(props.homeTransitA11yLabel ?? props.homeTransitLabel ?? ''),
-            ]}
-          >
-            <Image
-              systemName={props.homeTransitSymbol ?? 'bus.fill'}
-              size={11}
-              color={secondaryText}
-            />
-            <Text
-              modifiers={[
-                font({ size: 12, weight: 'semibold', design: 'rounded' }),
-                foregroundStyle(secondaryText),
-                lineLimit(1),
-                minimumScaleFactor(0.8),
-                privacySensitive(),
-              ]}
-            >
-              {props.homeTransitLabel}
-            </Text>
-            <Spacer />
-            <Text
-              modifiers={[
-                font({ size: 12, weight: 'medium', design: 'rounded' }),
-                foregroundStyle(secondaryText),
-              ]}
-            >
-              {props.homeTransitCountdownPrefix ?? ''}
-            </Text>
-            {/* Counts down to the departure and stops at 0:00 once it leaves.
-                The lower bound only has to be in the past: a departure is
-                always before the next 04:00, so less than a day away. */}
-            <Text
-              timerInterval={{
-                lower: new Date(departsAtMs - 24 * 60 * 60 * 1000),
-                upper: new Date(departsAtMs),
-              }}
-              countsDown
-              modifiers={[
-                font({ size: 12, weight: 'bold', design: 'rounded' }),
-                foregroundStyle(accent),
-                monospacedDigit(),
-                multilineTextAlignment('trailing'),
-                // Just wide enough for the digits, so "za" stays next to them.
-                frame({ width: transitTimerWidth, alignment: 'trailing' }),
-              ]}
-            />
-          </HStack>
-        ) : null}
-
-        {transitMissed ? (
-          <HStack
-            alignment="center"
-            spacing={6}
-            modifiers={[
-              padding({ horizontal: 8 }),
-              frame({ maxWidth: 1000, alignment: 'center' }),
-              accessibilityLabel(props.homeTransitMissedLabel ?? ''),
-            ]}
-          >
-            <Image systemName="moon.stars.fill" size={11} color={secondaryText} />
-            <Text
-              modifiers={[
-                font({ size: 12, weight: 'semibold', design: 'rounded' }),
-                foregroundStyle(secondaryText),
-                lineLimit(1),
-              ]}
-            >
-              {props.homeTransitMissedLabel}
-            </Text>
-          </HStack>
-        ) : null}
-      </VStack>
+              <Image systemName="moon.stars.fill" size={12} color={c.muted} />
+              <Text
+                modifiers={[
+                  font({ family: semiboldFont, size: 12 }),
+                  foregroundStyle(c.muted),
+                  lineLimit(1),
+                ]}
+              >
+                {props.homeTransitMissedLabel}
+              </Text>
+            </HStack>
+          ) : null}
+        </VStack>
+      </HStack>
     ),
 
     bannerSmall: (
@@ -418,15 +398,15 @@ const BeerEveningLiveActivity = (
         alignment="center"
         spacing={10}
         modifiers={[
-          padding({ horizontal: 12, vertical: 10 }),
-          foregroundStyle(primaryText),
-          activityBackgroundTint(activityBackground),
+          padding({ horizontal: 14, vertical: 12 }),
+          background(c.ground),
+          activityBackgroundTint(c.ground),
         ]}
       >
-        <Image systemName="mug.fill" size={14} color={accent} />
         <Text
           modifiers={[
-            font({ size: 14, weight: 'semibold', design: 'rounded' }),
+            font({ family: boldFont, size: 14 }),
+            foregroundStyle(c.primary),
             lineLimit(1),
             privacySensitive(),
           ]}
@@ -434,165 +414,79 @@ const BeerEveningLiveActivity = (
           {props.pubName}
         </Text>
         <Spacer />
-        <Text
-          modifiers={[
-            font({ size: 18, weight: 'bold', design: 'rounded' }),
-            foregroundStyle(countStyle),
-            monospacedDigit(),
-            contentTransition('numericText'),
-          ]}
-        >
-          {`${props.beerCount} ${beerWord}`}
-        </Text>
+        <HStack alignment="lastTextBaseline" spacing={3}>
+          <Text
+            modifiers={[
+              font({ family: displayFont, size: 26 }),
+              foregroundStyle(c.count),
+              kerning(-1),
+              contentTransition('numericText'),
+              accessibilityLabel(countA11y),
+            ]}
+          >
+            {count}
+          </Text>
+          <Text
+            modifiers={[font({ family: boldFont, size: 11 }), foregroundStyle(island.muted)]}
+          >
+            {beerWord}
+          </Text>
+        </HStack>
       </HStack>
     ),
 
-    compactLeading: <Image systemName="mug.fill" size={15} color={accent} />,
+    compactLeading: <Image systemName="mug.fill" size={15} color={island.primary} />,
     compactTrailing: (
-      <Text
-        modifiers={[
-          font({ size: 15, weight: 'bold', design: 'rounded' }),
-          foregroundStyle(accent),
-          monospacedDigit(),
-          contentTransition('numericText'),
-          accessibilityLabel(props.beerCountA11yLabel),
-        ]}
-      >
-        {props.beerCount}
-      </Text>
+      <HStack alignment="lastTextBaseline" spacing={3}>
+        <Text
+          modifiers={[
+            font({ family: displayFont, size: 24 }),
+            foregroundStyle(island.count),
+            kerning(-1),
+            contentTransition('numericText'),
+            accessibilityLabel(countA11y),
+          ]}
+        >
+          {count}
+        </Text>
+        <Text modifiers={[font({ family: boldFont, size: 11 }), foregroundStyle(island.muted)]}>
+          {beerWord}
+        </Text>
+      </HStack>
     ),
     minimal: (
       <Text
         modifiers={[
-          font({ size: 13, weight: 'bold', design: 'rounded' }),
-          foregroundStyle(accent),
-          monospacedDigit(),
+          font({ family: displayFont, size: 22 }),
+          foregroundStyle(island.count),
+          kerning(-1),
           contentTransition('numericText'),
-          accessibilityLabel(props.beerCountA11yLabel),
+          accessibilityLabel(countA11y),
         ]}
       >
-        {props.beerCount}
+        {count}
       </Text>
     ),
 
     expandedLeading: (
-      <Image
-        systemName="mug.fill"
-        size={18}
-        modifiers={[foregroundStyle(countStyle), padding({ leading: 4 })]}
-      />
-    ),
-    expandedTrailing: (
-      <VStack
-        alignment="trailing"
-        spacing={0}
-        modifiers={[padding({ trailing: 4 })]}
-      >
-        <Text
-          modifiers={[
-            font({ size: 26, weight: 'heavy', design: 'rounded' }),
-            foregroundStyle(countStyle),
-            monospacedDigit(),
-            contentTransition('numericText'),
-            accessibilityLabel(`${props.beerCount} ${beerWord}`),
-          ]}
-        >
-          {props.beerCount}
-        </Text>
-        <Text
-          modifiers={[
-            font({ size: 8, weight: 'bold', design: 'rounded' }),
-            foregroundStyle(secondaryText),
-            textCase('uppercase'),
-            kerning(1.2),
-          ]}
-        >
-          {beerWord}
-        </Text>
+      <VStack modifiers={[padding({ leading: 6, top: 4 })]}>
+        {bigNumber(84, 71, island.count, -2)}
       </VStack>
     ),
     expandedCenter: (
-      <Text
-        modifiers={[
-          padding({ horizontal: 10 }),
-          font({ size: 15, weight: 'bold', design: 'rounded' }),
-          foregroundStyle(primaryText),
-          lineLimit(1),
-          minimumScaleFactor(0.72),
-          privacySensitive(),
-        ]}
+      <VStack
+        alignment="leading"
+        spacing={3}
+        modifiers={[frame({ maxWidth: 1000, alignment: 'leading' })]}
       >
-        {props.pubName}
-      </Text>
+        {pubHead(16, island.primary, island.secondary)}
+        {latest(island.muted)}
+      </VStack>
     ),
     expandedBottom: (
-      <HStack
-        alignment="center"
-        spacing={12}
-        modifiers={[
-          padding({ top: 5, bottom: 4 }),
-          frame({ maxWidth: 1000 }),
-          foregroundStyle(primaryText),
-        ]}
-      >
-        <VStack
-          alignment="leading"
-          spacing={2}
-          modifiers={[frame({ maxWidth: 1000, alignment: 'leading' })]}
-        >
-          <Text
-            modifiers={[
-              font({ size: 12, weight: 'semibold', design: 'rounded' }),
-              lineLimit(1),
-              minimumScaleFactor(0.8),
-              privacySensitive(),
-            ]}
-          >
-            {latestBeerLabel}
-          </Text>
-          <Text
-            modifiers={[
-              font({ size: 10, weight: 'medium', design: 'rounded' }),
-              foregroundStyle(secondaryText),
-              lineLimit(1),
-              privacySensitive(),
-            ]}
-          >
-            {latestTimeLabel}
-          </Text>
-        </VStack>
-        <Spacer />
-        {props.supportsInteractiveAdd === true ? (
-          <Button
-            label={props.addBeerLabel}
-            systemImage="plus"
-            target="add-beer"
-            modifiers={[
-              font({ size: 14, weight: 'semibold', design: 'rounded' }),
-              buttonStyle('borderedProminent'),
-              buttonBorderShape('capsule'),
-              controlSize('small'),
-              tint(accent),
-              foregroundStyle(buttonText),
-              accessibilityLabel(props.addBeerA11yLabel),
-            ]}
-          />
-        ) : (
-          <Link
-            label={props.openCounterLabel}
-            destination={counterDeepLink}
-            modifiers={[
-              font({ size: 14, weight: 'semibold', design: 'rounded' }),
-              buttonStyle('borderedProminent'),
-              buttonBorderShape('capsule'),
-              controlSize('small'),
-              tint(accent),
-              foregroundStyle(buttonText),
-              accessibilityLabel(props.openCounterLabel),
-            ]}
-          />
-        )}
-      </HStack>
+      <VStack modifiers={[padding({ top: 6, horizontal: 6, bottom: 4 })]}>
+        {action({ fill: island.count, edge: island.count, text: '#0A0A0A' })}
+      </VStack>
     ),
   };
 };

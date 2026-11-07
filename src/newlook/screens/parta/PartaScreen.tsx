@@ -27,7 +27,7 @@ import { C, SCREEN_X, s } from '../../theme';
 import { lastTogetherLabel, personInitial, personName, planTime, planTitle, ticketDay } from './partaModel';
 import { CheerButton } from './cheer';
 import { usePartaStore } from './partaStore';
-import { endPing, pingPerson, respondToPlan } from './planActions';
+import { endPing, respondToPlan } from './planActions';
 import { PartaPhotoStrip } from './PartaPhotos';
 
 const RSVP: { key: 'going' | 'maybe' | 'cant'; label: () => string; icon: IconName }[] = [
@@ -173,7 +173,7 @@ export function PlanTicket({ plan, width, big, onEnded }: { plan: PartaPlan; wid
 }
 
 function LiveRow({ profile, sub, last, cheer }: { profile: FriendProfile; sub: string; last?: boolean; cheer?: FriendPresence }) {
-  const [done, setDone] = useState(false);
+  const router = useRouter();
   return (
     <Row
       last={last}
@@ -185,18 +185,12 @@ function LiveRow({ profile, sub, last, cheer }: { profile: FriendProfile; sub: s
       trailing={
         cheer ? <CheerButton presence={cheer} /> : <Press
           haptic
-          disabled={done}
-          onPress={() => {
-            setDone(true);
-            void pingPerson(profile).then((ok) => {
-              if (!ok) setDone(false);
-            });
-          }}
-          style={[s.row, { height: 34, borderRadius: 18, paddingHorizontal: 14, gap: 6, backgroundColor: done ? C.yellowTint : C.card, borderWidth: 1, borderColor: done ? C.yellowLine : C.hairline }]}
+          onPress={() => router.push({ pathname: '/nv/cinknout', params: { friend: profile.id } })}
+          style={[s.row, { height: 34, borderRadius: 18, paddingHorizontal: 14, gap: 6, backgroundColor: C.card, borderWidth: 1, borderColor: C.hairline }]}
         >
           <Icon name="beer" size={16} color={C.yellow} />
-          <T s={14} w={600} c={done ? C.yellow : C.white}>
-            {done ? t.nv.parta.pinged : t.nv.parta.ping}
+          <T s={14} w={600}>
+            {t.nv.parta.ping}
           </T>
         </Press>
       }
