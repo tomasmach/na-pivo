@@ -260,7 +260,7 @@ def build_beer_pages(now: datetime | None = None) -> dict:
         by_product[product_key][pub_key] = {
             "cache_key": pub_key,
             "name": place["name"],
-            "city": prague_district(city) or city_name(city),
+            "city": prague_district(city, place["lat"], place["lng"]) or city_name(city),
             # The pub's own place, which the app's map already shows everyone.
             "lat": round(place["lat"], 5),
             "lng": round(place["lng"], 5),
