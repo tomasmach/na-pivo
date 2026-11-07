@@ -21,7 +21,7 @@ from django.utils.translation import gettext
 from pubs.api.pub_beers_views import city_name
 from pubs.home_views import canonical_host
 from pubs.models import FriendBlock, PubPriceIndex, TourPublication
-from pubs.price_map import _SOURCES, PUBLIC_MIN_CZK, WINDOW_DAYS
+from pubs.price_map import _SOURCES, PUBLIC_MIN_CZK, WINDOW_DAYS, public_floor, shows_price
 from pubs.tours import fresh_people_count, readable_publications
 from pubs.web.pages import render_page, web_page
 from pubs.web.places import place_name, pub_name
@@ -72,7 +72,8 @@ def _prices(cache_keys: set[str]) -> dict[str, int]:
         cache_key__in=cache_keys, active=True, source__in=_SOURCES, price_czk__gte=PUBLIC_MIN_CZK,
         observed_at__gte=timezone.now() - timedelta(days=WINDOW_DAYS),
     ).values_list("cache_key", "price_czk", "volume_ml")
-    return {key: round(price * 500 / (volume or 500)) for key, price, volume in rows}
+    floor = public_floor()
+    return {key: round(price * 500 / (volume or 500)) for key, price, volume in rows if shows_price(price, volume, floor)}
 
 
 def _route_svg(stops: list[dict], width: int, height: int, pad: int) -> dict:

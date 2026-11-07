@@ -2180,8 +2180,6 @@ msgstr "average per beer"
 msgid "prošlo"
 msgstr "walked it"
 
-msgid "Pivní index Česka"
-msgstr "Czech Beer Index"
 
 msgid "Index se teprve počítá"
 msgstr "The index is still brewing"
@@ -3003,8 +3001,6 @@ msgstr "the same as last year"
 msgid "Nejlevnější pivo v české hospodě stojí střední cenou %(price)s Kč. Ceny po krajích a městech a vývoj po čtvrtletích."
 msgstr "The cheapest beer in a Czech pub costs a median %(price)s CZK. Prices by region and city and the quarterly trend."
 
-msgid "Pivní index Česka: kolik stojí pivo v hospodě"
-msgstr "Czech Beer Index: what beer costs in a pub"
 
 msgid "Pivní index Na pivo"
 msgstr "Na pivo Beer Index"
@@ -5557,14 +5553,12 @@ msgstr "pub pouring"
 msgid "hospody čepují"
 msgstr "pubs pouring"
 
-msgid "Pivní index Česka: cena piva po krajích a v čase"
-msgstr "Czech Beer Index: beer prices by region over time"
+msgid "Pivní index Na pivo: cena piva po krajích a v čase"
+msgstr "Na pivo Beer Index: beer price by region over time"
 
 msgid "Zavřenou hospodu nebo podnik, který hospodou není, nahlásíš v appce. Zmizí, až ho nahlásí %(n)s různých lidí."
 msgstr "Report a closed pub or a place that is not a pub in the app. It disappears once %(n)s different people report it."
 
-msgid "Zdroj: Pivní index Česka, Na pivo"
-msgstr "Source: Czech Beer Index, Na pivo"
 
 msgid "Jmenuju se Tomáš Mach a Na pivo dělám sám, appku i tenhle web."
 msgstr "I'm Tomáš Mach and I make Na pivo on my own, the app and this website."
@@ -5646,3 +5640,7 @@ msgstr "Terms of Use"
 
 msgid "Pravidla používání aplikace Na pivo: účty, uživatelský obsah, komunita, odpovědnost a kontakt."
 msgstr "Rules for using the Na pivo app: accounts, user content, community, liability and contact details."
+
+#, python-format
+msgid "Cenu za 0,5 l pod polovinou celostátního mediánu, teď pod %(floor)s Kč, beru jako překlep a nepočítám ji, stejně jako cokoli pod 20 Kč."
+msgstr "A half litre under half the national median, now under %(floor)s CZK, I take for a typo and leave out, like anything under 20 CZK."

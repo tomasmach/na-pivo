@@ -34,10 +34,12 @@ from pubs.price_map import (
     _confirmed_since,
     _in_czechia,
     _stats,
+    shows_price,
 )
 from pubs.regions import REGION_CODES, region_of
 from pubs.web.dates import time_tag, with_times
 from pubs.web.pages import render_page, web_page
+from pubs.web.places import is_private_pub
 from pubs.web.public_common import (
     breadcrumbs,
     og_image,
@@ -74,6 +76,9 @@ def _regional(snapshot: PubPriceSnapshot) -> dict:
             price_czk__gte=PUBLIC_MIN_CZK,
         ).only("cache_key", "name", "lat", "lng", "city", "price_czk", "volume_ml", "observed_at")
     ))
+    # The same floor as the snapshot's own /ceny numbers.
+    floor = snapshot.data.get("min_czk", PUBLIC_MIN_CZK)
+    rows = [row for row in rows if shows_price(row.price_czk, row.volume_ml, floor) and not is_private_pub(row.name)]
     confirmed = _confirmed_since(rows, now - timedelta(days=WINDOW_DAYS))
     targets = dict(_merged_aliases().values_list("cache_key", "canonical_pub__cache_key"))
     pubs: dict[str, PubPriceIndex] = {}
@@ -186,7 +191,7 @@ def beer_index(request: HttpRequest) -> HttpResponse:
     names = region_names()
     base = web_reverse("web-beer-index")
     crumbs, crumb_graph = breadcrumbs([
-        ("Na pivo", web_reverse("home")), (gettext("Ceny piva"), web_reverse("beer-prices")), (gettext("Pivní index Česka"), base),
+        ("Na pivo", web_reverse("home")), (gettext("Ceny piva"), web_reverse("beer-prices")), (gettext("Pivní index Na pivo"), base),
     ])
     context: dict = {"crumbs": crumbs, "data": None}
     graph = [crumb_graph]
@@ -310,7 +315,7 @@ def beer_index(request: HttpRequest) -> HttpResponse:
         ) % {"price": country_median}
         graph.append({
             "@type": "Dataset",
-            "name": gettext("Pivní index Česka"),
+            "name": gettext("Pivní index Na pivo"),
             "description": description,
             "url": f"{settings.PUBLIC_WEB_ORIGIN}{base}",
             "creator": AUTHOR,
@@ -335,7 +340,7 @@ def beer_index(request: HttpRequest) -> HttpResponse:
         request,
         "web/public/beer_index.html",
         context,
-        title=gettext("Pivní index Česka: cena piva po krajích a v čase"),
+        title=gettext("Pivní index Na pivo: cena piva po krajích a v čase"),
         description=description,
         section="prices",
     )
@@ -350,7 +355,7 @@ def _og(data: dict, lang: str) -> bytes:
         if not figures:
             figures = [(thousands(data["country"]["pubs"]), gettext("hospod s cenou"))]
         return og_image(
-            kicker=f"{gettext('Pivní index Česka')} · {formats.date_format(day, 'F Y')}",
+            kicker=f"{gettext('Pivní index Na pivo')} · {formats.date_format(day, 'F Y')}",
             title=gettext("Pivo v hospodě stojí"),
             hero=_kc(data["country"]["median"]),
             hero_label=gettext("střední cena"),

@@ -1335,7 +1335,7 @@ def llms_txt(_request: HttpRequest) -> HttpResponse:
 
 ## Pravidla pro AI a roboty
 
-- Obsah a data webu Na pivo patří Na pivo: ceny piva, lístky hospod, hodnocení, Pivní index, žebříčky a trasy.
+- Obsah a data webu Na pivo patří Na pivo: ceny piva, lístky hospod, hodnocení, Pivní index Na pivo, žebříčky a trasy.
 - AI vyhledávače a asistenti můžou stránky číst a odpovídat z nich, když u odpovědi odkážou na zdrojovou stránku na {origin}. Platí to pro {allowed}.
 - Používat obsah k trénování nebo ladění modelů je bez písemného souhlasu zakázáno. Stejně tak je zakázané obsah hromadně stahovat a ukládat do databází nebo datasetů.
 - Roboti, kteří sbírají data pro trénink AI, datasety nebo SEO nástroje, mají v robots.txt zakázaný celý web kromě tohoto souboru: {blocked}.
@@ -1343,7 +1343,7 @@ def llms_txt(_request: HttpRequest) -> HttpResponse:
 
 ## Rules for AI and crawlers
 
-- The content and data of Na pivo belong to Na pivo: beer prices, pub menus, ratings, the Beer index, rankings and tours.
+- The content and data of Na pivo belong to Na pivo: beer prices, pub menus, ratings, the Na pivo Beer Index, rankings and tours.
 - AI search engines and assistants may read the pages and answer from them if the answer links to the source page on {origin}. This covers {allowed}.
 - Using the content to train or fine-tune models is prohibited without written permission. So is scraping it in bulk or storing it in databases or datasets.
 - Crawlers that collect data for AI training, datasets or SEO tools are disallowed from the whole site in robots.txt, except this file: {blocked}.

@@ -17,6 +17,11 @@ class BufferedGZipMiddleware(GZipMiddleware):
     """
 
     def process_response(self, request, response):
-        if response.streaming or response.get("Content-Type", "").startswith("text/event-stream"):
+        content_type = response.get("Content-Type", "")
+        if response.streaming or content_type.startswith("text/event-stream"):
+            return response
+        # Images and fonts are compressed already: gzip saves nothing, and with the random padding
+        # it would sometimes even send a WebP or an AVIF bigger than it is.
+        if content_type.startswith(("image/", "font/")) and not content_type.startswith("image/svg"):
             return response
         return super().process_response(request, response)

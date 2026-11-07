@@ -57,9 +57,12 @@ def test_home_loads_nothing_from_other_origins(client):
 
 def test_every_home_asset_is_served(client):
     html = client.get("/").content.decode()
-    paths = set(re.findall(r'"(/web/[^"?]+)\?v=\w+"', html))
+    paths = set(re.findall(r'(/web/[^"?\s]+)\?v=\w+', html))
 
-    assert {"/web/np+reskin.css", "/web/reskin.js", "/web/home-phones.avif", "/web/home-phones.webp"} <= paths
+    assert {
+        "/web/np+reskin.css", "/web/reskin.js", "/web/home-phones.avif", "/web/home-phones.webp",
+        "/web/home-phones-720.avif", "/web/home-phones-720.webp",
+    } <= paths
     for path in paths:
         response = client.get(path)
         assert response.status_code == 200, path
@@ -195,3 +198,22 @@ def test_sitemap_lists_both_languages_of_every_page(client, settings):
     }
     # No snapshot yet, so no date the prices changed.
     assert urls["https://na-pivo.cz/ceny"].find("s:lastmod", ns) is None
+
+
+def test_home_phones_are_sharp_on_retina_and_keep_their_box(client):
+    html = client.get("/").content.decode()
+    picture = re.search(r'<picture class="rs-hero__picture">.*?</picture>', html, re.S).group(0)
+
+    def candidates(srcset: str) -> dict[str, str]:
+        return {density: re.sub(r"\?v=\w+$", "", url) for url, density in (part.split() for part in srcset.split(","))}
+
+    avif = re.search(r'<source type="image/avif" srcset="([^"]+)">', picture).group(1)
+    webp = re.search(r'<img [^>]*srcset="([^"]+)"', picture).group(1)
+    assert candidates(avif) == {"1x": "/web/home-phones-720.avif", "2x": "/web/home-phones.avif"}
+    assert candidates(webp) == {"1x": "/web/home-phones-720.webp", "2x": "/web/home-phones.webp"}
+    img = re.search(r"<img [^>]*>", picture).group(0)
+    assert re.search(r'src="/web/home-phones-720\.webp\?v=\w+"', img)
+    assert 'width="720" height="740"' in img and 'fetchpriority="high"' in img and 'alt="' in img
+    for path, size in (("/web/home-phones-720.webp", (720, 740)), ("/web/home-phones.webp", (1440, 1480))):
+        response = client.get(re.search(rf'({re.escape(path)}\?v=\w+)', picture).group(1))
+        assert response.status_code == 200 and Image.open(BytesIO(response.content)).size == size

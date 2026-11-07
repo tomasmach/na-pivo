@@ -11,6 +11,7 @@ from django.core.management import call_command
 from django.utils import translation
 
 from pubs.models import PubDirectory
+from pubs.tests.prague_points import DISTRICT_POINTS
 from pubs.tests.sitemaps import sitemap_xml
 from pubs.tests.test_beer_pages import _pub as _beer_pub
 from pubs.tests.test_beer_pages import _second_beer, _three_fresh_pubs, catalog  # noqa: F401
@@ -86,12 +87,13 @@ def test_a_pub_page_links_its_beers_its_neighbours_and_the_prices_of_its_city(cl
     assert "&#x27;open&#x27;" not in html
     assert 'href="/ceny/praha"' in html and "Kolik stojí pivo v Praze" in html
     title, description = _head(html)
-    assert description.startswith("Co čepují v hospodě U Zlatého tygra, Praha: 2 piva od 49 Kč, lístek z ")
+    # The address says only Praha; the pub stands in Praha 1.
+    assert description.startswith("Co čepují v hospodě U Zlatého tygra, Praha 1: 2 piva od 49 Kč, lístek z ")
     # The date's own full stop ends the sentence; no second one.
     assert re.search(r"lístek z \d+\. \d+\. Najdeš tu i otevírací dobu\.$", description), description
     assert ".." not in description
     assert '<a href="/en/beer/testovar-11" class="np-row">' in english
-    assert "U Zlatého tygra, Prague | Na pivo" in english and 'href="/en/prices/praha"' in english
+    assert "U Zlatého tygra, Prague 1 | Na pivo" in english and 'href="/en/prices/praha"' in english
 
 
 def test_prague_districts_get_their_own_pages(client):
@@ -165,7 +167,7 @@ def test_the_beer_index_aims_at_the_trend_and_links_the_city_prices(client):
 
     html = client.get("/pivni-index").content.decode()
 
-    assert "<title>Pivní index Česka: cena piva po krajích a v čase | Na pivo</title>" in html
+    assert "<title>Pivní index Na pivo: cena piva po krajích a v čase | Na pivo</title>" in html
     assert 'href="/ceny"' in html and 'href="/o-appce#ceny"' in html
 
 
@@ -294,13 +296,15 @@ def test_every_navigation_has_its_own_name(client):
 
 def test_every_indexable_district_is_linked_from_its_city_and_the_other_districts(client):
     for number in range(1, 11):
+        lat, lng = DISTRICT_POINTS[f"Praha {number}"]
         for index in range(3):
-            pub = _place(f"Hospůdka {number}-{index}", lat=50.0 + number * 0.01 + index * 0.001, lng=14.42, city=f"Praha {number}")
+            pub = _place(f"Hospůdka {number}-{index}", lat=lat + index * 0.001, lng=lng, city=f"Praha {number}")
             if index == 0:
                 _menu(pub)
-    _place("Jen jedna", lat=50.2, lng=14.5, city="Praha 11")
+    _place("Jen jedna", *DISTRICT_POINTS["Praha 11"], city="Praha 11")
+    lat, lng = DISTRICT_POINTS["Praha 12"]
     for index in range(3):
-        _place(f"Bez lístku {index}", lat=50.3 + index * 0.001, lng=14.5, city="Praha 12")
+        _place(f"Bez lístku {index}", lat=lat + index * 0.001, lng=lng, city="Praha 12")
 
     city = client.get("/hospody/praha").content.decode()
     district = client.get("/hospody/praha-1").content.decode()
@@ -320,9 +324,9 @@ def test_a_pub_named_after_its_kind_does_not_say_it_twice(client):
     czech = _head(client.get(f"/hospoda/hospoda-pod-tankem-{pub.cache_key}").content.decode())[1]
     english = _head(client.get(f"/en/pub/hospoda-pod-tankem-{pub.cache_key}").content.decode())[1]
 
-    assert czech.startswith("Co čepuje Hospoda Pod Tankem, Praha: 1 pivo")
+    assert czech.startswith("Co čepuje Hospoda Pod Tankem, Praha 1: 1 pivo")
     assert "v hospodě Hospoda" not in czech
-    assert english.startswith("What Hospoda Pod Tankem in Prague pours: 1 beer")
+    assert english.startswith("What Hospoda Pod Tankem in Prague 1 pours: 1 beer")
 
 
 def test_a_brand_page_links_the_pubs_that_pour_it_and_its_cities(client):

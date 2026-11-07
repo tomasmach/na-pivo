@@ -16,6 +16,7 @@ from io import BytesIO
 from pathlib import Path
 
 from django.conf import settings
+from django.core.cache import cache as shared_cache
 from django.utils import formats, timezone, translation
 from django.utils.text import slugify
 from django.utils.translation import gettext
@@ -34,7 +35,8 @@ from pubs.models import (
     PubPriceIndex,
     PubPriceSnapshot,
 )
-from pubs.web.places import municipality
+from pubs.prague_districts import district_at, near_district
+from pubs.web.places import is_private_pub, municipality
 
 # A year is how long the app itself shows a pub's price; older ones count as gone.
 WINDOW_DAYS = 365
@@ -46,6 +48,10 @@ CHEAPEST_PUBS = 10
 # A beer price under this is a typo or a joke, not a pub's price: no public page,
 # number or structured data uses it.
 PUBLIC_MIN_CZK = 20
+# Nor does a half litre under half the country's median: 20 Kč for a Kozel 11° is a typo when
+# the median is 56. The median takes one price per pub before either rule, and the snapshot
+# keeps the result as "min_czk" for every other public page.
+_FLOOR_KEY = "web:price-floor"
 # Prices people entered in the app. Imported third-party menus stay in the app only.
 _SOURCES = (PubPriceIndex.Source.COMMUNITY, PubPriceIndex.Source.DRINK)
 PATHS = {"cs": "/ceny", "en": "/en/prices"}
@@ -135,14 +141,24 @@ def _confirmed_since(rows: list[PubPriceIndex], since: datetime) -> dict[str, da
     return confirmed
 
 
-def prague_district(raw: str) -> str:
-    """"Praha 2 - Vinohrady" is Praha 2, "Praha-Libuš" stays itself, plain "Praha" has none."""
+def prague_district(raw: str, lat: float | None = None, lng: float | None = None) -> str:
+    """The district of a pub in Prague, from its position when it has one in Prague.
+
+    The address alone: "Praha 2 - Vinohrady" is Praha 2, "Praha-Libuš" stays itself,
+    plain "Praha" has none. With a position in Prague the pub is in the numbered
+    district it stands in; a numbered address still wins when the pub stands within
+    a few metres of that district, since the border runs along streets.
+    """
 
     city = " ".join((raw or "").split())
-    if city == "Praha" or city in CITY_ALIASES or city_name(city) != "Praha":
+    if city_name(city) != "Praha":
         return ""
     numbered = _PRAGUE_NUMBERED.match(city)
-    return f"Praha {numbered.group(1)}" if numbered else city
+    said = "" if city == "Praha" or city in CITY_ALIASES else f"Praha {numbered.group(1)}" if numbered else city
+    located = district_at(lat, lng)
+    if not located or (numbered and near_district(said, lat, lng)):
+        return said
+    return located
 
 
 def city_slug(name: str) -> str:
@@ -173,6 +189,27 @@ def _areas(groups: dict[str, list[PubPriceIndex]]) -> list[dict]:
         ({"name": name, **_stats(rows)} for name, rows in groups.items() if len(rows) >= MIN_PUBS),
         key=lambda area: (-area["pubs"], area["name"]),
     )
+
+
+def price_floor(half_litres: list[float]) -> int:
+    """The cheapest half litre a public page shows: half the median of these prices, never under PUBLIC_MIN_CZK."""
+
+    return max(PUBLIC_MIN_CZK, _round(statistics.median(half_litres) / 2)) if half_litres else PUBLIC_MIN_CZK
+
+
+def shows_price(price: int, volume_ml: int | None, floor: int) -> bool:
+    return price >= PUBLIC_MIN_CZK and price * 500 / (volume_ml or 500) >= floor
+
+
+def public_floor() -> int:
+    """The floor of the newest price snapshot, for pages that show prices outside it."""
+
+    floor = shared_cache.get(_FLOOR_KEY)
+    if floor is None:
+        snapshot = PubPriceSnapshot.objects.only("data").first()
+        floor = (snapshot.data.get("min_czk") if snapshot else None) or PUBLIC_MIN_CZK
+        shared_cache.set(_FLOOR_KEY, floor, 3600)
+    return floor
 
 
 def _district_order(area: dict) -> tuple:
@@ -206,7 +243,7 @@ def _cheapest(rows: list[PubPriceIndex], in_city: str = "") -> list[dict]:
             place = places.get(row.pub_key)
             # Two businesses can share one geohash cell: the price must be this pub's,
             # under its own name or the name of a duplicate merged into it.
-            if place is None or not any(
+            if place is None or is_private_pub(place["name"]) or not any(
                 names_match(name, row.name) for name in (place["name"], *row.alias_names)
             ):
                 continue
@@ -217,7 +254,7 @@ def _cheapest(rows: list[PubPriceIndex], in_city: str = "") -> list[dict]:
                 "cache_key": row.pub_key,
                 "name": place["name"],
                 # The same city names the tables use.
-                "city": prague_district(city) or city_name(city),
+                "city": prague_district(city, place["lat"], place["lng"]) or city_name(city),
                 "price_czk": row.price_czk,
                 "volume_ml": row.volume_ml or 500,
                 "stale": row.stale,
@@ -227,23 +264,10 @@ def _cheapest(rows: list[PubPriceIndex], in_city: str = "") -> list[dict]:
     return picked
 
 
-def build_price_map(now: datetime | None = None) -> dict:
-    """Median, quartiles and pub count per city and Prague district, plus the cheapest pubs.
+def _one_price_per_pub(rows: list[PubPriceIndex], since: datetime, fresh_since: datetime) -> list[PubPriceIndex]:
+    """The newest confirmed price of every public pub: merged duplicates count once, hidden and private pubs not at all."""
 
-    The cheapest pubs are listed for the whole country and for each city.
-    """
-
-    now = now or timezone.now()
-    since = now - timedelta(days=WINDOW_DAYS)
-    fresh_since = now - timedelta(days=FRESH_DAYS)
-    rows = _in_czechia(list(
-        PubPriceIndex.objects.filter(
-            active=True,
-            observed_at__gte=since,
-            source__in=_SOURCES,
-            price_czk__gte=PUBLIC_MIN_CZK,
-        ).only("cache_key", "name", "lat", "lng", "city", "price_czk", "volume_ml", "observed_at")
-    ))
+    rows = [row for row in rows if not is_private_pub(row.name)]
     confirmed = _confirmed_since(rows, since)
     # A duplicate merged into another pub is that pub: it counts once, with the newest price.
     targets: dict[str, str] = {}
@@ -262,9 +286,32 @@ def build_price_map(now: datetime | None = None) -> dict:
     excluded = _globally_reported_pub_cache_keys(
         {row.cache_key for row in pubs.values()} | set(pubs)
     )
-    rows = [
+    return [
         row for row in pubs.values() if row.cache_key not in excluded and row.pub_key not in excluded
     ]
+
+
+def build_price_map(now: datetime | None = None) -> dict:
+    """Median, quartiles and pub count per city and Prague district, plus the cheapest pubs.
+
+    The cheapest pubs are listed for the whole country and for each city.
+    """
+
+    now = now or timezone.now()
+    since = now - timedelta(days=WINDOW_DAYS)
+    fresh_since = now - timedelta(days=FRESH_DAYS)
+    rows = _in_czechia(list(
+        PubPriceIndex.objects.filter(
+            active=True,
+            observed_at__gte=since,
+            source__in=_SOURCES,
+        ).only("cache_key", "name", "lat", "lng", "city", "price_czk", "volume_ml", "observed_at")
+    ))
+    # The floor is half the median of the same pubs before any price is left out.
+    floor = price_floor([_half_litre_price(row) for row in _one_price_per_pub(rows, since, fresh_since)])
+    rows = _one_price_per_pub(
+        [row for row in rows if shows_price(row.price_czk, row.volume_ml, floor)], since, fresh_since
+    )
 
     # Spellings that share an address ("Plzen", "Plzeň") are one city under its most common name.
     by_slug: dict[str, list[PubPriceIndex]] = defaultdict(list)
@@ -278,13 +325,14 @@ def build_price_map(now: datetime | None = None) -> dict:
             spellings[slug][city] += 1
             if (posted := city_slug(city_name(row.city))) != slug:
                 merged[posted] = slug
-        if district := prague_district(row.city):
+        if district := prague_district(row.city, row.lat, row.lng):
             districts[district].append(row)
     cities = {spellings[slug].most_common(1)[0][0]: group for slug, group in by_slug.items()}
     return {
         "window_days": WINDOW_DAYS,
         "fresh_days": FRESH_DAYS,
         "min_pubs": MIN_PUBS,
+        "min_czk": floor,
         "country": _stats(rows) if len(rows) >= MIN_PUBS else None,
         # Each city keeps its own cheapest pubs for its page.
         "cities": [
@@ -440,4 +488,5 @@ def save_price_snapshot(now: datetime | None = None) -> PubPriceSnapshot:
             "og_image_en": render_og_image(data, day, "en"),
         },
     )
+    shared_cache.set(_FLOOR_KEY, data["min_czk"], 3600)
     return snapshot

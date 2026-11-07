@@ -39,14 +39,16 @@ from pubs.models import (
 )
 from pubs.price_map import (
     FRESH_DAYS,
-    PUBLIC_MIN_CZK,
     WINDOW_DAYS,
     _chunks,
     _in_czechia,
     _round,
     prague_district,
+    public_floor,
     share_card,
+    shows_price,
 )
+from pubs.web.places import is_private_pub
 from pubs.web.words import plural
 
 # A beer gets its page once this many pubs confirmed it within FRESH_DAYS.
@@ -77,7 +79,7 @@ def _price(beer: dict) -> int | None:
     return price if BEER_PRICE_MIN_CZK <= price <= BEER_PRICE_MAX_CZK else None
 
 
-def _serving(beers: list[dict]) -> tuple[int | None, int | None]:
+def _serving(beers: list[dict], floor: int) -> tuple[int | None, int | None]:
     """The price the page shows for one pub: half a litre if it has one, else the biggest glass.
 
     The same beer twice in one glass size (tank and keg) shows the cheaper one.
@@ -85,7 +87,7 @@ def _serving(beers: list[dict]) -> tuple[int | None, int | None]:
 
     priced = [
         (price, beer.get("volume_ml")) for beer in beers
-        if (price := _price(beer)) is not None and price >= PUBLIC_MIN_CZK
+        if (price := _price(beer)) is not None and shows_price(price, beer.get("volume_ml"), floor)
     ]
     if not priced:
         return None, beers[0].get("volume_ml")
@@ -184,6 +186,7 @@ def build_beer_pages(now: datetime | None = None) -> dict:
     now = now or timezone.now()
     since = now - timedelta(days=WINDOW_DAYS)
     fresh_since = now - timedelta(days=FRESH_DAYS)
+    floor = public_floor()
     match_cache = BeerCatalogMatchCache()
     products: dict[str, BeerProduct] = {}
 
@@ -246,18 +249,18 @@ def build_beer_pages(now: datetime | None = None) -> dict:
         menu = menus[cache_key]
         pub_key = targets.get(cache_key, cache_key)
         place = places.get(pub_key)
-        if cache_key in excluded or pub_key in excluded or place is None:
+        if cache_key in excluded or pub_key in excluded or place is None or is_private_pub(place["name"]):
             continue
         # The menu must be this pub's, under its own name or the name of a duplicate merged into it.
         if not any(names_match(name, menu.name) for name in (place["name"], *alias_names.get(cache_key, []))):
             continue
         at = confirmed[(cache_key, product_key)]
-        price, volume = _serving(on_tap[(cache_key, product_key)])
+        price, volume = _serving(on_tap[(cache_key, product_key)], floor)
         city = place["city"] or menu.city or ""
         by_product[product_key][pub_key] = {
             "cache_key": pub_key,
             "name": place["name"],
-            "city": prague_district(city) or city_name(city),
+            "city": prague_district(city, place["lat"], place["lng"]) or city_name(city),
             # The pub's own place, which the app's map already shows everyone.
             "lat": round(place["lat"], 5),
             "lng": round(place["lng"], 5),

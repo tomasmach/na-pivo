@@ -8,6 +8,7 @@ from django.utils import translation
 from django.utils.translation import gettext
 
 from pubs.home_views import AUTHOR, WEBSITE_ID, breadcrumb_list, ld_json, organization_ref
+from pubs.price_map import public_floor
 from pubs.web.pages import render_page, web_page
 from pubs.web.public_common import home_og_image, public_cache
 from pubs.web.routes import web_reverse
@@ -60,6 +61,7 @@ def about(request: HttpRequest) -> HttpResponse:
             "crumbs": [{"label": "Na pivo", "url": web_reverse("home")}, {"label": gettext("O appce")}],
             "author_url": AUTHOR["url"],
             "report_text": _report_text(),
+            "price_floor": public_floor(),
             "og_image_url": home_og_image(),
             # The home page's picture, so the home page's words for it.
             "og_image_alt": gettext("Pivní deníček Na pivo: piva za život, kalendář večerů a mapa hospod."),

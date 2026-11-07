@@ -8,6 +8,7 @@ Firmy.cz enrichment (its hours and ratings stay inside the app).
 
 from __future__ import annotations
 
+import logging
 import math
 import re
 import statistics
@@ -51,9 +52,18 @@ from pubs.models import (
     UserAddedPub,
 )
 from pubs.price_index import compute_reference_price
-from pubs.price_map import PUBLIC_MIN_CZK, WINDOW_DAYS, city_slug, prague_district
+from pubs.price_map import (
+    PUBLIC_MIN_CZK,
+    WINDOW_DAYS,
+    city_slug,
+    prague_district,
+    public_floor,
+    shows_price,
+)
 from pubs.pub_events import PubEvent
-from pubs.web.places import municipality
+from pubs.web.places import is_private_pub, municipality
+
+logger = logging.getLogger(__name__)
 
 PRAGUE = ZoneInfo("Europe/Prague")
 CATALOGUE_TTL = 60 * 60
@@ -104,12 +114,15 @@ def merged_city(slug: str) -> str:
     return catalogue()["merged"].get(slug, "")
 
 
-def district_name(raw_city: str) -> str:
-    """Praha 2, Brno-střed: the part of a city the catalogue names, if it names one."""
+def district_name(raw_city: str, lat: float | None = None, lng: float | None = None) -> str:
+    """Praha 2, Brno-střed: the part of a city the pub is in, if the catalogue knows one.
+
+    In Prague the pub's position decides; see ``prague_district``.
+    """
 
     city = " ".join((raw_city or "").split())
     if city_name(city) == "Praha":
-        return prague_district(city)
+        return prague_district(city, lat, lng)
     return city if city and city_name(city) != city else ""
 
 
@@ -166,17 +179,27 @@ def _build_catalogue() -> dict:
     districts: dict[str, Counter] = defaultdict(Counter)
     # The address a town would have under its post office name ("louny-1"), leading to the town.
     merged: dict[str, str] = {}
+    # Pubs whose address names another Prague district than the one they stand in.
+    moved: list[str] = []
     for pub in pubs:
         city = town_name(pub["raw"])
         pub["c"] = city_slug(city) if city else ""
         if pub["c"] and (posted := city_slug(city_name(pub["raw"]))) != pub["c"]:
             merged[posted] = pub["c"]
-        pub["d"] = district_name(pub["raw"])
+        pub["d"] = district_name(pub["raw"], pub["lat"], pub["lng"])
+        if pub["c"] == "praha" and (said := prague_district(pub["raw"])) and said != pub["d"] and said[-1].isdigit():
+            moved.append(f"{pub['k']} {said} -> {pub['d']}")
         pub["f"] = fold(f"{pub['n']} {city} {pub['d']}")
-        if pub["c"]:
+        pub["x"] = is_private_pub(pub["n"])
+        if pub["c"] and not pub["x"]:
             spellings[pub["c"]][city] += 1
             if pub["d"]:
                 districts[pub["c"]][pub["d"]] += 1
+    if moved:
+        logger.info(
+            "Prague district from position differs from the address for %d pubs: %s",
+            len(moved), ", ".join(moved[:10]),
+        )
     cities = {
         slug: {
             "slug": slug,
@@ -284,13 +307,15 @@ def _community(keys) -> dict[str, dict]:
 
 def _prices(keys) -> dict[str, dict]:
     since = timezone.now() - timedelta(days=WINDOW_DAYS)
+    floor = public_floor()
     rows = {}
     for chunk in _chunks(keys):
         for row in PubPriceIndex.objects.filter(
             cache_key__in=chunk, active=True, observed_at__gte=since, source__in=_PRICE_SOURCES,
             price_czk__gte=PUBLIC_MIN_CZK,
         ).values("cache_key", "name", "price_czk", "volume_ml", "observed_at"):
-            rows[row["cache_key"]] = row
+            if shows_price(row["price_czk"], row["volume_ml"], floor):
+                rows[row["cache_key"]] = row
     return rows
 
 
@@ -361,14 +386,16 @@ def half_litre(price: int, volume: int | None) -> float:
 
 def _menu_rows(beers) -> list[dict]:
     rows = []
+    floor = public_floor()
     for beer in beers if isinstance(beers, list) else []:
         if not isinstance(beer, dict) or not isinstance(beer.get("name"), str) or not beer["name"].strip():
             continue
         price, volume = beer.get("price_czk"), beer.get("volume_ml")
+        volume = volume if isinstance(volume, int) and not isinstance(volume, bool) and volume > 0 else None
         rows.append({
             "name": beer["name"].strip()[:120],
-            "price": price if isinstance(price, int) and not isinstance(price, bool) and price >= PUBLIC_MIN_CZK else None,
-            "volume": volume if isinstance(volume, int) and not isinstance(volume, bool) and volume > 0 else None,
+            "price": price if isinstance(price, int) and not isinstance(price, bool) and shows_price(price, volume, floor) else None,
+            "volume": volume,
         })
     return rows[:30]
 
@@ -446,7 +473,7 @@ def city_pubs(slug: str) -> dict | None:
     cache_key = f"web:pubs:city:{slug}"
     data = cache.get(cache_key)
     if data is None:
-        pubs = _enrich([pub for pub in catalogue()["pubs"] if pub["c"] == slug])
+        pubs = _enrich([pub for pub in catalogue()["pubs"] if pub["c"] == slug and not pub["x"]])
         brand_counts: Counter = Counter()
         brand_names: dict[str, str] = {}
         for pub in pubs:
@@ -484,7 +511,7 @@ def _candidates(cache_key: str) -> list[dict]:
         if row and row["name"]:
             return [{
                 "k": cache_key, "n": row["name"], "raw": row["city"] or "", "lat": row["lat"], "lng": row["lng"],
-                "a": "", "c": city_slug(town_name(row["city"] or "")), "d": district_name(row["city"] or ""),
+                "a": "", "c": city_slug(town_name(row["city"] or "")), "d": district_name(row["city"] or "", row["lat"], row["lng"]),
             }]
     return []
 
@@ -529,7 +556,7 @@ def _neighbours(pub: dict) -> list[tuple[float, float]]:
     return [
         (row["lat"], row["lng"])
         for row in catalogue()["pubs"]
-        if abs(row["lat"] - lat) < 0.006 and abs(row["lng"] - lng) < 0.009 and row is not pub
+        if abs(row["lat"] - lat) < 0.006 and abs(row["lng"] - lng) < 0.009 and row is not pub and not row["x"]
     ]
 
 
@@ -545,7 +572,7 @@ def _nearby(pub: dict, limit: int = 5) -> list[dict]:
         (
             (_metres(lat, lng, row), row)
             for row in catalogue()["pubs"]
-            if abs(row["lat"] - lat) < 0.015 and abs(row["lng"] - lng) < 0.022 and row["k"] != pub["k"]
+            if abs(row["lat"] - lat) < 0.015 and abs(row["lng"] - lng) < 0.022 and row["k"] != pub["k"] and not row["x"]
         ),
         key=lambda item: item[0],
     )[: limit * 3]
@@ -655,7 +682,7 @@ def todays_event(cache_key: str, now: datetime | None = None) -> dict | None:
 
 def _pub_hits(tokens: list[str]) -> list[dict]:
     pubs = catalogue()["pubs"]
-    hits = [pub for pub in pubs if all(token in pub["f"] for token in tokens)]
+    hits = [pub for pub in pubs if not pub["x"] and all(token in pub["f"] for token in tokens)]
     phrase = " ".join(tokens)
 
     def rank(pub):
@@ -673,6 +700,8 @@ def _similar_pubs(tokens: list[str]) -> list[dict]:
         return []
     scored = []
     for pub in catalogue()["pubs"]:
+        if pub["x"]:
+            continue
         name = fold(pub["n"])
         score = sum(1 for stem in stems if stem in name)
         if score:
@@ -754,7 +783,7 @@ def search_counts() -> dict:
     data = cache.get("web:pubs:search-counts")
     if data is None:
         data = {
-            "pubs": len(catalogue()["pubs"]),
+            "pubs": sum(1 for pub in catalogue()["pubs"] if not pub["x"]),
             "beers": BeerProduct.objects.filter(active=True, brand__active=True).count(),
             "cities": len(catalogue()["cities"]) + sum(len(c["districts"]) for c in catalogue()["cities"].values()),
         }
@@ -767,9 +796,9 @@ MIN_INDEXED_CITY_PUBS = 3
 
 
 def has_content(pub: dict) -> bool:
-    """Whether a pub page has something to read: a menu or a price. Decides the sitemap and noindex alike."""
+    """Whether a pub page is worth a search result: a public pub with a menu or a price. Decides the sitemap and noindex alike."""
 
-    return bool(pub["beers"]) or pub["price"] is not None
+    return (bool(pub["beers"]) or pub["price"] is not None) and not is_private_pub(pub["name"])
 
 
 def city_indexed(city: dict) -> bool:
