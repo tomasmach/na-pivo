@@ -299,3 +299,35 @@ def test_the_row_chevron_lets_a_click_through_to_the_row_link():
     rule = re.search(r"\.rs-row__chevron\s*\{([^}]*)\}", css).group(1)
 
     assert re.search(r"pointer-events:\s*none", rule)
+
+
+def test_the_news_hide_a_pub_renamed_into_a_private_tap_without_a_catalogue_entry(client):
+    from rest_framework.test import APIClient
+
+    from pubs.api.tests.test_piva import _auth, _products, _register
+
+    api = APIClient()
+    first, _ = _register(api, "klara_na_cepu")
+    second, _ = _register(api, "mirek")
+    pilsner, kozel = _products(2)
+    # A pub from the map, not the catalogue: only its menus know where it is.
+    where = {"name": "U Jardy", "lat": 50.0611, "lng": 14.5003, "city": "Praha 10"}
+    for token, beers in (
+        (first, [{"name": pilsner.name, "price_czk": 55, "volume_ml": 500}, {"name": kozel.name, "price_czk": 48, "volume_ml": 500}]),
+        (second, [{"name": pilsner.name, "price_czk": 59, "volume_ml": 500}]),
+    ):
+        response = api.post("/v1/pub-community", {"client_id": str(uuid.uuid4()), **where, "beers": beers},
+                            format="json", **_auth(token))
+        assert response.status_code in (200, 201), response.content
+    assert not pubs_data.catalogue()["pubs"]
+    before = client.get("/novinky").content.decode()
+    assert f"U Jardy nově čepuje {pilsner.name}" in before and f"U Jardy má dražší {pilsner.name}" in before
+
+    renamed = api.post("/v1/pub-name-corrections", {
+        "client_id": str(uuid.uuid4()), **where, "suggested_name": "U Jardy - soukromý výčep",
+    }, format="json", **_auth(first))
+    assert renamed.status_code == 201, renamed.content
+    cache.clear()
+
+    html = client.get("/novinky").content.decode()
+    assert "U Jardy" not in html and pilsner.name not in html
