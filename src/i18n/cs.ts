@@ -1101,7 +1101,7 @@ export const cs = {
     publishNameNote: 'Když je v názvu něčí jméno, radši ho změň. Název uvidí každý.',
     publishUndoNote: 'Z veřejných ji můžeš kdykoli stáhnout. Kdo si ji mezitím uložil, tomu zůstane.',
     rulesPrefix: 'Zveřejněním souhlasíš s ', rulesLink: 'pravidly pro veřejné tour', rulesSuffix: '.',
-    publishAction: 'Zveřejnit', publishedNotice: 'Tour je veřejná.', rulesUrl: 'https://tomasmach.github.io/na-pivo/terms.html#verejne-tour',
+    publishAction: 'Zveřejnit', publishedNotice: 'Tour je veřejná.', rulesUrl: 'https://na-pivo.cz/podminky#verejne-tour',
     signIn: 'Přihlásit se', pickNickname: 'Vybrat přezdívku', openPrivacy: 'Otevřít soukromí',
     report: 'Nahlásit', reportTitle: 'Nahlásit tuhle tour?',
     reportMessage: 'Přestane se ti ukazovat. Když ji nahlásí víc lidí, schová se všem, dokud se na ni nepodívám.',

@@ -940,7 +940,7 @@ export const en: Strings = {
     publishNameNote: 'If the name includes someone’s name, better change it. Everyone will see the name.',
     publishUndoNote: 'You can remove it from public at any time. Anyone who saved it meanwhile keeps their copy.',
     rulesPrefix: 'By publishing you agree to the ', rulesLink: 'public tour rules', rulesSuffix: '.',
-    publishAction: 'Publish', publishedNotice: 'The tour is public.', rulesUrl: 'https://tomasmach.github.io/na-pivo/en/terms.html#verejne-tour',
+    publishAction: 'Publish', publishedNotice: 'The tour is public.', rulesUrl: 'https://na-pivo.cz/en/terms#verejne-tour',
     signIn: 'Sign in', pickNickname: 'Pick a nickname', openPrivacy: 'Open privacy',
     report: 'Report', reportTitle: 'Report this tour?',
     reportMessage: 'You will stop seeing it. If more people report it, it is hidden for everyone until I take a look.',

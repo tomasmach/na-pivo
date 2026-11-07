@@ -1,0 +1,10 @@
+{% extends "web/public.html" %}
+{% load web %}
+{% block stylesheet %}{% stylesheet "public-pages.css" %}{% endblock %}
+{% block head %}{{ structured_data }}{% endblock %}
+{% block content %}
+{% include "web/components/breadcrumbs.html" with crumbs=crumbs %}
+<div class="pp-legal">
+{% include document %}
+</div>
+{% endblock %}

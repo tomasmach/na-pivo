@@ -63,7 +63,7 @@ _SHARE_PAGE = "pub-share-landing"
 CASELESS_PAGES = frozenset({
     "home", "beer-prices", "beer-prices-city", "beer-list", "beer-brand", "beer", "web-pubs", "web-pubs-city",
     "web-rankings", "web-rankings-region", "web-news", "web-tours", "web-beer-index", "web-search",
-    "web-login", "web-register",
+    "web-login", "web-register", "web-privacy", "web-terms",
 })
 
 
