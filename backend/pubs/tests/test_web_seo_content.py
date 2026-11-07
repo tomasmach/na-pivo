@@ -1,0 +1,340 @@
+"""What the public pages say about themselves and where they link: titles, descriptions, districts, about."""
+
+from __future__ import annotations
+
+import json
+import re
+from io import StringIO
+
+import pytest
+from django.core.management import call_command
+from django.utils import translation
+
+from pubs.models import PubDirectory
+from pubs.tests.sitemaps import sitemap_xml
+from pubs.tests.test_beer_pages import _pub as _beer_pub
+from pubs.tests.test_beer_pages import _second_beer, _three_fresh_pubs, catalog  # noqa: F401
+from pubs.tests.test_price_map import BRNO, _catalog, _price
+from pubs.tests.test_web_pubs import ALWAYS, _menu
+from pubs.tests.test_web_pubs import _pub as _place
+from pubs.web.places import in_place, municipality, place_name, pub_name
+from pubs.web.pubs_views import sitemap_paths
+
+pytestmark = pytest.mark.django_db
+
+
+def _head(html: str) -> tuple[str, str]:
+    title = re.search(r"<title>([^<]+)</title>", html).group(1)
+    description = re.search(r'<meta name="description" content="([^"]*)"', html).group(1)
+    return title, description
+
+
+def test_post_office_names_become_the_town_and_prague_speaks_english():
+    assert municipality("Louny 1") == "Louny"
+    assert municipality("Ústí nad Labem 2") == "Ústí nad Labem"
+    assert municipality("Praha 7") == "Praha 7"
+    assert municipality("Plzeň 3") == "Plzeň 3"
+    assert in_place("Praha 7") == "v Praze 7"
+    assert in_place("Louny 1") == "v Lounech"
+    assert in_place("Žitenice") == ""
+    with translation.override("en"):
+        assert place_name("Praha") == "Prague"
+        assert place_name("Praha 7") == "Prague 7"
+        assert place_name("Plzeň") == "Pilsen"
+        assert place_name("Praha-Libuš") == "Praha-Libuš"
+        assert in_place("Žitenice") == "in Žitenice"
+
+
+def test_business_records_and_placeholders_stay_out_of_titles():
+    assert pub_name("P5342 - Chrudim pivovar, ul.Obc.Ležáků") == "Chrudim pivovar"
+    assert pub_name("PIVOVAR LOUTKÁŘ s.r.o.") == "PIVOVAR LOUTKÁŘ"
+    assert pub_name("Nazev Upřesnim") == "Hospoda bez jména"
+    assert pub_name("U Zlatého tygra") == "U Zlatého tygra"
+
+
+def test_a_pub_in_a_post_office_town_names_the_town(client):
+    pub = _place("U Mostu", lat=50.3540, lng=13.7970, city="Louny 1")
+
+    html = client.get(f"/hospoda/u-mostu-{pub.cache_key}").content.decode()
+
+    title, description = _head(html)
+    assert title == "U Mostu, Louny | Na pivo"
+    assert "Louny 1" not in html
+    # Nothing on the page knows the menu or the hours, so the description does not promise them.
+    assert description == "U Mostu, Louny. Co tu čepují, zatím nevím. Lístek může doplnit každý, kdo tu sedí."
+
+
+def test_a_pub_page_links_its_beers_its_neighbours_and_the_prices_of_its_city(client):
+    _three_fresh_pubs()
+    _second_beer()
+    for price in range(40, 46):
+        _price("Praha", price)
+    tiger = _place(city="Praha")
+    _menu(tiger, beers=[{"name": "Testovar 11°", "price_czk": 49, "volume_ml": 500}, {"name": "Domácí kvasnicové"}],
+          hours=ALWAYS)
+    # Next door, so it is among the five closest whatever other pubs the test data put around.
+    neighbour = _place("Lokál Dlouhááá", lat=50.0877, lng=14.4215, city="Praha")
+    _menu(neighbour)
+    call_command("snapshot_beer_prices", stdout=StringIO())
+
+    html = client.get(f"/hospoda/u-zlateho-tygra-{tiger.cache_key}").content.decode()
+    english = client.get(f"/en/pub/u-zlateho-tygra-{tiger.cache_key}").content.decode()
+
+    assert '<a href="/pivo/testovar-11" class="np-row">' in html
+    assert "Domácí kvasnicové" in html and 'href="/pivo/domaci' not in html
+    assert "Hospody poblíž" in html and f'href="/hospoda/lokal-dlouhaaa-{neighbour.cache_key}"' in html
+    assert "&#x27;open&#x27;" not in html
+    assert 'href="/ceny/praha"' in html and "Kolik stojí pivo v Praze" in html
+    title, description = _head(html)
+    assert description.startswith("Co čepují v hospodě U Zlatého tygra, Praha: 2 piva od 49 Kč, lístek z ")
+    # The date's own full stop ends the sentence; no second one.
+    assert re.search(r"lístek z \d+\. \d+\. Najdeš tu i otevírací dobu\.$", description), description
+    assert ".." not in description
+    assert '<a href="/en/beer/testovar-11" class="np-row">' in english
+    assert "U Zlatého tygra, Prague | Na pivo" in english and 'href="/en/prices/praha"' in english
+
+
+def test_prague_districts_get_their_own_pages(client):
+    for index in range(3):
+        _place(f"Sedmička {index}", lat=50.1000 + index * 0.001, lng=14.4300, city="Praha 7")
+    _place("Jednička", lat=50.0870, lng=14.4210, city="Praha 1")
+    _place("Další jednička", lat=50.0880, lng=14.4220, city="Praha 1")
+    _place("Pivnice Pegas", lat=49.1950, lng=16.6080, city="Brno-město")
+    _place("U Bláhovky", lat=49.2010, lng=16.6010, city="Brno-město")
+
+    seven = client.get("/hospody/praha-7")
+    one = client.get("/hospody/praha-1")
+
+    html = seven.content.decode()
+    assert seven.status_code == 200 and "X-Robots-Tag" not in seven
+    assert "<title>Hospody v Praze 7 | Na pivo</title>" in html
+    assert '<link rel="canonical" href="https://na-pivo.cz/hospody/praha-7">' in html
+    assert html.count('class="np-pubrow__name"') == 3 and "Jednička" not in html
+    assert 'href="/hospody/praha">Praha</a>' in html
+    # Two pubs make a page for people, not for search.
+    assert one.status_code == 200 and "noindex" in one["X-Robots-Tag"]
+    assert "Pubs in Prague 7" in client.get("/en/pubs/praha-7").content.decode()
+    # Every row is in Praha 7, so the line under the name is the street or nothing.
+    assert '<span class="np-pubrow__place">Praha 7</span>' not in html
+    redirect = client.get("/hospody/praha?district=praha-7&open=1")
+    assert redirect.status_code == 301 and redirect["Location"] == "/hospody/praha-7?open=1"
+    # Brno-město is the county of the whole city, not a district.
+    assert client.get("/hospody/brno-mesto").status_code == 404
+    assert "/hospody/praha-7" in sitemap_paths() and "/hospody/praha-1" not in sitemap_paths()
+    assert 'href="/hospody/praha-7"' in client.get("/hospody/praha").content.decode()
+
+
+def test_a_small_town_describes_itself_with_its_own_pubs(client):
+    for index, name in enumerate(("Na Vyhlídce", "Pod Kaštanem", "U Ládi")):
+        pub = _place(name, lat=50.3 + index * 0.001, lng=14.1, city="Žitenice")
+        if index == 0:
+            _menu(pub, hours=ALWAYS)
+
+    title, description = _head(client.get("/hospody/zitenice").content.decode())
+
+    assert title == "Hospody: Žitenice | Na pivo"
+    assert description == "Žitenice: 3 hospody. Lístek mám u 1 z nich. Jsou tu Na Vyhlídce, Pod Kaštanem a U Ládi."
+    assert "právě teď" not in description
+    english = _head(client.get("/en/pubs/zitenice").content.decode())[1]
+    assert english.endswith("Pubs here: Na Vyhlídce, Pod Kaštanem and U Ládi.")
+
+
+def test_price_pages_link_their_pubs_and_say_prague_in_english(client):
+    for price in range(40, 46):
+        _price("Praha", price)
+    _catalog(_price("Praha", 35), "Pod Lampou")
+    call_command("snapshot_beer_prices", stdout=StringIO())
+
+    html = client.get("/ceny/praha").content.decode()
+    english = client.get("/en/prices/praha").content.decode()
+    country = client.get("/ceny").content.decode()
+
+    assert re.search(r'<a class="rs-row__link" href="/hospoda/pod-lampou-\w{8}">Pod Lampou</a>', html)
+    assert '<h1 class="np-h1" id="page-title">Kolik stojí pivo v Praze</h1>' in html
+    assert re.search(r"<title>Beer prices in Prague \d{4}: median \d+ CZK \| Na pivo</title>", english)
+    assert '<h1 class="np-h1" id="page-title">What a beer costs in Prague</h1>' in english
+    assert ">Praha<" not in english
+    assert 'href="/pivni-index"' in country and 'href="/o-appce#ceny"' in country
+
+
+def test_the_beer_index_aims_at_the_trend_and_links_the_city_prices(client):
+    for price in range(40, 46):
+        _price("Brno", price, BRNO)
+    call_command("snapshot_beer_prices", stdout=StringIO())
+
+    html = client.get("/pivni-index").content.decode()
+
+    assert "<title>Pivní index Česka: cena piva po krajích a v čase | Na pivo</title>" in html
+    assert 'href="/ceny"' in html and 'href="/o-appce#ceny"' in html
+
+
+def test_beer_pages_count_pubs_and_beers_in_czech(client):
+    _three_fresh_pubs()
+    _second_beer()
+    _beer_pub("Na Kopci", [("Testovar 12°", 61, 500)], city="Beroun")
+    call_command("snapshot_beer_prices", stdout=StringIO())
+
+    beer = client.get("/pivo/testovar-11").content.decode()
+    brand = client.get("/pivo/znacka/testovar").content.decode()
+
+    assert re.search(r">3</span>\s*<span [^>]+>hospody za 3 měsíce<", beer)
+    assert re.search(r'<a class="rs-row__link" href="/hospoda/u-lipy-\w{8}">U Lípy</a>', beer)
+    flat = re.sub(r"<[^>]+>", " ", brand)
+    assert re.search(r"2\s+piva s vlastní stránkou", flat)
+    assert "1 hospod" not in flat and re.search(r"\b1\s+hospoda\b", flat)
+    assert _head(brand)[1].startswith("Kde se čepuje Testovar: 7 hospod, 2 piva s vlastní stránkou.")
+
+
+def test_the_about_page_says_who_makes_the_app_in_both_languages(client):
+    czech = client.get("/o-appce")
+    english = client.get("/en/about")
+
+    html = czech.content.decode()
+    assert czech.status_code == english.status_code == 200
+    assert "Tomáš Mach" in html and "mailto:tomades1@gmail.com" in html and 'id="ceny"' in html
+    # The app reports closed pubs and places that are not pubs, and the same bar hides them.
+    assert "Zmizí, až ho nahlásí 3\u00a0různí lidé." in html or "Zmizí, až ho nahlásí 3 různí lidé." in html
+    assert "duplicit" not in html
+    assert "apps.apple.com" in html and "play.google.com" in html
+    assert "Who makes it" in english.content.decode()
+    assert 'href="/o-appce">O appce</a>' in client.get("/ceny").content.decode()
+    assert "https://na-pivo.cz/o-appce" in sitemap_xml(client)
+
+
+def test_every_list_names_a_pub_without_its_register_code(client):
+    """One cleaner for every place a page names a pub: lists, the cheapest pubs, beer pages, nearby pubs."""
+
+    raw = "P5342 - Pivnice Smíchov, ul.Nádražní"
+    for price in range(40, 46):
+        _price("Praha", price)
+    _catalog(_price("Praha", 35), raw)
+    for name in ("U Kalicha", "Na Růžku"):
+        _beer_pub(name, [("Testovar 11°", 55, 500)], city="Praha")
+    coded = _beer_pub(raw, [("Testovar 11°", 52, 500)], city="Praha")
+    call_command("snapshot_beer_prices", stdout=StringIO())
+
+    pages = {
+        "city": client.get("/hospody/praha").content.decode(),
+        "prices": client.get("/ceny/praha").content.decode(),
+        "beer": client.get("/pivo/testovar-11").content.decode(),
+        "pub": client.get(f"/hospoda/u-kalicha-{PubDirectory.objects.get(name='U Kalicha').cache_key}").content.decode(),
+    }
+
+    for page, html in pages.items():
+        assert "Pivnice Smíchov" in html, page
+        assert "P5342" not in html.replace(f"p5342-pivnice-smichov-ulnadrazni-{coded}", ""), page
+    # The address keeps the stored name, so old links and the app still find the pub.
+    assert f'href="/hospoda/p5342-pivnice-smichov-ulnadrazni-{coded}"' in pages["beer"]
+
+
+def test_districts_with_a_page_are_linked_from_prices_and_from_their_pubs(client):
+    for index in range(5):
+        row = _price("Praha 4", 45 + index, (50.0600 + index * 0.0005, 14.4400))
+        _catalog(row, f"Pankrácká {index}")
+    _price("Praha 9", 50, (50.1200, 14.5000))
+    call_command("snapshot_beer_prices", stdout=StringIO())
+
+    prices = client.get("/ceny/praha").content.decode()
+    pub = PubDirectory.objects.get(name="Pankrácká 0")
+    detail = client.get(f"/hospoda/pankracka-0-{pub.cache_key}").content.decode()
+
+    assert '<a href="/hospody/praha-4">Praha 4</a>' in prices
+    assert 'href="/hospody/praha-4">Hospody v Praze 4 ›</a>' in detail
+
+
+def _graph(html: str) -> list[dict]:
+    blocks = re.findall(r'<script type="application/ld\+json">(.*?)</script>', html, re.S)
+    return [node for block in blocks for node in json.loads(block).get("@graph", [])]
+
+
+def test_a_district_shares_a_card_of_its_own(client, monkeypatch):
+    from pubs.web import pubs_views
+
+    drawn = []
+    monkeypatch.setattr(pubs_views, "og_image", lambda **payload: drawn.append(payload) or b"png")
+    for index in range(3):
+        pub = _place(f"Sedmička {index}", lat=50.1000 + index * 0.001, lng=14.4300, city="Praha 7")
+        _menu(pub, beers=[{"name": "Kozel 11°", "price_czk": 40 + index, "volume_ml": 500}])
+    for index in range(4):
+        _place(f"Jinde {index}", lat=50.0800 + index * 0.001, lng=14.4200, city="Praha")
+
+    html = client.get("/hospody/praha-7").content.decode()
+    card = re.search(r'<meta property="og:image" content="https://na-pivo.cz(/hospody/praha-7/og\.png\?v=\w+)">', html)
+    response = client.get(card.group(1))
+    english = client.get("/en/pubs/praha-7/og.png")
+
+    assert response.status_code == english.status_code == 200
+    assert response["Content-Type"] == "image/png"
+    czech, in_english = drawn
+    assert czech["title"] == "Hospody v Praze 7" and czech["kicker"] == "Praha"
+    # Three pubs of Praha 7, not the seven of the whole city.
+    assert czech["figures"][0] == ("3", "hospody") and czech["hero"] == "41 Kč"
+    assert czech["address"].endswith("/hospody/praha-7")
+    assert in_english["title"] == "Pubs in Prague 7"
+    assert client.get("/hospody/praha-99/og.png").status_code == 404
+
+
+def test_the_about_page_describes_itself_for_search_and_link_previews(client):
+    for path, lang in (("/o-appce", "cs"), ("/en/about", "en")):
+        html = client.get(path).content.decode()
+        about = next(node for node in _graph(html) if node["@type"] == "AboutPage")
+        assert about["url"] == f"https://na-pivo.cz{path}" and about["inLanguage"] == lang
+        assert about["publisher"]["@id"] == about["about"]["@id"] == "https://na-pivo.cz/#org"
+        assert any(node["@type"] == "BreadcrumbList" for node in _graph(html))
+        assert '<meta name="twitter:card" content="summary_large_image">' in html
+        assert '<meta property="og:image:alt"' in html
+
+
+def test_every_navigation_has_its_own_name(client):
+    for path in ("/o-appce", "/en/about", "/hospody"):
+        names = re.findall(r'<nav[^>]*aria-label="([^"]+)"', client.get(path).content.decode())
+        assert len(names) == len(set(names)), (path, names)
+
+
+def test_every_indexable_district_is_linked_from_its_city_and_the_other_districts(client):
+    for number in range(1, 11):
+        for index in range(3):
+            _place(f"Hospůdka {number}-{index}", lat=50.0 + number * 0.01 + index * 0.001, lng=14.42, city=f"Praha {number}")
+    _place("Jen jedna", lat=50.2, lng=14.5, city="Praha 11")
+
+    city = client.get("/hospody/praha").content.decode()
+    district = client.get("/hospody/praha-1").content.decode()
+
+    for number in range(1, 11):
+        assert f'href="/hospody/praha-{number}"' in city
+    assert all(f'href="/hospody/praha-{number}"' in district for number in range(2, 11))
+    # A district too small to be listed by search engines gets no tile.
+    assert 'href="/hospody/praha-11"' not in city
+
+
+def test_a_pub_named_after_its_kind_does_not_say_it_twice(client):
+    pub = _place("Hospoda Pod Tankem", city="Praha")
+    _menu(pub)
+
+    czech = _head(client.get(f"/hospoda/hospoda-pod-tankem-{pub.cache_key}").content.decode())[1]
+    english = _head(client.get(f"/en/pub/hospoda-pod-tankem-{pub.cache_key}").content.decode())[1]
+
+    assert czech.startswith("Co čepuje Hospoda Pod Tankem, Praha: 1 pivo")
+    assert "v hospodě Hospoda" not in czech
+    assert english.startswith("What Hospoda Pod Tankem in Prague pours: 1 beer")
+
+
+def test_a_brand_page_links_the_pubs_that_pour_it_and_its_cities(client):
+    _three_fresh_pubs()
+    _second_beer()
+    call_command("snapshot_beer_prices", stdout=StringIO())
+
+    html = client.get("/pivo/znacka/testovar").content.decode()
+
+    assert "Hospody, kde čepují Testovar" in html
+    for name in ("U Kalicha", "Pod Věží", "U Lípy"):
+        assert re.search(rf'<a class="rs-row__link" href="/hospoda/[a-z0-9-]+-\w{{8}}">{name}</a>', html), name
+    assert '<a href="/hospody/praha">Praha</a>' in html
+
+
+def test_footer_column_labels_stay_out_of_the_outline(client):
+    html = client.get("/o-appce").content.decode()
+    footer = html[html.index('<footer class="np-footer">'):]
+
+    assert "<h2" not in footer
+    assert 'aria-labelledby="np-foot-pubs"' in footer and '<p class="np-footer__title" id="np-foot-pubs">' in footer

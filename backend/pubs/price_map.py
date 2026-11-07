@@ -214,6 +214,7 @@ def _cheapest(rows: list[PubPriceIndex], in_city: str = "") -> list[dict]:
             if in_city and city_slug(municipality(city_name(city))) != city_slug(in_city):
                 continue
             picked.append({
+                "cache_key": row.pub_key,
                 "name": place["name"],
                 # The same city names the tables use.
                 "city": prague_district(city) or city_name(city),

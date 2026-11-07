@@ -1,5 +1,6 @@
 {% extends "web/public.html" %}
 {% load i18n web %}
+{% block stylesheet %}{% stylesheet "pubs.css" %}{% endblock %}
 {% block head %}{% include "web/pubs/_head.html" %}{% endblock %}
 {% block og_image %}{% translate "Pivní deníček Na pivo: piva za život, kalendář večerů a mapa hospod." as og_image_alt %}{% include "web/pubs/_og.html" %}{% endblock %}
 {% block content %}

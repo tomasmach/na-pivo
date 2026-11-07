@@ -141,7 +141,7 @@ def test_city_filters_narrow_the_list(client):
     assert _listed(client, "/hospody/praha?open=1") == ["Levná"]
     assert _listed(client, "/hospody/praha?max55=1") == ["Levná"]
     assert _listed(client, "/hospody/praha?tank=1") == ["Drahá"]
-    assert _listed(client, "/hospody/praha?district=praha-2") == ["Levná"]
+    assert _listed(client, "/hospody/praha-2") == ["Levná"]
     assert _listed(client, "/hospody/praha?sort=price") == ["Levná", "Drahá"]
     nothing = client.get("/hospody/praha?open=1&tank=1").content.decode()
     assert "Takovou hospodu tu nemám" in nothing
@@ -157,6 +157,22 @@ def test_city_list_loads_more_by_page(client):
     second = client.get("/hospody/praha?page=2").content.decode()
     assert second.count('class="np-pubrow"') == 5 and 'id="h21"' in second and "Načíst další" not in second
     assert "25 z 25" in second
+
+
+def test_city_list_builds_rows_only_for_the_pubs_it_shows(client, monkeypatch):
+    from pubs.web import pubs_views
+
+    for index in range(60):
+        _pub(f"Hospoda {index:02d}", lat=50.08 + index / 1000, lng=14.42, city="Praha")
+    built = []
+    real = pubs_views._pub_row
+    monkeypatch.setattr(pubs_views, "_pub_row", lambda pub, *args: built.append(pub["key"]) or real(pub, *args))
+
+    page = client.get("/hospody/praha").content.decode()
+
+    assert page.count('class="np-pubrow"') == 20 and "z 60" in page
+    # The page and the 20 best of the structured list, not all 60.
+    assert len(built) == 40
 
 
 def test_unknown_city_is_404_with_other_cities(client):
@@ -256,7 +272,7 @@ def test_cheapest_beer_follows_the_menu_on_the_page(client):
     html = client.get(f"/hospoda/hostinec-u-kalicha-{kalich.cache_key}").content.decode()
 
     assert re.search(r">45\u00a0Kč</span><span [^>]+>nejlevnější pivo, 0,5\u00a0l<", html)
-    assert "pivo od 45 Kč" in html
+    assert "3\u00a0piva od 45 Kč" in html
     og = pubs_views._og_payload(pubs_data.find_pub(f"hostinec-u-kalicha-{kalich.cache_key}")["pub"], "cs")
     assert (og["price"], og["price_beer"]) == (45, "Velkopopovický Kozel 11°")
 

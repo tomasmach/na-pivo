@@ -301,9 +301,10 @@ a.np-row:hover { background: var(--np-tint); color: var(--np-white); }
 .np-footer__about { display: grid; align-content: start; gap: 22px; }
 .np-footer__about p { color: var(--np-muted); font-size: 15px; line-height: 1.6; }
 .np-footer__cols { display: flex; gap: 64px; }
-.np-footer__col h2 { margin-bottom: 14px; color: var(--np-muted); font-size: 13px; font-weight: 600; }
-.np-footer__col ul { display: grid; gap: 11px; padding: 0; margin: 0; list-style: none; }
-.np-footer__col a { color: var(--np-text-2); font-size: 15px; }
+/* A column label names its links for screen readers; it is not part of the page's outline. */
+.np-footer__title { margin-bottom: 10px; color: var(--np-muted); font-size: 13px; font-weight: 600; }
+.np-footer__col ul { display: grid; gap: 5px; padding: 0; margin: 0; list-style: none; }
+.np-footer__col a { display: inline-block; padding: 3px 0; color: var(--np-text-2); font-size: 15px; }
 .np-footer__col a:hover { color: var(--np-white); }
 .np-footer__bottom {
   display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px 24px;
@@ -354,9 +355,10 @@ a.np-row:hover { background: var(--np-tint); color: var(--np-white); }
 .np-map { position: relative; overflow: hidden; border-radius: var(--np-radius-l); background: #121212; }
 .np-map__svg { width: 100%; height: auto; }
 .np-map__ground { fill: #121212; }
-.np-map__d1 { fill: #ffffff1a; }
-.np-map__d2 { fill: #ffffff30; }
-.np-map__d3 { fill: #ffffff4d; }
+.np-map__density path { fill: none; stroke-width: 3; stroke-linejoin: round; }
+.np-map__d1 { stroke: #ffffff1a; }
+.np-map__d2 { stroke: #ffffff30; }
+.np-map__d3 { stroke: #ffffff4d; }
 .np-map__pin rect { fill: #1d1d1d; stroke: #ffffff26; stroke-width: 1; }
 .np-map__pin text { fill: var(--np-white); font: 700 12px var(--np-font); }
 .np-map__pin .np-map__icon { color: var(--np-yellow); }

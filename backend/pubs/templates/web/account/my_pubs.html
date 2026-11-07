@@ -1,6 +1,6 @@
 {% extends "web/account/base.html" %}
 {% load i18n web %}
-{% block head %}{{ block.super }}<link rel="stylesheet" href="{% asset "pubs.css" %}">{% endblock %}
+{% block stylesheet %}{% stylesheet "account.css" "pubs.css" %}{% endblock %}
 {% block page %}
 <header class="np-app__head npa-myp-head">
   <h1 class="np-app__title">{% translate "Hospody" %}</h1>
@@ -31,7 +31,7 @@
         {% for row in rows %}
           <a class="npa-myp__row" href="{{ row.pick_url }}"{% if row.current %} aria-current="true"{% endif %}>
             <span class="npa-myp__body">
-              <span class="npa-myp__name">{{ row.name }}{% if row.rating_label %}<span class="npa-myp__rating">{% icon "star" "np-icon--s" %}{{ row.rating_label }}</span>{% endif %}{% if row.favorite %}<span class="np-sr-only">{% translate "Oblíbená" %}</span>{% icon "heart" "np-icon--s np-yellow" %}{% endif %}</span>
+              <span class="npa-myp__name">{{ row.name|pub_name }}{% if row.rating_label %}<span class="npa-myp__rating">{% icon "star" "np-icon--s" %}{{ row.rating_label }}</span>{% endif %}{% if row.favorite %}<span class="np-sr-only">{% translate "Oblíbená" %}</span>{% icon "heart" "np-icon--s np-yellow" %}{% endif %}</span>
               <span class="npa-myp__meta">{% if row.status %}<span class="{% if row.status.open %}np-yellow{% else %}np-muted{% endif %}">{{ row.status.text|capfirst }}</span>{% if row.place %} · {% endif %}{% endif %}{{ row.place }}</span>
               {% if row.friends %}<span class="npa-myp__friends">{% icon "users" "np-icon--s" %}{{ row.friends|join:", " }}</span>{% elif row.mine %}<span class="npa-myp__mine">{{ row.mine.0 }}</span>{% elif row.tap %}<span class="npa-myp__tap">{{ row.tap }}</span>{% endif %}
             </span>

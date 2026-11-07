@@ -363,7 +363,9 @@ def test_filters_of_a_city_are_not_followed_but_districts_are(client):
     for url, attrs in links.items():
         facet = any(f"{key}=" in url for key in ("open", "beer", "max55", "tank", "garden", "sort"))
         assert ('rel="nofollow"' in attrs) == facet, (url, attrs)
-    assert "?max55=1" in links and "?sort=name" in links and "?district=praha-1" in links
+    assert "?max55=1" in links and "?sort=name" in links
+    # A district with a page of its own is a plain link to that page.
+    assert re.search(r'<a [^>]*href="/hospody/praha-1"(?![^>]*nofollow)[^>]*>', html)
     assert 'rel="nofollow"' not in links["?page=2#h21"]
     filtered = client.get("/hospody/praha?tank=1").content.decode()
     assert 'href="?tank=1&amp;page=2#h21" rel="nofollow" data-more' in filtered
@@ -404,9 +406,9 @@ def test_later_pages_of_a_city_say_which_page_they_are(client):
 
     assert "<title>Hospody v Praze | Na pivo</title>" in first and "Strana" not in first.split("</head>")[0]
     assert "<title>Hospody v Praze, strana 2 | Na pivo</title>" in second
-    assert '<meta name="description" content="Strana 2 z 3. 45\u00a0hospod.' in second
+    assert '<meta name="description" content="Strana 2 z 3. Praha: 45\u00a0hospod.' in second
     assert "<title>Pubs in Prague, page 3 | Na pivo</title>" in english
-    assert '<meta name="description" content="Page 3 of 3. 45' in english
+    assert '<meta name="description" content="Page 3 of 3. Prague: 45' in english
 
 
 @pytest.mark.parametrize(("asked", "target"), [

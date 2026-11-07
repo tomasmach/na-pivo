@@ -1,6 +1,6 @@
 {% extends "web/account/base.html" %}
 {% load i18n web %}
-{% block head %}{{ block.super }}<link rel="stylesheet" href="{% asset "diary.css" %}">{% endblock %}
+{% block stylesheet %}{% stylesheet "account.css" "diary.css" %}{% endblock %}
 {% block page %}
 <a class="dy-back" href="{{ crumb.url }}">{% icon "chevron-left" "np-icon--s" %}{{ crumb.label }}</a>
 <header class="dy-night-head">

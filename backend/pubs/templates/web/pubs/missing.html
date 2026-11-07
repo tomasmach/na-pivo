@@ -1,5 +1,6 @@
 {% extends "web/public.html" %}
 {% load i18n web %}
+{% block stylesheet %}{% stylesheet "pubs.css" %}{% endblock %}
 {% block head %}{% include "web/pubs/_head.html" %}{% endblock %}
 {% block content %}
 {% if kind == "city" %}{% translate "Tohle město neznám" as empty_title %}{% translate "V tomhle městě zatím nemám žádnou hospodu. Zkus jiné, nebo hledej podle názvu." as empty_text %}

@@ -1,11 +1,12 @@
 {% extends "web/public.html" %}
 {% load i18n web %}
+{% block stylesheet %}{% stylesheet "pubs.css" %}{% endblock %}
 {% block head %}{% include "web/pubs/_head.html" %}{% endblock %}
 {% block og_image %}{% include "web/pubs/_og.html" %}{% endblock %}
 {% block content %}
 {% include "web/components/breadcrumbs.html" with crumbs=crumbs %}
 <div class="np-pub-head" data-reach-pub="{{ pub.cache_key }}">
-  <h1 class="np-pub-h1">{{ pub.name }}</h1>
+  <h1 class="np-pub-h1">{{ name }}</h1>
   <p class="np-pub-head__line">
     {% if status %}<span class="np-pub-status{% if status.open %} is-open{% endif %}">{{ status.text|capfirst }}</span><span class="np-pub-head__dot" aria-hidden="true">·</span>{% endif %}
     <span>{{ place }}{% if place_sub %}, {{ place_sub }}{% endif %}</span>
@@ -14,7 +15,7 @@
 
 <div class="np-pub">
   <div class="np-pub__main">
-    {% if map %}<div class="np-map np-map--pub np-pub__map">{% include "web/components/map.html" with live=live_map fallback="web/pubs/_map.html" label=pub.name %}</div>{% endif %}
+    {% if map %}<div class="np-map np-map--pub np-pub__map">{% include "web/components/map.html" with live=live_map fallback="web/pubs/_map.html" label=name %}</div>{% endif %}
 
     {% if stats %}<div class="np-pub-stats np-pub__stats">{% for stat in stats %}
       <div class="np-pub-stat"><span class="np-pub-stat__value">{{ stat.value }}</span><span class="np-pub-stat__label">{{ stat.label }}</span></div>{% endfor %}
@@ -24,7 +25,7 @@
       <div class="np-pubs-block__head"><h2>{% translate "Na čepu" %}</h2>{% if menu_updated %}<span>{{ menu_updated }}</span>{% endif %}</div>
       <div class="np-card np-card--tight">
         {% if menu %}<div class="np-list">{% for beer in menu %}
-          <div class="np-row"><span class="np-row__body"><span class="np-row__title">{{ beer.name }}</span>{% if beer.meta %}<span class="np-row__meta">{{ beer.meta }}</span>{% endif %}</span>{% if beer.price %}<span class="np-pub-price">{{ beer.price }}</span>{% endif %}</div>{% endfor %}
+          <{% if beer.url %}a href="{{ beer.url }}"{% else %}div{% endif %} class="np-row"><span class="np-row__body"><span class="np-row__title">{{ beer.name }}</span>{% if beer.meta %}<span class="np-row__meta">{{ beer.meta }}</span>{% endif %}</span>{% if beer.price %}<span class="np-pub-price">{{ beer.price }}</span>{% endif %}{% if beer.url %}<span class="np-row__chevron">{% icon "chevron-right" "np-icon--s" %}</span>{% endif %}</{% if beer.url %}a{% else %}div{% endif %}>{% endfor %}
         </div>{% else %}<p class="np-pubs-note">{% translate "Co tu čepují, zatím nevím. Kdo tu sedí, může lístek doplnit v appce." %}</p>{% endif %}
       </div>
     </section>
@@ -33,6 +34,13 @@
       <div class="np-pubs-block__head"><h2>{% translate "Hodnocení piv" %}</h2><span>{% translate "od lidí z Na pivo" %}</span></div>
       <div class="np-card np-card--tight"><div class="np-list">{% for beer in beer_ratings %}
         <div class="np-row"><span class="np-row__body"><span class="np-row__title">{{ beer.name }}</span><span class="np-row__meta">{{ beer.count_label }}{% if beer.note %} · „{{ beer.note }}“{% endif %}</span></span><span class="np-pub-rating">{% icon "star" %}{{ beer.rating_label }}</span></div>{% endfor %}
+      </div></div>
+    </section>{% endif %}
+
+    {% if nearby %}<section class="np-pubs-block np-pub__nearby">
+      <div class="np-pubs-block__head"><h2>{% translate "Hospody poblíž" %}</h2>{% if city_url %}<a class="np-link" href="{{ city_url }}">{{ city_label }} ›</a>{% endif %}</div>
+      <div class="np-card np-card--tight"><div class="np-list">{% for row in nearby %}
+        <a href="{{ row.url }}" class="np-row"><span class="np-row__body"><span class="np-row__title">{{ row.title }}</span>{% if row.meta %}<span class="np-row__meta">{{ row.meta }}</span>{% endif %}</span>{% if row.value %}<span class="np-pub-price">{{ row.value }}</span>{% endif %}<span class="np-row__chevron">{% icon "chevron-right" "np-icon--s" %}</span></a>{% endfor %}
       </div></div>
     </section>{% endif %}
   </div>
@@ -58,6 +66,7 @@
     <section class="np-card np-card--tight np-pub__where"><div class="np-list">
       <div class="np-row"><span class="np-row__lead">{% icon "map-pin" %}</span><span class="np-row__body"><span class="np-row__title">{{ place }}</span>{% if place_sub %}<span class="np-row__meta">{{ place_sub }}</span>{% endif %}</span></div>
       <a class="np-row" href="{{ navigation_url }}" rel="noopener noreferrer" data-reach="navigation"><span class="np-row__lead">{% icon "navigation" %}</span><span class="np-row__body"><span class="np-row__title">{% translate "Navigovat" %}</span><span class="np-row__meta">{% translate "Otevře mapy v telefonu" %}</span></span></a>
+      {% if prices_url %}<a class="np-row" href="{{ prices_url }}"><span class="np-row__lead">{% icon "beer" %}</span><span class="np-row__body"><span class="np-row__title">{{ prices_label }}</span><span class="np-row__meta">{% translate "Medián a nejlevnější hospody" %}</span></span><span class="np-row__chevron">{% icon "chevron-right" "np-icon--s" %}</span></a>{% endif %}
     </div></section>
   </aside>
 </div>

@@ -27,7 +27,7 @@ from django.http import (
     JsonResponse,
 )
 from django.utils import formats, timezone, translation
-from django.utils.translation import gettext, pgettext_lazy
+from django.utils.translation import gettext, pgettext, pgettext_lazy
 
 from pubs.beer_pages import PATHS as BEER_PATHS
 from pubs.beer_pages import counted, page_path
@@ -64,7 +64,9 @@ from pubs.price_map import PATHS as PRICE_PATHS
 from pubs.price_map import city_slug, headline_prices, render_city_og_image
 from pubs.web.dates import time_tag, with_times
 from pubs.web.pages import login_url, render_page, web_page
+from pubs.web.places import in_place, place_name, pub_name
 from pubs.web.routes import web_reverse
+from pubs.web.words import plural
 
 # Lists longer than this get search and sorting, and start folded to this many rows.
 _FOLDED_ROWS = 12
@@ -490,9 +492,11 @@ def _texts(snapshot: PubPriceSnapshot | None, country: dict | None, area: dict |
     """Heading, title and description. The year answers "cena piva 2026", the median earns the click."""
 
     if area:
-        values = {"city": area["name"], "price": area["median"], "low": area["p25"], "high": area["p75"]}
+        values = {"city": place_name(area["name"]), "price": area["median"], "low": area["p25"], "high": area["p75"]}
+        where = in_place(area["name"])
         return {
-            "h1": gettext("Kolik stojí pivo: %(city)s") % values,
+            "h1": pgettext("heading", "Kolik stojí pivo %(in_city)s") % {"in_city": where} if where
+            else gettext("Kolik stojí pivo: %(city)s") % values,
             "page_title": gettext("Cena piva %(city)s %(year)s: medián %(price)s Kč")
             % {**values, "year": snapshot.day.year},
             "description": gettext(
@@ -502,7 +506,7 @@ def _texts(snapshot: PubPriceSnapshot | None, country: dict | None, area: dict |
     return {
         "h1": gettext("Kolik stojí pivo v hospodě"),
         "page_title": (
-            gettext("Cena piva %(year)s: kolik stojí pivo v hospodě") % {"year": snapshot.day.year}
+            gettext("Cena piva %(year)s po městech: kolik stojí pivo v hospodě") % {"year": snapshot.day.year}
             if snapshot
             else gettext("Kolik stojí pivo v hospodě")
         ),
@@ -673,8 +677,8 @@ def _beer_texts(kind: str, page: BeerPage | None, key: str) -> dict:
             "h1": gettext("Kde se čepuje %(beer)s") % values,
             "page_title": gettext("Piva značky %(brand)s a kde se čepují") % {"brand": name},
             "description": gettext(
-                "Piva značky %(brand)s a hospody, kde se čepují. U každé hospody cena a datum posledního potvrzení."
-            ) % {"brand": name},
+                "Kde se čepuje %(brand)s: %(pubs)s, %(beers)s s vlastní stránkou. U každé hospody cena a datum posledního potvrzení."
+            ) % {"brand": name, "beers": _beers_label(len(data["beers"])), "pubs": _pubs_label(data["pubs"])},
             "known": True,
         }
     values.update(pubs=_pubs_label(data["pubs"]), price=data["median"])
@@ -720,7 +724,8 @@ def _price_facts(data: dict, area: dict | None, country: dict | None, city_urls:
         pub = cheapest[0]
         facts.append({
             "title": gettext("Nejlevněji"),
-            "meta": ", ".join(part for part in (pub["name"], pub["city"]) if part),
+            "meta": ", ".join(part for part in (pub_name(pub["name"]), place_name(pub["city"])) if part),
+            "url": _pub_url(pub),
             "value": f"{pub['price_czk']} {unit}",
             "value_meta": "" if pub["volume_ml"] == 500 else gettext("za %(litres)s l") % {
                 "litres": _litres(pub["volume_ml"])
@@ -738,13 +743,21 @@ def _price_facts(data: dict, area: dict | None, country: dict | None, city_urls:
     else:
         for label, city_stats in headline_prices(data)[1:]:
             facts.append({
-                "title": label,
+                "title": place_name(label),
                 "meta": gettext("medián"),
                 "url": city_urls.get(label, ""),
                 "value": f"{city_stats['median']} {unit}" if city_stats else "–",
                 "value_meta": "" if city_stats else gettext("zatím málo cen"),
             })
     return facts
+
+
+def _pub_url(pub: dict) -> str:
+    """The pub's own page; older snapshots did not keep the pub's cell, so they link nowhere."""
+
+    from pubs.web.pubs_data import pub_key
+
+    return web_reverse("web-pub", key=pub_key(pub["name"], pub["cache_key"])) if pub.get("cache_key") else ""
 
 
 def _elsewhere(data: dict, area: dict, city_urls: dict) -> list[dict]:
@@ -756,7 +769,7 @@ def _elsewhere(data: dict, area: dict, city_urls: dict) -> list[dict]:
             continue
         gap = other["median"] - area["median"]
         tiles.append({
-            "name": other["name"],
+            "name": place_name(other["name"]),
             "median": other["median"],
             "url": city_urls[other["name"]],
             "note": (
@@ -803,10 +816,12 @@ def beer_prices(request: HttpRequest, city: str = "") -> HttpResponse:
         ],
         country,
     )
+    from pubs.web.pubs_views import indexed_district_url
+
     texts = _texts(snapshot, country, area)
     crumbs = [{"label": "Na pivo", "url": web_reverse("home")}, {"label": gettext("Ceny piva"), "url": PRICE_PATHS[lang]}]
     if area:
-        crumbs.append({"label": area["name"]})
+        crumbs.append({"label": place_name(area["name"])})
     elif city:
         crumbs.append({"label": city})
     else:
@@ -834,12 +849,17 @@ def beer_prices(request: HttpRequest, city: str = "") -> HttpResponse:
             "country": country,
             "missing": missing,
             "facts": _price_facts(data, area, country, city_urls) if stats else [],
-            "cities": cities,
-            "districts": districts,
+            "cities": [{**row, "name": place_name(row["name"])} for row in cities],
+            "districts": [
+                {**row, "name": place_name(row["name"]), "url": indexed_district_url(row["name"])} for row in districts
+            ],
             "axis": axis,
             "folded_rows": _FOLDED_ROWS,
+            "area_name": place_name(area["name"]) if area else "",
+            "beer_index_url": web_reverse("web-beer-index"),
+            "about_url": web_reverse("web-about") + "#ceny",
             "cheapest": [
-                {**pub, "litres": _litres(pub["volume_ml"])}
+                {**pub, "litres": _litres(pub["volume_ml"]), "url": _pub_url(pub), "name": pub_name(pub["name"])}
                 for pub in (area.get("cheapest", []) if area else data.get("cheapest", []))
             ],
             "elsewhere": _elsewhere(data, area, city_urls) if area else [],
@@ -937,7 +957,7 @@ def _public_reviews(product_key: str) -> tuple[int, list[dict]]:
     return rows.count(), [
         {
             "nickname": row.account.nickname,
-            "pub": row.pub_name,
+            "pub": pub_name(row.pub_name) if row.pub_name else "",
             "day": timezone.localtime(row.checked_in_at).date(),
             "rating": float(row.rating) if row.rating is not None else None,
             "note": row.note,
@@ -968,13 +988,31 @@ def _beer_live(page: BeerPage) -> dict:
         live = {"ratings": _ratings(keys), "cities": []}
         if page.kind == BeerPage.Kind.BRAND:
             pubs: dict[str, set] = defaultdict(set)
+            listed: dict = {}
             for beer in BeerPage.objects.filter(kind=BeerPage.Kind.BEER, key__in=keys).values_list("data", flat=True):
                 for pub in beer["listed"]:
                     if pub["fresh"] and pub["city"]:
                         pubs[_city_of(pub["city"])].add((pub["name"], pub["lat"], pub["lng"]))
+                    _add_brand_pub(listed, pub, beer["name"])
             live["cities"] = sorted(((city, len(found)) for city, found in pubs.items()), key=lambda item: (-item[1], item[0]))[:6]
+            live["pubs"] = sorted(listed.values(), key=lambda pub: (not pub["fresh"], -date.fromisoformat(pub["confirmed"]).toordinal(), pub["name"]))
     cache.set(key, live, _LIVE_SECONDS)
     return live
+
+
+def _add_brand_pub(listed: dict, pub: dict, beer: str) -> None:
+    """One row per pub on a brand page: the brand's beers it pours, its latest confirmation, its cheapest half litre."""
+
+    row = listed.setdefault(pub.get("cache_key") or (pub["name"], pub["lat"], pub["lng"]), {
+        "cache_key": pub.get("cache_key"), "name": pub["name"], "city": pub["city"], "lat": pub["lat"], "lng": pub["lng"],
+        "confirmed": pub["confirmed"], "fresh": False, "beers": [], "per_half_litre": None,
+    })
+    row["beers"].append(beer)
+    row["confirmed"] = max(row["confirmed"], pub["confirmed"])
+    row["fresh"] = row["fresh"] or pub["fresh"]
+    if pub["fresh"] and pub["price_czk"]:
+        half = round(pub["price_czk"] * 500 / (pub["volume_ml"] or 500))
+        row["per_half_litre"] = half if row["per_half_litre"] is None else min(row["per_half_litre"], half)
 
 
 def _city_of(name: str) -> str:
@@ -983,16 +1021,20 @@ def _city_of(name: str) -> str:
     return "Praha" if name.startswith("Praha") else name
 
 
-def _by_city(listed: list[dict]) -> list[dict]:
-    """Median half litre in each city with at least three fresh priced pubs, the most pubs first."""
+def _by_city(listed: list[dict], lang: str) -> list[dict]:
+    """Median half litre in each city with at least three fresh priced pubs, the most pubs first.
+
+    Three pubs of a city on a menu put the city in the pub catalogue too, so its pub list exists.
+    """
 
     prices: dict[str, list[int]] = defaultdict(list)
     for pub in listed:
         if pub["fresh"] and pub["volume_ml"] == 500 and pub["price_czk"] and pub["city"]:
             prices[_city_of(pub["city"])].append(pub["price_czk"])
     rows = [
-        {"city": city, "median": f"{round(statistics.median(values))}\u00a0{gettext('Kč')}", "pubs": len(values),
-         "pubs_label": _pubs_label(len(values))}
+        {"city": place_name(city), "median": f"{round(statistics.median(values))}\u00a0{gettext('Kč')}",
+         "pubs": len(values), "pubs_label": _pubs_label(len(values)),
+         "url": web_reverse("web-pubs-city", lang, city=city_slug(city))}
         for city, values in prices.items() if len(values) >= 3
     ]
     return sorted(rows, key=lambda row: (-row["pubs"], row["city"]))[:5]
@@ -1043,11 +1085,13 @@ def beer_pages(request: HttpRequest, kind: str = BeerPage.Kind.LIST, key: str = 
     listed = [
         {
             **pub,
+            "name": pub_name(pub["name"]),
             "date": _short_date(date.fromisoformat(pub["confirmed"]), today),
             "litres": _litres(pub["volume_ml"]) if pub["volume_ml"] else None,
             # Sorted per half litre, so 41 Kč for 0,3 l is not the cheapest.
             "per_half_litre": round(pub["price_czk"] * 500 / (pub["volume_ml"] or 500)) if pub["price_czk"] else "",
-            "map_url": f"https://www.google.com/maps/search/?api=1&query={pub['lat']},{pub['lng']}",
+            "url": _pub_url(pub) or f"https://www.google.com/maps/search/?api=1&query={pub['lat']},{pub['lng']}",
+            "on_map": not pub.get("cache_key"),
             "first_old": index == first_old,
         }
         for index, pub in enumerate(data.get("listed", []))
@@ -1092,12 +1136,19 @@ def beer_pages(request: HttpRequest, kind: str = BeerPage.Kind.LIST, key: str = 
             head_stats.append({
                 "value": f"{data['cheapest']['price_czk']}\u00a0{unit}",
                 "label": gettext("nejlevněji za 0,5 l"),
-                "sub": ", ".join(part for part in (data["cheapest"]["name"], data["cheapest"]["city"]) if part),
+                "sub": ", ".join(part for part in (pub_name(data["cheapest"]["name"]), place_name(data["cheapest"]["city"])) if part),
             })
-        head_stats.append({"value": data["pubs"], "label": gettext("hospod za 3 měsíce")})
+        head_stats.append({"value": data["pubs"], "label": plural(
+            data["pubs"], gettext("hospoda za 3 měsíce"), gettext("hospody za 3 měsíce"), gettext("hospod za 3 měsíce")
+        )})
     elif page:
-        head_stats.append({"value": data["pubs"], "label": gettext("hospod čepuje")})
-        head_stats.append({"value": len(data["beers"]), "label": gettext("piv s vlastní stránkou")})
+        head_stats.append({"value": data["pubs"], "label": plural(
+            data["pubs"], gettext("hospoda čepuje"), gettext("hospody čepují"), gettext("hospod čepuje")
+        )})
+        head_stats.append({"value": len(data["beers"]), "label": plural(
+            len(data["beers"]), gettext("pivo s vlastní stránkou"), gettext("piva s vlastní stránkou"),
+            gettext("piv s vlastní stránkou"),
+        )})
     brand_rating = None
     rated = [rating for rating in (ratings.get(beer["key"]) for beer in data.get("beers", [])) if rating and rating["avg"] is not None]
     if kind == BeerPage.Kind.BRAND and rated:
@@ -1135,14 +1186,27 @@ def beer_pages(request: HttpRequest, kind: str = BeerPage.Kind.LIST, key: str = 
             "crumbs": crumbs,
             "rating": _rating_view(live.get("ranking")),
             "about": _about(live.get("ranking")),
-            "by_city": _by_city(data.get("listed", [])) if kind == BeerPage.Kind.BEER else [],
+            "by_city": _by_city(data.get("listed", []), lang) if kind == BeerPage.Kind.BEER else [],
             "siblings": siblings,
             "reviews": reviews,
             "review_total": live.get("review_total", 0),
             "head_stats": head_stats,
             "brand_rating": brand_rating,
+            "brand_pubs": [
+                {
+                    **pub,
+                    "name": pub_name(pub["name"]),
+                    "url": _pub_url(pub) or f"https://www.google.com/maps/search/?api=1&query={pub['lat']},{pub['lng']}",
+                    "on_map": not pub.get("cache_key"),
+                    "date": _short_date(date.fromisoformat(pub["confirmed"]), today),
+                    "beer_names": ", ".join(pub["beers"]),
+                }
+                for pub in live.get("pubs", [])
+            ],
             "brand_cities": [
-                {"city": city, "pubs": pubs, "width": f"{pubs * 100 / live['cities'][0][1]:.1f}%"}
+                {"city": place_name(city), "url": web_reverse("web-pubs-city", lang, city=city_slug(city)), "pubs": pubs, "pubs_label": plural(
+                    pubs, gettext("hospoda"), gettext("hospody"), gettext("hospod")
+                ), "width": f"{pubs * 100 / live['cities'][0][1]:.1f}%"}
                 for city, pubs in live.get("cities", [])
             ],
             "structured_data": _beer_structured_data(origin, lang, page, f"{origin}{path}", live),

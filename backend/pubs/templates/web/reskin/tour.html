@@ -1,5 +1,6 @@
 {% extends "web/public.html" %}
 {% load i18n web %}
+{% block stylesheet %}{% stylesheet "reskin.css" %}{% endblock %}
 {% block head %}{% include "web/reskin/_head.html" %}<meta name="referrer" content="no-referrer">{% endblock %}
 {% block content %}
 {% if unavailable %}
@@ -21,7 +22,7 @@
   <section class="np-card rs-stops" aria-labelledby="stops-title">
     <h2 class="np-title" id="stops-title">{% translate "Zastávky" %}</h2>
     <ol class="rs-stops__list" role="list">
-      {% for stop in tour.stops %}<li class="rs-stop"><span class="rs-stop__number">{{ forloop.counter }}</span><span class="rs-stop__body"><strong>{{ stop.name }}</strong>{% if stop.address %}<span class="np-muted">{{ stop.address }}</span>{% endif %}{% if stop.challenge %}<span class="rs-stop__challenge">{% translate "Výzva:" %} {{ stop.challenge }}</span>{% endif %}</span></li>{% endfor %}
+      {% for stop in tour.stops %}<li class="rs-stop"><span class="rs-stop__number">{{ forloop.counter }}</span><span class="rs-stop__body"><strong>{{ stop.name|pub_name }}</strong>{% if stop.address %}<span class="np-muted">{{ stop.address }}</span>{% endif %}{% if stop.challenge %}<span class="rs-stop__challenge">{% translate "Výzva:" %} {{ stop.challenge }}</span>{% endif %}</span></li>{% endfor %}
     </ol>
     <p class="np-muted np-small">{% translate "Tohle je plán hospod. Poloha lidí ani jejich průchod se nesdílí." %}</p>
   </section>

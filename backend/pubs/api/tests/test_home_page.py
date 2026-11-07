@@ -59,7 +59,7 @@ def test_every_home_asset_is_served(client):
     html = client.get("/").content.decode()
     paths = set(re.findall(r'"(/web/[^"?]+)\?v=\w+"', html))
 
-    assert {"/web/np.css", "/web/reskin.css", "/web/reskin.js", "/web/home-phones.webp"} <= paths
+    assert {"/web/np+reskin.css", "/web/reskin.js", "/web/home-phones.avif", "/web/home-phones.webp"} <= paths
     for path in paths:
         response = client.get(path)
         assert response.status_code == 200, path
@@ -181,7 +181,7 @@ def test_sitemap_lists_both_languages_of_every_page(client, settings):
     urls = {url.findtext("s:loc", namespaces=ns): url for url in root.findall("s:url", ns)}
     pages = ("/", "/en", "/ceny", "/en/prices", "/hospody", "/en/pubs", "/zebricky", "/en/rankings")
     # No tour is published yet, so /trasy is not listed.
-    pages += ("/novinky", "/en/news", "/pivni-index", "/en/beer-index")
+    pages += ("/novinky", "/en/news", "/pivni-index", "/en/beer-index", "/o-appce", "/en/about")
     assert set(urls) == {f"https://na-pivo.cz{path}" for path in pages}
     alternates = {
         link.get("hreflang"): link.get("href")

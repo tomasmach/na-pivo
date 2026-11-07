@@ -3,6 +3,9 @@
 ``{% web_url "web-pubs-city" city="praha" %}``  path in the language being rendered
 ``{% icon "map-pin" %}``                         inline lucide icon (``class`` adds classes)
 ``{% asset "np.css" %}``                         versioned URL of a web file
+``{% stylesheet "pubs.css" %}``                  the one stylesheet link of a page: np.css with these
+``{{ area.name|place }}``                          a town as the page language names it
+``{{ stop.name|pub_name }}``                       a pub as every page names it
 ``{{ day|timed }}``                                the date in ``<time datetime>`` (a format may follow)
 """
 
@@ -16,8 +19,9 @@ from django.utils import formats
 from django.utils.html import escape
 from django.utils.safestring import SafeString, mark_safe
 
-from pubs.web.assets import asset_url
+from pubs.web.assets import asset_url, stylesheet_name
 from pubs.web.dates import time_tag
+from pubs.web.places import place_name, pub_name
 from pubs.web.routes import web_reverse
 
 register = template.Library()
@@ -53,6 +57,19 @@ def icon(name: str, cls: str = "", label: str = "") -> SafeString:
 @register.simple_tag
 def asset(name: str) -> str:
     return asset_url(name)
+
+
+@register.simple_tag
+def stylesheet(*names: str) -> SafeString:
+    return mark_safe(f'<link rel="stylesheet" href="{asset_url(stylesheet_name(names))}">')
+
+
+@register.filter
+def place(name: str) -> str:
+    return place_name(name)
+
+
+register.filter("pub_name", pub_name)
 
 
 @register.filter

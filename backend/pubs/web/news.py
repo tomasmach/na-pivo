@@ -30,6 +30,7 @@ from pubs.price_map import PUBLIC_MIN_CZK
 from pubs.pub_events import PubEvent
 from pubs.web.dates import time_tag, with_times
 from pubs.web.pages import render_page, web_page
+from pubs.web.places import place_name, pub_name
 from pubs.web.public_common import (
     PAGE_CACHE_SECONDS,
     breadcrumbs,
@@ -235,7 +236,7 @@ def _short_day(day: date, today: date, lang: str) -> str:
 
 
 def _row(item: dict, lang: str) -> dict:
-    values = {"pub": item["name"], "beer": item.get("beer", ""), "title": item.get("title", "")}
+    values = {"pub": pub_name(item["name"]), "beer": item.get("beer", ""), "title": item.get("title", "")}
     kind = item["kind"]
     if kind == "tap":
         title = gettext("%(pub)s nově čepuje %(beer)s") % values
@@ -255,7 +256,7 @@ def _row(item: dict, lang: str) -> dict:
         label = gettext("Akce")
         starts = date.fromisoformat(item["starts"])
         value = time_tag(starts, formats.date_format(starts, "D j. n." if lang == "cs" else "D, N j"))
-    place = item.get("district") or item.get("city")
+    place = place_name(item.get("district") or item.get("city") or "")
     return {
         "title": title,
         "meta": " · ".join(part for part in (label, place) if part),
@@ -303,7 +304,7 @@ def news(request: HttpRequest) -> HttpResponse:
         if key in available
     ]
     city_links = [{"label": gettext("Všechna města"), "url": url(mesto=""), "current": not city}] + [
-        {"label": name, "url": url(mesto=slug), "current": name == city} for slug, name in cities.items()
+        {"label": place_name(name), "url": url(mesto=slug), "current": name == city} for slug, name in cities.items()
     ]
 
     today = timezone.localdate()
@@ -338,10 +339,11 @@ def news(request: HttpRequest) -> HttpResponse:
     new_pubs = [
         {
             **pub,
+            "name": pub_name(pub["name"]),
             "url": pub_url(pub["name"], pub["key"]),
             "meta": with_times(
                 "%(place)s · %(day)s" if pub["district"] or pub["city"] else "%(day)s",
-                place=pub["district"] or pub["city"],
+                place=place_name(pub["district"] or pub["city"]),
                 day=time_tag(date.fromisoformat(pub["day"]), _short_day(date.fromisoformat(pub["day"]), today, lang)),
             ),
         }
@@ -350,16 +352,16 @@ def news(request: HttpRequest) -> HttpResponse:
     ][:3]
 
     title = (
-        gettext("Co je nového v hospodách: %(city)s") % {"city": city} if city else gettext("Co je nového v hospodách")
+        gettext("Co je nového v hospodách: %(city)s") % {"city": place_name(city)} if city else gettext("Co je nového v hospodách")
     )
     crumb_items = [("Na pivo", web_reverse("home")), (gettext("Novinky"), base)]
     if city:
-        crumb_items.append((city, url(typ="", tyden="")))
+        crumb_items.append((place_name(city), url(typ="", tyden="")))
     crumbs, crumb_graph = breadcrumbs(crumb_items)
     if week:
         stats_title = period
     elif city:
-        stats_title = gettext("Tento týden: %(city)s") % {"city": city}
+        stats_title = gettext("Tento týden: %(city)s") % {"city": place_name(city)}
     else:
         stats_title = gettext("Tento týden")
     response = render_page(
