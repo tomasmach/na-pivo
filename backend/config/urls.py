@@ -4,6 +4,7 @@ from django.conf import settings
 from django.conf.urls.static import static
 from django.contrib import admin
 from django.urls import include, path
+from django.views.generic import RedirectView
 
 from pubs.models import BeerPage
 from pubs.profile_pages import public_profile_page
@@ -33,6 +34,8 @@ urlpatterns = [
     path("", home, name="home"),
     path("en", home, {"lang": "en"}, name="home-en"),
     path("robots.txt", robots_txt, name="robots-txt"),
+    # Instagram lowercases links and TestFlight join codes are case-sensitive.
+    path("beta", RedirectView.as_view(url="https://testflight.apple.com/join/FjDRJYPh"), name="beta"),
     path("llms.txt", llms_txt, name="llms-txt"),
     path("sitemap.xml", sitemap_index, name="sitemap-xml"),
     path("sitemap-<slug:part>.xml", sitemap_file, name="sitemap-file"),

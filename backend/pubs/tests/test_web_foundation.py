@@ -127,3 +127,9 @@ def test_fonts_and_images_are_sent_as_they_are(client):
 
     assert response["Content-Type"] == "image/avif"
     assert "Content-Encoding" not in response
+
+
+def test_beta_short_link_redirects_to_testflight(client):
+    response = client.get("/beta")
+    assert response.status_code == 302
+    assert response["Location"] == "https://testflight.apple.com/join/FjDRJYPh"
