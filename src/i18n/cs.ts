@@ -1329,16 +1329,14 @@ export const cs = {
     beerFallback: 'Pivo',
     beerWord: (count: number) =>
       czechPlural(count, { one: 'pivo', few: 'piva', many: 'piv' }),
-    beerCountA11y: (count: number) => `Počet piv ${count}`,
-    total: (amount: string) => `Celkem ${amount}`,
     latestBeerFallback: 'Poslední pivo',
     latestAt: (time: string) => `zapsáno v ${time}`,
     firstBeerPouring: 'První pivo se teprve čepuje',
-    addBeer: 'Přidat další',
+    addBeer: 'Ještě jedno',
     addBeerA11y: 'Přidat stejné pivo',
     openCounter: 'Otevřít počítadlo',
     homeTransit: (time: string, stop: string) =>
-      `Poslední spoj domů ${time}${stop ? ` · ${stop}` : ''}`,
+      `Domů ${time}${stop ? ` · ${stop}` : ''}`,
     homeTransitCountdown: 'za',
     homeTransitMissed: 'Už jedeš nočkou',
     homeTransitA11y: (time: string, stop: string, line: string) =>
@@ -1376,6 +1374,18 @@ export const cs = {
     homeTransitTitle: 'Za 20 minut ti jede poslední přímý spoj domů',
     homeTransitBody: (line: string, time: string, stop: string) =>
       `${line ? `Linka ${line} odjíždí` : 'Odjíždí'} ${atTime(time)}${stop ? ` ze zastávky ${stop}` : ''}.`,
+    closingTimeChannel: 'Zavíračka',
+    closingTimeTitle: (pubName: string, time: string) => `${pubName || 'Tvoje hospoda'} zavírá ${atTime(time)}`,
+    closingTimeBody: (places: string[]) =>
+      places.length === 1
+        ? `Déle má otevřeno ${places[0]}.`
+        : `Déle mají otevřeno ${places.slice(0, -1).join(', ')} a ${places[places.length - 1]}.`,
+    closingTimeBodyHidden: (count: number) =>
+      count === 1
+        ? 'Kousek odsud má déle otevřeno ještě jedna hospoda.'
+        : `Kousek odsud mají déle otevřeno ještě ${count} hospody.`,
+    closingTimePlace: (pubName: string, distance: string) => `${pubName} (${distance})`,
+    closingTimeAction: (pubName: string, distance: string) => `${pubName || 'Hospoda'} · ${distance}`,
   },
 
   pubDetail: {

@@ -19,7 +19,11 @@ jest.mock('react-native-reanimated', () => {
 jest.mock('react-native-safe-area-context', () => ({
   useSafeAreaInsets: jest.fn(() => ({ top: 0, right: 0, bottom: 0, left: 0 })),
 }));
-jest.mock('expo-router', () => ({ useRouter: () => ({ push: jest.fn(), replace: jest.fn(), back: jest.fn() }) }));
+let mockParams: { friend?: string } = {};
+jest.mock('expo-router', () => ({
+  useRouter: () => ({ push: jest.fn(), replace: jest.fn(), back: jest.fn() }),
+  useLocalSearchParams: () => mockParams,
+}));
 jest.mock('@/newlook/navigation', () => ({ nvBack: jest.fn() }));
 jest.mock('@/newlook/components/Icon', () => ({ Icon: () => null }));
 jest.mock('@/newlook/components/overlays', () => ({
@@ -82,12 +86,13 @@ beforeEach(() => {
   mockParty = { friends, ghost: false };
   mockPlace = { kind: 'pub', pub: pinkasy };
   mockStoreGhost = undefined;
+  mockParams = {};
 });
 
 test('pings the whole party from the pub the counter counts in', async () => {
   share.mockResolvedValue({ ok: true });
   await sendFrom(t.nv.parta.pingPartyShort);
-  expect(share).toHaveBeenCalledWith(pinkasy, '', 'client-1', undefined, expect.any(String));
+  expect(share).toHaveBeenCalledWith(pinkasy, '', 'client-1', undefined, expect.any(String), undefined, false);
   expect(toast).toHaveBeenCalledWith(expect.objectContaining({ title: t.nv.parta.pingedToast, sub: t.nv.parta.pingSentSub('U Pinkasů') }));
 });
 
@@ -133,4 +138,38 @@ test('invisible mode switched on in Profil counts even when the saved party is o
   expect(updateFriendSettings).toHaveBeenCalledWith({ ghostMode: false });
   expect(share).not.toHaveBeenCalled();
   expect(enqueueFriendOp).not.toHaveBeenCalled();
+});
+
+test('a ping to one kámoš joins my live ping and goes only to them', async () => {
+  mockParams = { friend: 'bara' };
+  share.mockResolvedValue({ ok: true, notified: 1 });
+  await sendFrom(t.nv.parta.pingPartyShort);
+  expect(share).toHaveBeenCalledWith(pinkasy, '', 'client-1', ['bara'], expect.any(String), undefined, true);
+  expect(toast).toHaveBeenCalledWith(expect.objectContaining({ title: t.nv.parta.pingedToast, sub: t.nv.parta.pingSentSub('U Pinkasů', 'Bára') }));
+});
+
+test('a kámoš who already has my ping hears nothing new and I am told so', async () => {
+  mockParams = { friend: 'bara' };
+  share.mockResolvedValue({ ok: true, notified: 0 });
+  await sendFrom(t.nv.parta.pingPartyShort);
+  expect(toast).toHaveBeenCalledWith(expect.objectContaining({ title: t.nv.parta.pingAlreadyKnown('Bára') }));
+});
+
+test('a queued ping to one kámoš keeps the join flag for the retry', async () => {
+  mockParams = { friend: 'bara' };
+  share.mockResolvedValue({ ok: false, code: 'network', detail: 'offline' });
+  await sendFrom(t.nv.parta.pingPartyShort);
+  expect(enqueueFriendOp).toHaveBeenCalledWith({
+    op: 'activity',
+    clientId: 'client-1',
+    payload: { pub: pinkasy, message: '', recipientIds: ['bara'], startedAt: expect.any(String), addRecipients: true },
+  });
+});
+
+test('with one kámoš in the party the join still names them, or the ping would be replaced', async () => {
+  mockParty = { friends: [friends[1]], ghost: false };
+  mockParams = { friend: 'bara' };
+  share.mockResolvedValue({ ok: true, notified: 1 });
+  await sendFrom(t.nv.parta.pingPartyShort);
+  expect(share).toHaveBeenCalledWith(pinkasy, '', 'client-1', ['bara'], expect.any(String), undefined, true);
 });

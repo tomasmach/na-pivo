@@ -1,5 +1,6 @@
 import { intlLocale, t } from '@/i18n';
 import type { FriendProfile, FriendPubActivity, FriendsDashboard } from '@/data/friendsClient';
+import { geohash8 } from '@/data/geohash';
 import type { PartaPlan } from '@/data/partaPlansClient';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -115,4 +116,19 @@ export function lastTogetherLabel(lastSharedAt: string | null, pubName: string, 
 
 export function joinNames(profiles: FriendProfile[]): string {
   return profiles.map(personName).join(', ');
+}
+
+/** The server's "Teď venku" window; a saved dashboard older than that says nothing about tonight. */
+const PRESENCE_WINDOW_MS = 180 * 60_000;
+
+/**
+ * Friends the server sees in the pub I count in right now. My own row has to be
+ * there too: until my visit syncs, the server cannot know we share a table.
+ */
+export function tablemates(dashboard: Pick<FriendsDashboard, 'presence' | 'myPresence'> | null, pubKey: string | null, now: number): FriendProfile[] {
+  const me = dashboard?.myPresence;
+  if (!dashboard || !pubKey || !me?.cacheKey || me.lat == null || me.lng == null || geohash8(me.lat, me.lng) !== pubKey) return [];
+  const fresh = (lastSeenAt: string) => now - Date.parse(lastSeenAt) < PRESENCE_WINDOW_MS;
+  if (!fresh(me.lastSeenAt)) return [];
+  return dashboard.presence.filter((p) => p.cacheKey === me.cacheKey && fresh(p.lastSeenAt)).map((p) => p.account);
 }

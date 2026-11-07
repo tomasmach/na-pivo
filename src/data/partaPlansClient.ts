@@ -228,12 +228,6 @@ export async function remindPlan(id: string): Promise<{ ok: true; reminded: numb
   return res.ok ? { ok: true, reminded: count(res.data.reminded) } : res.result;
 }
 
-/** A cinknutí to one friend, without a pub. */
-export async function pingFriend(accountId: string): Promise<FriendActionResult> {
-  const res = await requestJson(`/v1/friends/${encodeURIComponent(accountId)}/ping`, { method: 'POST', body: {} });
-  return res.ok ? { ok: true } : res.result;
-}
-
 /** "Jsem u Kláry". Idempotent per client id, so the queue may replay it. */
 export async function checkInAtHome(activityId: string, clientId: string): Promise<FriendActionResult> {
   const res = await requestJson(`/v1/friends/pub-activity/${encodeURIComponent(activityId)}/checkin`, {

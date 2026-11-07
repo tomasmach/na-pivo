@@ -50,6 +50,8 @@ interface SettingsState {
   waterNudgeEnabled: boolean;
   /** Local ping 20 minutes before tonight's last direct connection home. */
   homeTransitReminderEnabled: boolean;
+  /** Local ping an hour before tonight's pub closes, with pubs open later. */
+  closingTimeReminderEnabled: boolean;
   /** Parta push opt-in (notification permission only, decoupled from reminders). */
   friendPushEnabled: boolean;
   /** Whether the in-context Parta push prompt strip was already shown/dismissed. */
@@ -86,6 +88,7 @@ interface SettingsState {
   setTourReminderAskDismissed: (v: boolean) => void;
   setWaterNudgeEnabled: (v: boolean) => void;
   setHomeTransitReminderEnabled: (v: boolean) => void;
+  setClosingTimeReminderEnabled: (v: boolean) => void;
   setFriendPushEnabled: (v: boolean) => void;
   setFriendPushPrompted: (v: boolean) => void;
   setFriendPushOptedOut: (v: boolean) => void;
@@ -122,6 +125,8 @@ export const useSettingsStore = create<SettingsState>()(
       waterNudgeEnabled: false,
       // Explicit opt-in: a notification nobody asked for is noise.
       homeTransitReminderEnabled: false,
+      // On by default, but it never asks for notification permission by itself.
+      closingTimeReminderEnabled: true,
       friendPushEnabled: false,
       friendPushPrompted: false,
       friendPushOptedOut: false,
@@ -155,6 +160,7 @@ export const useSettingsStore = create<SettingsState>()(
       setTourReminderAskDismissed: (v) => set({ tourReminderAskDismissed: v }),
       setWaterNudgeEnabled: (v) => set({ waterNudgeEnabled: v }),
       setHomeTransitReminderEnabled: (v) => set({ homeTransitReminderEnabled: v }),
+      setClosingTimeReminderEnabled: (v) => set({ closingTimeReminderEnabled: v }),
       setFriendPushEnabled: (v) => set({ friendPushEnabled: v }),
       setFriendPushPrompted: (v) => set({ friendPushPrompted: v }),
       setFriendPushOptedOut: (v) => set({ friendPushOptedOut: v }),
@@ -189,6 +195,7 @@ export const useSettingsStore = create<SettingsState>()(
         tourReminderAskDismissed: state.tourReminderAskDismissed,
         waterNudgeEnabled: state.waterNudgeEnabled,
         homeTransitReminderEnabled: state.homeTransitReminderEnabled,
+        closingTimeReminderEnabled: state.closingTimeReminderEnabled,
         friendPushEnabled: state.friendPushEnabled,
         friendPushPrompted: state.friendPushPrompted,
         friendPushOptedOut: state.friendPushOptedOut,

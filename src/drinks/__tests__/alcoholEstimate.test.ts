@@ -48,26 +48,25 @@ describe('drinkAbv', () => {
 });
 
 describe('estimateAlcohol', () => {
-  it('matches the reference evening: ~0.9 ‰ at 22:40, cautious zero at 13:00 next day', () => {
+  it('matches the reference evening: ~0.9 ‰ at 22:40, an average person at zero by 5:00', () => {
     const estimate = estimateAlcohol(EVENING, PROFILE, Date.parse(at('22:40')));
 
     expect(estimate).not.toBeNull();
     expect(estimate!.now).toBeCloseTo(0.92, 1);
     expect(estimate!.low).toBeCloseTo(0.6, 1);
     expect(estimate!.high).toBeCloseTo(1.39, 1);
-    expect(estimate!.zeroAt.getTime()).toBe(Date.parse(at('13:00', 18)));
+    expect(estimate!.zeroAt.getTime()).toBe(Date.parse(at('05:00', 18)));
   });
 
   it('keeps counting overnight while nothing new is logged', () => {
-    const morning = estimateAlcohol(EVENING, PROFILE, Date.parse(at('07:30', 18)));
+    const night = estimateAlcohol(EVENING, PROFILE, Date.parse(at('03:00', 18)));
 
-    expect(morning!.now).toBe(0);
-    expect(morning!.high).toBeGreaterThan(0.4);
-    expect(morning!.zeroAt.getTime()).toBe(Date.parse(at('13:00', 18)));
+    expect(night!.now).toBeCloseTo(0.3, 1);
+    expect(night!.zeroAt.getTime()).toBe(Date.parse(at('05:00', 18)));
   });
 
-  it('is gone once the cautious run reaches zero', () => {
-    expect(estimateAlcohol(EVENING, PROFILE, Date.parse(at('13:00', 18)))).toBeNull();
+  it('is gone once the average run reaches zero', () => {
+    expect(estimateAlcohol(EVENING, PROFILE, Date.parse(at('05:00', 18)))).toBeNull();
   });
 
   it('ignores soft drinks, alcohol-free beer and drinks older than three days', () => {
@@ -80,13 +79,13 @@ describe('estimateAlcohol', () => {
     expect(estimateAlcohol(drinks, PROFILE, Date.parse(at('21:00')))).toBeNull();
   });
 
-  it('keeps a heavy night until the cautious run is at zero, even past 24 hours', () => {
+  it('keeps a heavy night until it is at zero the next day', () => {
     const small: BodyProfile = { sex: 'female', age: 30, heightCm: 165, weightKg: 58 };
     const night = ['18:00', '19:00', '20:00', '21:00', '22:00'].map((time, i) => beer(`h${i}`, time));
     const evening = estimateAlcohol(night, small, Date.parse(at('23:00')));
-    const nextEvening = estimateAlcohol(night, small, Date.parse(at('18:30', 18)));
+    const nextMorning = estimateAlcohol(night, small, Date.parse(at('10:30', 18)));
 
-    expect(nextEvening?.zeroAt.getTime()).toBe(evening!.zeroAt.getTime());
+    expect(nextMorning?.zeroAt.getTime()).toBe(evening!.zeroAt.getTime());
   });
 
   it('flags the first minutes after a drink as still absorbing', () => {
@@ -118,7 +117,7 @@ describe('estimateAlcohol', () => {
 
     expect(estimate.drinks.map((drink) => drink.id)).toEqual(tonight.map((drink) => drink.id));
     expect(estimate.now).toBeCloseTo(estimateAlcohol(tonight, PROFILE, now)!.now, 1);
-    expect(estimateAlcohol(EVENING, PROFILE, Date.parse(at('07:30', 18)))!.drinks).toHaveLength(EVENING.length);
+    expect(estimateAlcohol(EVENING, PROFILE, Date.parse(at('03:00', 18)))!.drinks).toHaveLength(EVENING.length);
   });
 
   it('lists only tonight when the last three nights each had Radegast', () => {
