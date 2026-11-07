@@ -34,10 +34,17 @@ from pubs.web.beer_index import beer_index, beer_index_og
 from pubs.web.delete_account_views import delete_account, delete_account_confirm
 from pubs.web.diary_views import diary, log_beer, night, profile
 from pubs.web.invite_views import plan_invite, plan_invite_calendar, plan_invite_og
-from pubs.web.news import news
+from pubs.web.news import news, news_og
 from pubs.web.pages import component_gallery
-from pubs.web.pubs_views import pub_og_image, pub_page, pubs_city, pubs_index, search_page
-from pubs.web.rankings import rankings
+from pubs.web.pubs_views import (
+    pub_og_image,
+    pub_page,
+    pubs_city,
+    pubs_city_og_image,
+    pubs_index,
+    search_page,
+)
+from pubs.web.rankings import rankings, rankings_og
 from pubs.web.reach_views import web_reach
 from pubs.web.routes import bilingual
 from pubs.web.tours import tour, tour_og, tours
@@ -48,14 +55,17 @@ urlpatterns = [
 
     *bilingual("hospody", "en/pubs", pubs_index, "web-pubs"),
     *bilingual("hospody/<slug:city>", "en/pubs/<slug:city>", pubs_city, "web-pubs-city"),
+    *bilingual("hospody/<slug:city>/og.png", "en/pubs/<slug:city>/og.png", pubs_city_og_image, "pubs-city-og"),
     *bilingual("hospoda/<str:key>", "en/pub/<str:key>", pub_page, "web-pub"),
     *bilingual("hospoda/<str:key>/og.png", "en/pub/<str:key>/og.png", pub_og_image, "pub-og-image"),
 
     *bilingual("hledat", "en/search", search_page, "web-search"),
 
     *bilingual("zebricky", "en/rankings", rankings, "web-rankings"),
+    *bilingual("zebricky/og.png", "en/rankings/og.png", rankings_og, "rankings-og"),
 
     *bilingual("novinky", "en/news", news, "web-news"),
+    *bilingual("novinky/og.png", "en/news/og.png", news_og, "news-og"),
 
     *bilingual("trasy", "en/tours", tours, "web-tours"),
     *bilingual("trasy/<str:tour_id>", "en/tours/<str:tour_id>", tour, "web-tour"),

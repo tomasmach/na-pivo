@@ -4,22 +4,23 @@ from __future__ import annotations
 
 from datetime import timedelta
 
+from django.conf import settings
 from django.core.cache import cache
 from django.db.models import Sum
 from django.http import HttpRequest, HttpResponse
-from django.utils import formats, timezone
+from django.utils import formats, timezone, translation
 from django.utils.translation import gettext, ngettext, npgettext
 
 from pubs.beer_pages import page_path
-from pubs.beer_ranking import POURING_FRESH_DAYS, STYLES
+from pubs.beer_ranking import STYLES
 from pubs.models import (
     BeerPage,
     BeerRanking,
     BeerRegionRanking,
-    PubBeerProduct,
     PubPriceSnapshot,
     UserAddedPub,
 )
+from pubs.web.dates import time_tag, with_times
 from pubs.web.pages import render_page, web_page
 from pubs.web.public_common import (
     PAGE_CACHE_SECONDS,
@@ -27,6 +28,8 @@ from pubs.web.public_common import (
     breadcrumbs,
     decimal,
     home_og_image,
+    og_png,
+    og_version,
     public_cache,
     region_names,
     region_slug,
@@ -89,12 +92,13 @@ def _ranking(region: str, style: str) -> dict:
             picked.append(row)
             if len(picked) == MAX_ROWS:
                 break
-        ids = [row.product_id for row in picked]
-        pubs = _pouring(ids)
-        with_page = set(
-            BeerPage.objects.filter(kind=BeerPage.Kind.BEER, key__in=[row.product.key for row in picked])
-            .values_list("key", flat=True)
-        )
+        # The same pubs /pivo counts: confirmed lately, one per pub, in the public catalogue.
+        pages = {
+            key: {"pubs": pubs or 0, "pub_name": name or ""}
+            for key, pubs, name in BeerPage.objects.filter(
+                kind=BeerPage.Kind.BEER, key__in=[row.product.key for row in picked]
+            ).values_list("key", "data__pubs", "data__listed__0__name")
+        }
         return {
             "ratings": totals["n"] or 0,
             "computed_at": stamp,
@@ -105,38 +109,14 @@ def _ranking(region: str, style: str) -> dict:
                     "brand": row.product.brand_name,
                     "avg": row.rating_avg,
                     "count": row.rating_count,
-                    "has_page": row.product.key in with_page,
-                    **pubs.get(row.product_id, {"pubs": 0, "pub_name": ""}),
+                    "has_page": row.product.key in pages,
+                    **pages.get(row.product.key, {"pubs": 0, "pub_name": ""}),
                 }
                 for row in picked
             ],
         }
 
     return cache.get_or_set(f"web:rankings:{region}:{style}", build, PAGE_CACHE_SECONDS)
-
-
-def _pouring(product_ids: list[int]) -> dict[int, dict]:
-    """How many pubs pour each beer lately, and the one confirmed most recently."""
-
-    from pubs.api.views import _globally_reported_pub_cache_keys
-
-    links = list(
-        PubBeerProduct.objects.filter(
-            product_id__in=product_ids,
-            active=True,
-            last_seen_at__gte=timezone.now() - timedelta(days=POURING_FRESH_DAYS),
-        )
-        .order_by("-last_seen_at")
-        .values_list("product_id", "cache_key", "name")
-    )
-    hidden = _globally_reported_pub_cache_keys({link[1] for link in links})
-    result: dict[int, dict] = {}
-    for product_id, cache_key, name in links:
-        if cache_key in hidden:
-            continue
-        row = result.setdefault(product_id, {"keys": set(), "pub_name": name})
-        row["keys"].add(cache_key)
-    return {pid: {"pubs": len(row["keys"]), "pub_name": row["pub_name"]} for pid, row in result.items()}
 
 
 def _side_numbers() -> dict:
@@ -149,6 +129,38 @@ def _side_numbers() -> dict:
         return {"cheapest": cheapest["price_czk"] if cheapest else None, "new_pubs": added}
 
     return cache.get_or_set("web:rankings:side", build, PAGE_CACHE_SECONDS)
+
+
+def _share_card() -> dict | None:
+    """The national list's share image: the best beer big, the next two beside it."""
+
+    data = _ranking("", "")
+    rows = data["rows"][:3]
+    if not rows:
+        return None
+    return {
+        "kicker": _ratings_label(data["ratings"]),
+        "title": gettext("Nejlepší piva v Česku"),
+        "hero": decimal(rows[0]["avg"]),
+        "hero_label": rows[0]["name"],
+        "figures": [(decimal(row["avg"]), row["name"]) for row in rows[1:]],
+        "address": settings.PUBLIC_WEB_ORIGIN.split("://", 1)[-1] + web_reverse("web-rankings"),
+    }
+
+
+def _ratings_label(ratings: int) -> str:
+    if not ratings:
+        return ""
+    return ngettext(
+        "Z %(n)s hodnocení z appky Na pivo", "Z %(n)s hodnocení z appky Na pivo", ratings
+    ) % {"n": thousands(ratings)}
+
+
+@web_page
+def rankings_og(request: HttpRequest) -> HttpResponse:
+    with translation.override(getattr(request, "web_lang", "cs")):
+        payload = _share_card()
+    return og_png(request, payload)
 
 
 def _pubs_line(row: dict) -> str:
@@ -232,7 +244,7 @@ def rankings(request: HttpRequest) -> HttpResponse:
             if local.date() == timezone.localdate()
             else formats.date_format(local, "j. n. Y" if request.web_lang == "cs" else "N j, Y")
         )
-        updated = gettext("přepočítáno %(when)s") % {"when": when}
+        updated = with_times(gettext("přepočítáno %(when)s"), when=time_tag(computed, when))
 
     crumbs, crumb_graph = breadcrumbs([("Na pivo", web_reverse("home")), (gettext("Žebříčky"), base), (gettext("Piva"), url())])
     graph = [crumb_graph]
@@ -241,7 +253,13 @@ def rankings(request: HttpRequest) -> HttpResponse:
             "@type": "ItemList",
             "name": title,
             "itemListElement": [
-                {"@type": "ListItem", "position": row["position"], "name": row["name"]} for row in rows
+                {
+                    "@type": "ListItem",
+                    "position": row["position"],
+                    "name": row["name"],
+                    **({"url": f"{settings.PUBLIC_WEB_ORIGIN}{row['url']}"} if row["url"] else {}),
+                }
+                for row in rows
             ],
         })
     side = _side_numbers()
@@ -251,9 +269,7 @@ def rankings(request: HttpRequest) -> HttpResponse:
         {
             "crumbs": crumbs,
             "h1": title,
-            "ratings_label": ngettext(
-                "Z %(n)s hodnocení z appky Na pivo", "Z %(n)s hodnocení z appky Na pivo", data["ratings"]
-            ) % {"n": thousands(data["ratings"])} if data["ratings"] else "",
+            "ratings_label": _ratings_label(data["ratings"]),
             "updated": updated,
             "style_chips": style_chips,
             "region_chips": region_chips,
@@ -274,7 +290,11 @@ def rankings(request: HttpRequest) -> HttpResponse:
                                      gettext("%(n)s hospod za poslední měsíc")) % {"n": side["new_pubs"]},
             "new_pubs": side["new_pubs"],
             "structured_data": structured(*graph),
-            "og_image": home_og_image(),
+            "og_image": (
+                f"{settings.PUBLIC_WEB_ORIGIN}{web_reverse('rankings-og')}?v={og_version(card)}"
+                if (card := _share_card()) else home_og_image()
+            ),
+            "og_image_alt": title if card else "",
         },
         title=title,
         description=gettext(

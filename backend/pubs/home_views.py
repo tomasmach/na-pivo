@@ -6,21 +6,73 @@ shell so ``pubs.web.pages`` can import it.
 
 from __future__ import annotations
 
+import hashlib
 import json
 from functools import wraps
+from pathlib import Path
 from urllib.parse import quote, urlsplit
 
 from django.conf import settings
 from django.http import HttpRequest, HttpResponse, HttpResponsePermanentRedirect
 from django.utils.safestring import SafeString, mark_safe
 
-HOME_OG_PATH = "/og/home.png"
+_ASSETS = Path(__file__).resolve().parent / "static" / "pubs" / "invite"
+
+
+def _versioned(path: str, filename: str) -> str:
+    """The image's address with its content hash: it is served as immutable, so a new image needs a new address."""
+
+    return f"{path}?v={hashlib.sha256((_ASSETS / filename).read_bytes()).hexdigest()[:10]}"
+
+
+HOME_OG_PATH = _versioned("/og/home.png", "og-home.png")
+INVITE_OG_PATH = _versioned("/og/invite.png", "og-invite.png")
 # The rules for reusing the site's data (quote a fact with the source, never copy the whole).
 DATA_LICENSE_PATH = "/llms.txt"
 APP_STORE_URL = "https://apps.apple.com/cz/app/id6773790025"
 PLAY_STORE_URL = "https://play.google.com/store/apps/details?id=com.tomasmach.na_pivo"
 PATHS = {"cs": "/", "en": "/en"}
 AUTHOR = {"@type": "Person", "name": "Tomáš Mach", "url": "https://www.instagram.com/jsem_mach/"}
+# Stable ids, so any page can name the publisher and the site the home page describes.
+ORGANIZATION_ID = "/#org"
+WEBSITE_ID = "/#website"
+
+
+def organization_ref(origin: str) -> dict:
+    # The name too, so a page without the full node still says who published it.
+    return {"@type": "Organization", "@id": f"{origin}{ORGANIZATION_ID}", "name": "Na pivo"}
+
+
+def breadcrumb_list(items: list[tuple[str, str]]) -> dict:
+    """BreadcrumbList of (name, absolute url). A crumb repeating the one before it is the same page, so it goes."""
+
+    crumbs: list[tuple[str, str]] = []
+    for name, url in items:
+        if not crumbs or crumbs[-1][1] != url:
+            crumbs.append((name, url))
+    return {
+        "@type": "BreadcrumbList",
+        "itemListElement": [
+            {"@type": "ListItem", "position": position, "name": name, "item": url}
+            for position, (name, url) in enumerate(crumbs, start=1)
+        ],
+    }
+
+
+def organization(origin: str) -> dict:
+    """Who publishes the site and the app."""
+
+    return {
+        "@type": "Organization",
+        "@id": f"{origin}{ORGANIZATION_ID}",
+        "name": "Na pivo",
+        "url": f"{origin}/",
+        "logo": {"@type": "ImageObject", "url": f"{origin}/apple-touch-icon.png", "width": 180, "height": 180},
+        "founder": {**AUTHOR, "sameAs": [AUTHOR["url"]]},
+        "sameAs": [APP_STORE_URL, PLAY_STORE_URL, AUTHOR["url"]],
+    }
+
+
 # Keeps "</script>" inside a value from ending the block early.
 _LD_ESCAPES = {ord("<"): "\\u003c", ord(">"): "\\u003e", ord("&"): "\\u0026"}
 

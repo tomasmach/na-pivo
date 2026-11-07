@@ -25,6 +25,8 @@ from pubs.beer_catalog import (
     BEER_PRICE_MIN_CZK,
     BeerCatalogMatchCache,
     match_beer,
+    normalize_beer_text,
+    without_tank_words,
 )
 from pubs.enrichment import names_match
 from pubs.models import (
@@ -36,8 +38,8 @@ from pubs.models import (
     PubContributionLog,
 )
 from pubs.price_map import (
-    CHEAPEST_MIN_CZK,
     FRESH_DAYS,
+    PUBLIC_MIN_CZK,
     WINDOW_DAYS,
     _chunks,
     _in_czechia,
@@ -80,7 +82,10 @@ def _serving(beers: list[dict]) -> tuple[int | None, int | None]:
     The same beer twice in one glass size (tank and keg) shows the cheaper one.
     """
 
-    priced = [(price, beer.get("volume_ml")) for beer in beers if (price := _price(beer)) is not None]
+    priced = [
+        (price, beer.get("volume_ml")) for beer in beers
+        if (price := _price(beer)) is not None and price >= PUBLIC_MIN_CZK
+    ]
     if not priced:
         return None, beers[0].get("volume_ml")
     return min(priced, key=lambda served: (served[1] != 500, -(served[1] or 0), served[0]))
@@ -160,11 +165,7 @@ def _summary(pubs: list[dict]) -> dict:
             [pub["price_czk"] for pub in half_litres], n=4, method="inclusive"
         )
         summary.update(median=_round(median), p25=_round(p25), p75=_round(p75))
-    cheapest = min(
-        (pub for pub in half_litres if pub["price_czk"] >= CHEAPEST_MIN_CZK),
-        key=lambda pub: pub["price_czk"],
-        default=None,
-    )
+    cheapest = min(half_litres, key=lambda pub: pub["price_czk"], default=None)
     if cheapest:
         summary["cheapest"] = {key: cheapest[key] for key in ("name", "city", "price_czk")}
     return summary
@@ -187,7 +188,11 @@ def build_beer_pages(now: datetime | None = None) -> dict:
 
     def product_of(name) -> BeerProduct | None:
         # The exact spelling rules every menu write uses, so a page shows one beer, not a guess.
-        match = match_beer(str(name or ""), fuzzy=False, match_cache=match_cache)
+        # Poured from a tank it is still that beer, as the app's own index counts it.
+        name = str(name or "")
+        match = match_beer(name, fuzzy=False, match_cache=match_cache)
+        if (match is None or match.product is None) and (plain := without_tank_words(name)) != normalize_beer_text(name):
+            match = match_beer(plain, fuzzy=False, match_cache=match_cache)
         if match is None or match.product is None:
             return None
         products.setdefault(match.product.key, match.product)
