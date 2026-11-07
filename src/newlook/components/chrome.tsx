@@ -31,7 +31,7 @@ export function Glass({
 }) {
   if (glassAvailable) {
     return (
-      <GlassView style={[style, shadow.glass]} glassEffectStyle="regular" tintColor={tint ?? '#1A1A1A80'}>
+      <GlassView style={[style, shadow.glass]} glassEffectStyle="regular" tintColor={tint ?? '#2A2A2A80'}>
         {children}
       </GlassView>
     );

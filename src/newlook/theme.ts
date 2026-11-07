@@ -1,12 +1,13 @@
 import { StyleSheet, type TextStyle } from 'react-native';
 
-// Values copied from the np-* variables of na-pivo-redesign.pen (dark mode).
+// Values copied from the np-* variables of na-pivo-redesign.pen (dark mode). Card, dialog,
+// control, muted and the glass plate are lighter than the file so the app reads less black.
 export const C = {
   bg: '#0A0A0A',
-  card: '#151515',
-  dialog: '#161616',
+  card: '#202020',
+  dialog: '#222222',
   toast: '#262626',
-  control: '#232323',
+  control: '#323232',
   yellow: '#FFC400',
   yellowWash: '#FFC4000D',
   yellowSoft: '#FFC4001A',
@@ -16,7 +17,7 @@ export const C = {
   yellowStrong: '#FFC40099',
   white: '#F7F7F2',
   text2: '#D4D4CE',
-  muted: '#8F8F8A',
+  muted: '#9A9A95',
   dim: '#FFFFFF8C',
   hairline: '#FFFFFF1A',
   line: '#FFFFFF1F',
@@ -26,10 +27,10 @@ export const C = {
   tintSoft: '#FFFFFF12',
   open: '#FFD54F',
   glass: '#2A2A2A61',
-  glassFallback: '#1E1E1EF2',
+  glassFallback: '#2A2A2AF2',
   glassText: '#FFFFFFE6',
   ring: '#FFFFFF24',
-  avatarBase: '#141414',
+  avatarBase: '#1A1A1A',
   danger: '#FF6B5E',
   scrim: '#000000A6',
   black: '#0A0A0A',

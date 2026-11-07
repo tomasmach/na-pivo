@@ -6,6 +6,17 @@
 > Produktová část I a mockový jazyk 3.0 jsou reference pro případný návrat některé
 > funkce, ne zadání.
 
+## Světlejší plochy nového vzhledu (7. 11. 2026)
+
+Varianta C z návrhu „Světlejší tmavá“: zem nového vzhledu zůstává `#0A0A0A`, ale
+plochy na ní jsou světlejší, aby appka nepůsobila tak černě. Karta je `#202020`,
+panel `#222222`, ovládací prvek `#323232`, šedý text `#9A9A95` (na kartě 5,8 : 1),
+podklad avataru `#1A1A1A`. Spodní lišta má mimo Liquid Glass `#2A2A2A` s alfou 0,95
+a na iOS 26 sklo s nádechem `#2A2A2A` s alfou 0,5. Žlutá, texty a hairliny se
+nemění. Hodnoty žijí v `src/newlook/theme.ts` a jsou světlejší než `np-*`
+v `na-pivo-redesign.pen`. Web, ikona, splash a Live Activity zůstávají na
+původních hodnotách.
+
 ## Pohyb nového vzhledu (1. 11. 2026)
 
 Nový vzhled (`src/newlook`, `app/nv`) se nehoupe. Žádná pružina s dojezdem, žádný
@@ -53,7 +64,7 @@ Web je šedý jako nový vzhled appky, jen tmavý režim. Stojí na Djangu (šab
 Next.js) a všechno, co načítá, je z na-pivo.cz: žádné CDN, cizí písma ani skripty.
 
 - **Tokeny** jsou CSS proměnné `--np-*` v `backend/pubs/static/pubs/web/np.css` a
-  kopírují `np-*` z redesignu stejně jako `src/newlook/theme.ts`: zem `#0A0A0A`, karta
+  kopírují `np-*` z redesignu (appka má od 7. 11. 2026 světlejší plochy): zem `#0A0A0A`, karta
   `#151515`, pole `#181818`, ovládací prvek `#232323`, jantar `#FFC400`, text
   `#F7F7F2`, druhý text `#D4D4CE`, šedá `#8F8F8A`, hairline bílá s alfou 0,1.
   Jantarová plná plocha je na stránce jednou (hlavní akce, v panelu „Zapsat pivo“).
