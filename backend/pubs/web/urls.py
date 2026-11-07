@@ -35,6 +35,7 @@ from pubs.web.beer_index import beer_index, beer_index_og
 from pubs.web.delete_account_views import delete_account, delete_account_confirm
 from pubs.web.diary_views import diary, log_beer, night, profile
 from pubs.web.invite_views import plan_invite, plan_invite_calendar, plan_invite_og
+from pubs.web.legal import privacy, terms
 from pubs.web.news import news, news_og
 from pubs.web.pages import component_gallery
 from pubs.web.pubs_views import (
@@ -78,6 +79,9 @@ urlpatterns = [
 
     *bilingual("o-appce", "en/about", about, "web-about"),
     *bilingual("pivni-index/og.png", "en/beer-index/og.png", beer_index_og, "beer-index-og"),
+
+    *bilingual("ochrana-soukromi", "en/privacy", privacy, "web-privacy"),
+    *bilingual("podminky", "en/terms", terms, "web-terms"),
 
     *bilingual("smazat-ucet", "en/delete-account", delete_account, "web-delete-account"),
     *bilingual("smazat-ucet/potvrdit", "en/delete-account/confirm", delete_account_confirm, "web-delete-account-confirm"),

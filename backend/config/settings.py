@@ -812,9 +812,10 @@ UGC_POLICY_VERSION = "2026-08-22"
 # Custom URL scheme of the mobile app (app.config.ts `scheme`). Password reset
 # can still use napivo://auth/...; email verification uses the public HTTPS API
 # endpoint when sent from a request so mail clients do not have to support custom
-# schemes. The web base URL hosts the Play-required public account-deletion page.
+# schemes. The web base URL hosts the Play-required public account-deletion page
+# (/smazat-ucet) and the privacy policy and terms.
 APP_DEEP_LINK_SCHEME: str = os.environ.get("APP_DEEP_LINK_SCHEME", "napivo")
-WEB_BASE_URL: str = os.environ.get("WEB_BASE_URL", "https://tomasmach.github.io/na-pivo")
+WEB_BASE_URL: str = os.environ.get("WEB_BASE_URL", "https://na-pivo.cz")
 
 # --- Google Sign-In (server-side ID-token verification) ---
 # OAuth client IDs from Google Cloud Console. The web client id is what the

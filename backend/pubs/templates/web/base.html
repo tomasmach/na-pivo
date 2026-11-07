@@ -31,7 +31,7 @@
 {% block head %}{% endblock %}
 </head>
 <body class="{% block body_class %}{% endblock %}">
-<a class="np-skip np-btn np-btn--primary" href="#obsah">{% translate "Přeskočit na obsah" %}</a>
+<a class="np-skip np-btn np-btn--primary" href="#{{ main_id|default:"obsah" }}">{% translate "Přeskočit na obsah" %}</a>
 {% block shell %}{% endblock %}
 {% block scripts %}{% endblock %}
 </body>

@@ -247,7 +247,11 @@ export async function observeLevel(accountId: string, level: number): Promise<{ 
   return seen && seen.accountId === accountId ? { since: seen.at } : null;
 }
 
-/** Terms and privacy live on GitHub Pages; the English copies sit under /en/. */
+const LEGAL_PATHS = {
+  cs: { terms: '/podminky', privacy: '/ochrana-soukromi' },
+  en: { terms: '/en/terms', privacy: '/en/privacy' },
+} as const;
+
 export function legalUrl(page: 'terms' | 'privacy', lang: Locale): string {
-  return `https://tomasmach.github.io/na-pivo/${lang === 'en' ? 'en/' : ''}${page}.html`;
+  return `https://na-pivo.cz${LEGAL_PATHS[lang][page]}`;
 }
