@@ -24,9 +24,7 @@ from pubs.beer_catalog import (
     BEER_PRICE_MAX_CZK,
     BEER_PRICE_MIN_CZK,
     BeerCatalogMatchCache,
-    match_beer,
-    normalize_beer_text,
-    without_tank_words,
+    poured_product,
 )
 from pubs.enrichment import names_match
 from pubs.models import (
@@ -193,14 +191,10 @@ def build_beer_pages(now: datetime | None = None) -> dict:
     def product_of(name) -> BeerProduct | None:
         # The exact spelling rules every menu write uses, so a page shows one beer, not a guess.
         # Poured from a tank it is still that beer, as the app's own index counts it.
-        name = str(name or "")
-        match = match_beer(name, fuzzy=False, match_cache=match_cache)
-        if (match is None or match.product is None) and (plain := without_tank_words(name)) != normalize_beer_text(name):
-            match = match_beer(plain, fuzzy=False, match_cache=match_cache)
-        if match is None or match.product is None:
-            return None
-        products.setdefault(match.product.key, match.product)
-        return match.product
+        product = poured_product(str(name or ""), match_cache)
+        if product is not None:
+            products.setdefault(product.key, product)
+        return product
 
     # A duplicate merged into another pub is that pub: it counts once, with its newest write.
     # Its old menu stands in only while the pub has no menu of its own, and writes under the

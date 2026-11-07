@@ -460,7 +460,7 @@ def my_pubs(request: HttpRequest) -> HttpResponse:
         rows.append(row)
 
     # My pubs the catalogue does not list (yet): one I just added, or one hidden from the public lists.
-    listed = {(row["cache_key"], row["name"]) for row in rows}
+    listed = {(row["cache_key"], row["stored_name"]) for row in rows}
     for key, items in mine.items():
         for item in items:
             added = item["added"] or {}
@@ -560,7 +560,7 @@ def my_pubs(request: HttpRequest) -> HttpResponse:
         "items": [{"label": label, "url": url(razeni=key, strana=""), "current": sort == key} for key, label in sort_labels.items()],
     }
     if selected is not None:
-        selected["log_url"] = f"{web_reverse('web-log-beer')}?{urlencode({'hospoda': selected['cache_key'], 'n': selected['name']})}"
+        selected["log_url"] = f"{web_reverse('web-log-beer')}?{urlencode({'hospoda': selected['cache_key'], 'n': selected['stored_name']})}"
         destination = f"{selected['lat']},{selected['lng']}"
         selected["route_url"] = f"https://www.google.com/maps/dir/?{urlencode({'api': '1', 'destination': destination})}"
         selected["ratings_label"] = _plural(selected["ratings"], pgettext("one", "%(n)s hodnocení"), gettext("%(n)s hodnocení"),

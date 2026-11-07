@@ -39,7 +39,7 @@ from pubs.price_map import (
 from pubs.regions import REGION_CODES, region_of
 from pubs.web.dates import time_tag, with_times
 from pubs.web.pages import render_page, web_page
-from pubs.web.places import is_private_pub
+from pubs.web.places import is_private_pub, municipality
 from pubs.web.public_common import (
     breadcrumbs,
     og_image,
@@ -93,7 +93,8 @@ def _regional(snapshot: PubPriceSnapshot) -> dict:
             continue
         if code := region_of(row.lat, row.lng):
             groups[code].append(row)
-            if city := city_name(row.city):
+            # The same town names as /ceny: "Louny 1" votes for Louny.
+            if city := municipality(city_name(row.city)):
                 city_votes[city][code] += 1
     result = {
         "regions": {

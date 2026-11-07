@@ -145,6 +145,8 @@ def _pub_row(pub: dict, now: datetime, city: str = "") -> dict:
     return {
         **pub,
         "name": pub_name(pub["name"]),
+        # Links that pick the pub among others in its cell need the name as stored.
+        "stored_name": pub["name"],
         "url": web_reverse("web-pub", key=pub["key"]),
         "place": pub["address"] or place_name(pub["district"]) or city,
         "tap": ", ".join(pub["beers"][:3]),
@@ -522,8 +524,9 @@ def pubs_city(request: HttpRequest, city: str) -> HttpResponse:
             [{"label": gettext("Všechny čtvrti"), "url": _query(params, district=""), "current": not chosen["district"]}]
             + [
                 {"label": place_name(name), "url": (
-                    web_reverse("web-pubs-city", city=slugify(name)) if _district(slugify(name))
-                    else _query(params, district=slugify(name))
+                    # The district's own page keeps the filters chosen here.
+                    web_reverse("web-pubs-city", city=slugify(name)) + _query(params, district="").rstrip("?")
+                    if _district(slugify(name)) else _query(params, district=slugify(name))
                 ), "current": chosen["district"] == slugify(name)}
                 for name, _ in sorted(districts, key=lambda item: _natural(item[0]))
             ],
@@ -573,17 +576,17 @@ def pubs_city(request: HttpRequest, city: str) -> HttpResponse:
         crumbs.append((place_name(data["name"]), web_reverse("web-pubs-city", city=city_page)))
     crumbs.append((place_name(name), page_url))
     origin = settings.PUBLIC_WEB_ORIGIN
-    top = [_pub_row(row, now, name) for row in _sorted(rows, "")[:PAGE_SIZE]]
     structured = {"@graph": [
         _breadcrumb_data(crumbs),
         {
             "@type": "ItemList",
             "name": title,
-            "numberOfItems": total,
+            "numberOfItems": len(visible),
+            # The pubs this page shows, numbered as on the page.
             "itemListElement": [
                 {"@type": "ListItem", "position": index, "url": f"{origin}{web_reverse('web-pub', key=row['key'])}",
-                 "name": pub_name(row["name"])}
-                for index, row in enumerate(top, start=1)
+                 "name": row["name"]}
+                for index, row in enumerate(shown, start=start + 1)
             ],
         },
     ]}

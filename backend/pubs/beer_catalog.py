@@ -147,6 +147,15 @@ def without_tank_words(name: str) -> str:
     return " ".join(kept)
 
 
+def poured_product(name: str, match_cache: BeerCatalogMatchCache | None = None) -> BeerProduct | None:
+    """The catalogue beer a menu line names exactly, poured from a tank or not."""
+
+    match = match_beer(name, fuzzy=False, match_cache=match_cache)
+    if (match is None or match.product is None) and (plain := without_tank_words(name)) != normalize_beer_text(name):
+        match = match_beer(plain, fuzzy=False, match_cache=match_cache)
+    return match.product if match else None
+
+
 def beer_menu_identity(beer: dict) -> tuple[str, int | None]:
     """One pub-menu row per beer and volume, however the name was typed.
 

@@ -44,6 +44,10 @@ def _day(value: date | datetime | str | None) -> date | None:
     return value
 
 
+# What /ceny shows. Caches other pages add to the snapshot later, like the Pivní index kraje, are not its news.
+_PRICE_PAGE_KEYS = ("window_days", "fresh_days", "min_pubs", "min_czk", "country", "cities", "prague_districts", "cheapest")
+
+
 def _price_changes() -> dict[str, date]:
     """Day each price page last showed different numbers: ``""`` is /ceny, the rest are city slugs.
 
@@ -53,7 +57,7 @@ def _price_changes() -> dict[str, date]:
     """
 
     def numbers(data: dict) -> dict[str, str]:
-        found = {"": json.dumps(data, sort_keys=True)}
+        found = {"": json.dumps({key: data.get(key) for key in _PRICE_PAGE_KEYS}, sort_keys=True)}
         for area in data.get("cities", []):
             found[city_slug(area["name"])] = json.dumps(area, sort_keys=True)
         return found
