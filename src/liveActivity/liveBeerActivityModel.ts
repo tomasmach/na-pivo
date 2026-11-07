@@ -25,8 +25,6 @@ export interface BeerEveningLiveActivityProps {
   beerWordLabel: string;
   /** Its forms for 1, 2–4 and 5+, so the widget declines a count the native `+ pivo` bumped. */
   beerWordForms: { one: string; few: string; many: string };
-  /** "Celkem 245 Kč"; empty when the total is unknown. */
-  totalPriceLabel: string;
   /** The latest beer's name, or a fallback when it has none. */
   latestBeerLabel: string;
   /** "zapsáno v 21:47", or the line for an evening with no beer time yet. */
@@ -43,13 +41,9 @@ export interface BeerEveningLiveActivityProps {
   repeatBeerServingType?: ServingType;
   /** iOS only: AppIntent buttons require iOS 17; older versions deep-link. */
   supportsInteractiveAdd?: boolean;
-  /** iOS only: `file://` URI of the staged app icon in the app-group container. */
-  iconUri?: string;
-  /** iOS only: the earlier brown palette is picked in settings. */
-  brownPalette?: boolean;
   // — Tonight's last direct connection home. These travel together and are
   //   absent without a home point, outside PID, or once the connection left.
-  /** "Poslední spoj domů 23:58 · Anděl". */
+  /** "Domů 23:58 · Anděl". */
   homeTransitLabel?: string;
   /** Departure as epoch ms; the widget counts down to it on its own. */
   homeTransitDepartsAtMs?: number;
@@ -149,7 +143,6 @@ export function buildBeerEveningLiveActivityProps(
       few: t.liveActivity.beerWord(2),
       many: t.liveActivity.beerWord(5),
     },
-    totalPriceLabel: totalPrice ? t.liveActivity.total(totalPrice) : '',
     latestBeerLabel: latestBeerName || t.liveActivity.latestBeerFallback,
     latestTimeLabel: latestBeerAt
       ? t.liveActivity.latestAt(latestBeerAt)

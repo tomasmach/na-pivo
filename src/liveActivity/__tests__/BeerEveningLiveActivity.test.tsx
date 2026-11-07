@@ -61,10 +61,12 @@ describe('BeerEveningLiveActivity', () => {
 
     const rendered = layout(afterIntent, {});
 
-    expect(texts(rendered.banner)).toEqual(
-      expect.arrayContaining([t.liveActivity.beerWord(2), t.liveActivity.latestAt('22:10')]),
+    const banner = texts(rendered.banner);
+    expect(banner).toContain(t.liveActivity.beerWord(2));
+    expect(banner).toEqual(
+      expect.arrayContaining(['Plzeň 12°', ` · ${t.liveActivity.latestAt('22:10')}`]),
     );
-    expect(texts(rendered.banner)).not.toContain(fromApp!.totalPriceLabel);
-    expect(texts(rendered.expandedBottom)).toContain(t.liveActivity.latestAt('22:10'));
+    expect(banner).not.toContain(fromApp!.totalPrice);
+    expect(texts(rendered.expandedCenter)).toContain(` · ${t.liveActivity.latestAt('22:10')}`);
   });
 });
