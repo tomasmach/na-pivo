@@ -216,7 +216,7 @@ function BeerBody({ beer, beerRef, reload }: { beer: BeerPage; beerRef: BeerRef;
                 {b.ratings(fmtCount(beer.globalRatingCount))}
               </T>
               {beer.nationalRank !== null ? (
-                <Press onPress={() => router.navigate('/nv/piva')} style={[s.row, { gap: 4 }]}>
+                <Press onPress={() => router.dismissTo('/nv/piva')} style={[s.row, { gap: 4 }]}>
                   <T s={14} w={700}>
                     {b.rank(beer.nationalRank)}
                   </T>
@@ -258,7 +258,7 @@ function BeerBody({ beer, beerRef, reload }: { beer: BeerPage; beerRef: BeerRef;
             </View>
             <Press
               haptic
-              onPress={() => router.navigate({ pathname: '/nv/kompas', params: { beer: beer.beerName, pub: nearest?.cacheKey ?? '' } })}
+              onPress={() => router.dismissTo({ pathname: '/nv/kompas', params: { beer: beer.beerName, pub: nearest?.cacheKey ?? '' } })}
               style={[s.row, { height: 42, borderRadius: 21, paddingHorizontal: 16, gap: 6, backgroundColor: C.yellow }]}
             >
               <Icon name="map" size={16} color={C.black} />

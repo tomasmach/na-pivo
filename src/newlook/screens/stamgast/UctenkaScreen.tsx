@@ -86,7 +86,7 @@ export function UctenkaScreen() {
   const hangs = useNightHangs(night?.day ?? '');
   const ratings = useMyRatings();
   const paperW = width - SCREEN_X * 2;
-  const close = () => router.navigate('/nv/stamgast');
+  const close = () => router.dismissTo('/nv/stamgast');
 
   if (!night) {
     return (

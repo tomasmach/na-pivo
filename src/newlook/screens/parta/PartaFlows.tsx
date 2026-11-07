@@ -556,7 +556,7 @@ export function PlanScreen() {
     useNvPlaceStore.getState().setOutside('private');
     void enqueueFriendOp({ op: 'home-checkin', activityId: plan.id, clientId });
     toast({ kind: 'saved', title: t.nv.parta.checkedIn(host), icon: 'house' });
-    router.navigate('/nv/stamgast');
+    router.dismissTo('/nv/stamgast');
   };
 
   return (

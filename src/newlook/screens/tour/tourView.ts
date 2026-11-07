@@ -79,7 +79,7 @@ export function navigateToStop(stop: TourStop, onError: () => void): void {
 /** The counter opens on the stop's pub; a beer logged there checks the stop off. */
 export function logBeerAtStop(router: Router, stop: TourStop): void {
   useCounterHandoffStore.getState().handOff(pubFromStop(stop));
-  router.navigate('/nv/stamgast' as Href);
+  router.dismissTo('/nv/stamgast' as Href);
 }
 
 type LastMark = { runId: string; stopId: string; status: 'visited' | 'skipped' | null; previous: 'visited' | 'skipped' | null };

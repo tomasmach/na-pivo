@@ -464,7 +464,7 @@ export function PrichodScreen() {
         </View>
       </Animated.View>
       <View style={[s.row, { gap: 10, paddingHorizontal: 8 }]}>
-        <Button label={L().backToKompas} icon="compass" flex onPress={() => router.navigate('/nv/kompas')} />
+        <Button label={L().backToKompas} icon="compass" flex onPress={() => router.dismissTo('/nv/kompas')} />
         {canNavigate ? (
           <Button label={L().openInMaps} icon="map" kind="raised" flex onPress={() => void openPubInMaps({ lat, lng, name: params.name })} />
         ) : null}
