@@ -29,6 +29,7 @@
 /* English needs more words for the same headline. */
 .rs-hero__title:lang(en) { max-width: 680px; font-size: 112px; }
 .rs-hero__lead { max-width: 560px; color: var(--np-text-2); font-size: 20px; line-height: 1.5; }
+.rs-hero__picture { display: block; min-width: 0; }
 .rs-hero__phones {
   width: calc(100% + var(--np-page-x)); max-width: none; height: auto;
   -webkit-mask-image: linear-gradient(#000 82%, #0000); mask-image: linear-gradient(#000 82%, #0000);

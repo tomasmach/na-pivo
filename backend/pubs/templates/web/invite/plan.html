@@ -1,7 +1,7 @@
 {% extends "web/public.html" %}
 {% load i18n web %}
+{% block stylesheet %}{% stylesheet "invite.css" %}{% endblock %}
 {% block head %}
-<link rel="stylesheet" href="{% asset "invite.css" %}">
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="Na pivo">
 <meta property="og:locale" content="{{ page.og_locale }}">

@@ -129,3 +129,29 @@ def test_map_library_is_served_by_us(client):
         response = client.get(url)
         assert response.status_code == 200 and response["Cache-Control"] == "public, max-age=31536000, immutable"
         assert response["Content-Type"].startswith("text/css" if name.endswith(".css") else "text/javascript")
+
+
+def test_fallback_turns_a_pill_that_would_cover_another_into_a_dot():
+    from pubs.web.pub_map import pub_map
+
+    near = [{"lat": TIGER[0], "lng": TIGER[1] + i * 0.0001, "label": f"{50 + i} Kč", "url": f"/hospoda/{i}", "name": f"H{i}"}
+            for i in range(3)]
+    far = {"lat": TIGER[0] + 0.01, "lng": TIGER[1] + 0.01, "label": "70 Kč", "url": "/hospoda/far", "name": "Far"}
+    drawing = pub_map([*near, far], [(TIGER[0], TIGER[1])] * 5)
+    tight = {pin["name"]: pin["tight"] for pin in drawing["pins"]}
+
+    # The first (selected) pin keeps its pill, the ones squeezed beside it shrink, a far one stays.
+    assert tight == {"H0": False, "H1": True, "H2": True, "Far": False}
+    assert [shade["level"] for shade in drawing["density"]] == [3]
+
+
+def test_fallback_dot_still_names_the_pub_and_its_price(client):
+    for index in range(3):
+        _price(_pub(name=f"Hospoda {index}", lat=TIGER[0], lng=TIGER[1] + index * 0.0007), 50 + index)
+
+    page = client.get("/hospody/praha").content.decode()
+
+    assert len(re.findall(r'<g class="np-map__pin', page)) == 1
+    assert len(re.findall(r'aria-label="Hospoda \d, 5\d\WKč"><circle class="np-map__dot"', page)) == 2
+    assert "<rect class=\"np-map__d" not in page and 'class="np-map__density"' in page
+

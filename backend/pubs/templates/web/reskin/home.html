@@ -1,5 +1,6 @@
 {% extends "web/public.html" %}
 {% load i18n web %}
+{% block stylesheet %}{% stylesheet "reskin.css" %}{% endblock %}
 {% block head %}{% include "web/reskin/_head.html" %}{% endblock %}
 {% block og_image %}{% translate "Pivní deníček Na pivo: piva za život, kalendář večerů a mapa hospod." as og_image_alt %}{% include "web/reskin/_og_image.html" %}{% endblock %}
 {% block body_class %}rs-home{% endblock %}
@@ -14,7 +15,7 @@
       {% include "web/reskin/_stores.html" %}
     </div>
   </div>
-  <img class="rs-hero__phones" src="{% asset "home-phones.webp" %}" width="720" height="740" alt="{% translate "Deník v appce: piva za týden a detail jednoho večera." %}">
+  <picture class="rs-hero__picture"><source type="image/avif" srcset="{% asset "home-phones.avif" %}"><img class="rs-hero__phones" src="{% asset "home-phones.webp" %}" width="720" height="740" fetchpriority="high" alt="{% translate "Deník v appce: piva za týden a detail jednoho večera." %}"></picture>
 </section>
 
 <section class="rs-year" aria-labelledby="year-title">

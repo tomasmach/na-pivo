@@ -1,6 +1,6 @@
 {% extends "web/app.html" %}
 {% load i18n web %}
-{% block head %}<link rel="stylesheet" href="{% asset "account.css" %}">{% endblock %}
+{% block stylesheet %}{% stylesheet "account.css" %}{% endblock %}
 {% block content %}
 <div id="npa" class="npa" data-ugc-version="{{ ugc_version }}">
 {% block page %}{% endblock %}

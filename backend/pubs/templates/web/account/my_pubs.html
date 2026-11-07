@@ -1,6 +1,6 @@
 {% extends "web/account/base.html" %}
 {% load i18n web %}
-{% block head %}{{ block.super }}<link rel="stylesheet" href="{% asset "pubs.css" %}">{% endblock %}
+{% block stylesheet %}{% stylesheet "account.css" "pubs.css" %}{% endblock %}
 {% block page %}
 <header class="np-app__head npa-myp-head">
   <h1 class="np-app__title">{% translate "Hospody" %}</h1>

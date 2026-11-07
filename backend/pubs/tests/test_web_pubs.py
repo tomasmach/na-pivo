@@ -159,6 +159,22 @@ def test_city_list_loads_more_by_page(client):
     assert "25 z 25" in second
 
 
+def test_city_list_builds_rows_only_for_the_pubs_it_shows(client, monkeypatch):
+    from pubs.web import pubs_views
+
+    for index in range(60):
+        _pub(f"Hospoda {index:02d}", lat=50.08 + index / 1000, lng=14.42, city="Praha")
+    built = []
+    real = pubs_views._pub_row
+    monkeypatch.setattr(pubs_views, "_pub_row", lambda pub, *args: built.append(pub["key"]) or real(pub, *args))
+
+    page = client.get("/hospody/praha").content.decode()
+
+    assert page.count('class="np-pubrow"') == 20 and "z 60" in page
+    # The page and the 20 best of the structured list, not all 60.
+    assert len(built) == 40
+
+
 def test_unknown_city_is_404_with_other_cities(client):
     _pub()
 

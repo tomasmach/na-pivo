@@ -562,7 +562,7 @@ def pubs_city(request: HttpRequest, city: str) -> HttpResponse:
         crumbs.append((place_name(data["name"]), web_reverse("web-pubs-city", city=city_page)))
     crumbs.append((place_name(name), page_url))
     origin = settings.PUBLIC_WEB_ORIGIN
-    top = _sorted(rows, "")[:PAGE_SIZE]
+    top = [_pub_row(row, now, name) for row in _sorted(rows, "")[:PAGE_SIZE]]
     structured = {"@graph": [
         _breadcrumb_data(crumbs),
         {

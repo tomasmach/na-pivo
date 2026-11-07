@@ -1,5 +1,6 @@
 {% extends "web/public.html" %}
 {% load i18n web %}
+{% block stylesheet %}{% stylesheet "reskin.css" %}{% endblock %}
 {% block head %}{% include "web/reskin/_head.html" %}<meta name="referrer" content="no-referrer">{% endblock %}
 {% block content %}
 {% if unavailable %}

@@ -1,6 +1,6 @@
 {% extends "web/public.html" %}
 {% load i18n web %}
-{% block head %}<link rel="stylesheet" href="{% asset "delete-account.css" %}">{% endblock %}
+{% block stylesheet %}{% stylesheet "delete-account.css" %}{% endblock %}
 {% block content %}
 <div class="da">
   {% if state == "confirm" %}
