@@ -39,14 +39,9 @@ export function useAlcoholEstimate(): { estimate: AlcoholEstimate | null; nowMs:
   }, [profile, current, history, tickMs]);
 }
 
-/** Once absorbed and below this, the middle guess reads as zero and the cautious end takes over. */
+/** Once absorbed and below this, the middle guess reads as zero and the sheet shows when it gets there. */
 export function isMorning(estimate: AlcoholEstimate): boolean {
   return !estimate.absorbing && estimate.now < 0.05;
-}
-
-/** The cautious level rounded up, so a morning never reads 0,0 while it is not zero. */
-export function cautiousCeil(value: number): number {
-  return Math.ceil(value * 10) / 10;
 }
 
 export function formatPromile(value: number): string {

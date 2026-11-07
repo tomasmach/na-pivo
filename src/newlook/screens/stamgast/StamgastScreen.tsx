@@ -34,7 +34,7 @@ import { formatPrice } from '@/utils/currency';
 
 import { AvatarSlot, BottomFade, TopFade, useTabBarSpace } from '../../components/chrome';
 import { Icon, type IconName } from '../../components/Icon';
-import { Button, D, Press, Segmented, T, Tile } from '../../components/ui';
+import { Button, D, Press, Segmented, Stack, T, Tile } from '../../components/ui';
 import { fadeIn, fadeOut, riseIn, sinkOut } from '../../motion';
 import { C, SCREEN_X, s, shadow } from '../../theme';
 import { useHidePubNames } from '../../hiddenPubNames';
@@ -45,6 +45,8 @@ import { useCounterSegment } from './counterSegment';
 import { logDrink, useCounterNudges } from './counterActions';
 import { DegreePicker, KindPicker } from '../piva/StylePicker';
 import { FriendEveningCard, leaveFriendHome, useFriendHomeEvening } from '../parta/FriendEveningCard';
+import { joinNames, personInitial } from '../parta/partaModel';
+import { useTablemates } from '../parta/tablemates';
 import { DiaryView } from './DiaryView';
 import { durationLabel, nameStatesDegree, servingLine } from './stamgastFormat';
 import { OUTSIDE_ICON, currentCountPlace, useCountPlace, useCountPlaceHost, useNvPlaceStore } from './placeStore';
@@ -286,6 +288,7 @@ function CounterView() {
   const repeat = repeatOf(lastBeer);
   const resumable = key && count === 0 ? resumableSession(current, history, key, now) : null;
   const sittingMinutes = session ? Math.max(0, Math.round((now - Date.parse(session.startedAt)) / 60000)) : 0;
+  const company = useTablemates(inPub && session ? key : null, count, now);
 
   const openPlace = () => {
     trackUiInteraction('counter_place_open');
@@ -385,6 +388,14 @@ function CounterView() {
             <Stat value={durationLabel(sittingMinutes)} label={copy.statTable} />
             <Stat value={promile} label={profile ? copy.statEstimate : copy.statEstimateSetup} color={profile ? C.white : C.yellow} onPress={() => router.push('/nv/odhad')} />
           </View>
+          {company.length ? (
+            <Animated.View entering={fadeIn} style={[s.row, { marginTop: 12, height: 34, borderRadius: 17, paddingLeft: 5, paddingRight: 14, gap: 8, backgroundColor: C.card, maxWidth: '100%' }]}>
+              <Stack initials={company.slice(0, 3).map(personInitial)} size={24} />
+              <T s={14} w={600} c={C.text2} numberOfLines={1} style={{ flexShrink: 1 }}>
+                {copy.tablemates(joinNames(company))}
+              </T>
+            </Animated.View>
+          ) : null}
         </View>
         <View style={[s.row, { paddingTop: 4 }]}>
           <QuickAction icon="plus" label={copy.quickOther} onPress={openAddDrink} />
