@@ -3148,3 +3148,20 @@ def test_released_app_ping_without_add_flag_still_replaces_the_audience(client, 
     assert second.json()["id"] == first.json()["id"]
     petr_dash = client.get("/v1/friends", **_auth(token_petr)).json()
     assert petr_dash["active_friends"] == []
+
+
+@pytest.mark.django_db
+def test_ping_to_one_friend_leaves_the_message_of_my_live_ping_alone(client, monkeypatch):
+    token_owner, owner = _register(client, "janek")
+    _token_petr, petr = _register(client, "petr")
+    _token_karel, karel = _register(client, "karel")
+    for friend in (petr, karel):
+        _make_friends(owner, friend)
+        _no_quiet(friend)
+    monkeypatch.setattr("pubs.api.views.requests.post", _push_recorder([]))
+
+    first = _ping(client, token_owner, recipients=[petr])
+    joined = _ping(client, token_owner, recipients=[karel], add=True, message="Jen pro Karla.")
+
+    assert joined.json()["id"] == first.json()["id"]
+    assert joined.json()["message"] == ""

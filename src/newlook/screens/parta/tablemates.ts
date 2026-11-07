@@ -18,7 +18,11 @@ function refreshPresence(): void {
   lastRefresh = Date.now();
   const generation = snapshotGeneration();
   void fetchFriendsDashboard().then((dashboard) => {
-    if (dashboard && generation === snapshotGeneration() && generation === usePartaStore.getState().generation) {
+    if (!dashboard || generation !== snapshotGeneration()) return;
+    // After an account switch the store still holds the previous account until Parta loads.
+    if (usePartaStore.getState().generation !== generation) {
+      usePartaStore.setState({ dashboard, plans: null, pingIds: [], meetups: null, generation });
+    } else {
       usePartaStore.setState({ dashboard });
     }
   });
@@ -29,7 +33,7 @@ function refreshPresence(): void {
  * again every couple of minutes and after each drink, so a kámoš who just sat down shows up.
  */
 export function useTablemates(pubKey: string | null, beers: number, now: number): FriendProfile[] {
-  const dashboard = usePartaStore((st) => st.dashboard);
+  const dashboard = usePartaStore((st) => (st.generation === snapshotGeneration() ? st.dashboard : null));
   const focused = useIsFocused();
   const signedIn = useAccountStore((st) => !!st.profile);
   // Without a saved Parta yet there is no telling, so ask once.

@@ -163,7 +163,7 @@ describe('flushFriendsQueue — delivery + keep/drop', () => {
 
     shareFriendPubActivity.mockResolvedValue(retry());
     await enqueueFriendOp({ op: 'activity', clientId: 'live1', payload: { pub: PUB, recipientIds: ['friend-a'] } });
-    expect(shareFriendPubActivity).toHaveBeenCalledWith(PUB, undefined, 'live1', ['friend-a'], expect.any(String), undefined, false);
+    expect(shareFriendPubActivity).toHaveBeenCalledWith(PUB, undefined, 'live1', ['friend-a'], expect.any(String), undefined);
   });
 
   it('routes a request op through sendFriendRequest', async () => {
@@ -278,8 +278,8 @@ describe('tour pings', () => {
     shareFriendPubActivity.mockClear();
     shareFriendPubActivity.mockResolvedValue({ ok: true });
     await flushFriendsQueue();
-    expect(shareFriendPubActivity).toHaveBeenCalledWith(PUB, 'Tour de pub: Pivní okruh', 't1', undefined, '2026-09-26T18:00:00.000Z', tour, false);
-    expect(shareFriendPubActivity).toHaveBeenCalledWith(PUB, undefined, 'old', undefined, undefined, undefined, false);
+    expect(shareFriendPubActivity).toHaveBeenCalledWith(PUB, 'Tour de pub: Pivní okruh', 't1', undefined, '2026-09-26T18:00:00.000Z', tour);
+    expect(shareFriendPubActivity).toHaveBeenCalledWith(PUB, undefined, 'old', undefined, undefined, undefined);
     expect(shareFriendPubActivity).toHaveBeenCalledTimes(2);
     expect(await readQueue()).toEqual([]);
     // Delivered is told apart from dropped, so a screen never claims a rejected ping went out.

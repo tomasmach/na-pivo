@@ -7548,9 +7548,6 @@ class FriendActivityView(APIView):
                         ],
                         ignore_conflicts=True,
                     )
-                    if notify_ids and not activity.message and data.get("message"):
-                        activity.message = data["message"]
-                        activity.save(update_fields=["message", "updated_at"])
                 else:
                     notify_ids = target_friend_ids
                     should_notify = (

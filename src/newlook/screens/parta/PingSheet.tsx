@@ -102,13 +102,14 @@ export function PingSheet() {
     }
     // The server takes 200 characters of name and 128 of id; anything longer would be dropped for good.
     const target: Pub = { ...pub, name: pub.name.slice(0, 200), id: pub.id.length > 128 ? '' : pub.id };
-    // Everyone picked means the whole party, as the server reads a missing list.
-    const recipientIds = chosen.length === friends.length ? undefined : chosen;
+    const addRecipients = !!friend;
+    // Everyone picked means the whole party, as the server reads a missing list. Joining my
+    // ping needs the names, or the server would replace the ping instead.
+    const recipientIds = !addRecipients && chosen.length === friends.length ? undefined : chosen;
     const message = note.trim();
     const clientId = generateUuidV4();
     const startedAt = new Date().toISOString();
     trackUiInteraction('parta_activity_share', 'submit');
-    const addRecipients = !!friend;
     const res = await shareFriendPubActivity(target, message, clientId, recipientIds, startedAt, undefined, addRecipients);
     trackUiInteraction('parta_activity_share', res.ok || isRetriableFriendError(res) ? 'success' : 'failure');
     if (!res.ok && !isRetriableFriendError(res)) {

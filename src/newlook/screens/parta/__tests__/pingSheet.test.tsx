@@ -165,3 +165,11 @@ test('a queued ping to one kámoš keeps the join flag for the retry', async () 
     payload: { pub: pinkasy, message: '', recipientIds: ['bara'], startedAt: expect.any(String), addRecipients: true },
   });
 });
+
+test('with one kámoš in the party the join still names them, or the ping would be replaced', async () => {
+  mockParty = { friends: [friends[1]], ghost: false };
+  mockParams = { friend: 'bara' };
+  share.mockResolvedValue({ ok: true, notified: 1 });
+  await sendFrom(t.nv.parta.pingPartyShort);
+  expect(share).toHaveBeenCalledWith(pinkasy, '', 'client-1', ['bara'], expect.any(String), undefined, true);
+});

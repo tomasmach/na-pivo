@@ -246,7 +246,9 @@ async function deliver(item: FriendQueueItem): Promise<QueueSyncResult> {
           })
         : scheduledFor
         ? await createFriendPlan(pub, scheduledFor, message, item.clientId, item.payload.recipientIds)
-        : await shareFriendPubActivity(pub, message, item.clientId, item.payload.recipientIds, item.payload.startedAt, item.payload.tour, item.payload.addRecipients === true);
+        : item.payload.addRecipients === true
+          ? await shareFriendPubActivity(pub, message, item.clientId, item.payload.recipientIds, item.payload.startedAt, item.payload.tour, true)
+          : await shareFriendPubActivity(pub, message, item.clientId, item.payload.recipientIds, item.payload.startedAt, item.payload.tour);
       const verdict = classify(result);
       if (verdict === 'ok') await markDelivered(item.clientId);
       return verdict;
