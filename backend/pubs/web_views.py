@@ -701,6 +701,14 @@ def _beer_texts(kind: str, page: BeerPage | None, key: str) -> dict:
     }
 
 
+def _later_page_title(kind: str, name: str, number: int) -> str:
+    """Every page of a long pub list is its own in search results: it says which one, in a shorter title that still fits."""
+
+    if kind == BeerPage.Kind.BRAND:
+        return gettext("Piva značky %(brand)s, strana %(page)s") % {"brand": name, "page": number}
+    return gettext("%(beer)s: kde se čepuje, strana %(page)s") % {"beer": name, "page": number}
+
+
 def _snapshot_texts(snapshot: PubPriceSnapshot | None, area: dict | None) -> dict:
     """The line under the headline number: how many pubs, over which window, as of when."""
 
@@ -1294,9 +1302,7 @@ def beer_pages(request: HttpRequest, kind: str = BeerPage.Kind.LIST, key: str = 
             "folded_rows": _FOLDED_ROWS,
             **_stores(campaign),
         },
-        # Every page of a long pub list is its own in search results, so each says which one it is.
-        title=gettext("%(title)s, strana %(page)s") % {"title": texts["page_title"], "page": number} if number > 1
-        else texts["page_title"],
+        title=_later_page_title(kind, data.get("name") or texts["h1"], number) if page and number > 1 else texts["page_title"],
         description=(
             (gettext("Strana %(page)s z %(pages)s.") % {"page": number, "pages": last_page} + " " if number > 1 else "")
             + texts["description"]

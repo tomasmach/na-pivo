@@ -23,7 +23,7 @@ from django.utils.translation import gettext
 from PIL import Image, ImageDraw, ImageFont
 
 from pubs.api.pub_beers_views import CITY_ALIASES, _merged_aliases, _places, city_name
-from pubs.api.views import _globally_reported_pub_cache_keys
+from pubs.api.views import _globally_reported_pub_cache_keys, _with_pub_name_corrections
 from pubs.enrichment import names_match
 from pubs.enrichment.coverage import coverage_country
 from pubs.models import (
@@ -270,17 +270,41 @@ def _cheapest(rows: list[PubPriceIndex], in_city: str = "") -> list[dict]:
     return picked
 
 
+def without_private_pubs(rows: list[PubPriceIndex], targets: dict[str, str]) -> list[PubPriceIndex]:
+    """Prices of pubs anyone can walk into, judged by the name the web shows like the catalogue does.
+
+    A price row keeps the name it was written under. A pub renamed to "soukromý výčep" since, or a
+    duplicate merged into one, is private all the same. ``targets`` maps a merged duplicate to its pub.
+    """
+
+    places = _places(sorted({row.cache_key for row in rows} | {targets[row.cache_key] for row in rows if row.cache_key in targets}))
+    renamed = _with_pub_name_corrections(
+        [{"name": row.name, "position": {"lat": row.lat, "lon": row.lng}} for row in rows]
+    )
+    kept = []
+    for row, item in zip(rows, renamed, strict=True):
+        names = [row.name, item["name"]]
+        place = places.get(row.cache_key)
+        if place and any(names_match(place["name"], name) for name in names):
+            names.append(place["name"])
+        if (target := targets.get(row.cache_key)) and target in places:
+            names.append(places[target]["name"])
+        if not any(is_private_pub(name) for name in names):
+            kept.append(row)
+    return kept
+
+
 def _one_price_per_pub(rows: list[PubPriceIndex], since: datetime, fresh_since: datetime) -> list[PubPriceIndex]:
     """The newest confirmed price of every public pub: merged duplicates count once, hidden and private pubs not at all."""
 
-    rows = [row for row in rows if not is_private_pub(row.name)]
-    confirmed = _confirmed_since(rows, since)
     # A duplicate merged into another pub is that pub: it counts once, with the newest price.
     targets: dict[str, str] = {}
     alias_names: dict[str, list[str]] = defaultdict(list)
     for key, target, name in _merged_aliases().values_list("cache_key", "canonical_pub__cache_key", "name"):
         targets[key] = target
         alias_names[key].append(name)
+    rows = without_private_pubs(rows, targets)
+    confirmed = _confirmed_since(rows, since)
     pubs: dict[str, PubPriceIndex] = {}
     for row in sorted(
         (row for row in rows if row.cache_key in confirmed), key=lambda row: confirmed[row.cache_key]

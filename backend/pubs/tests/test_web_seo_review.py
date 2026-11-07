@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import re
+import uuid
 from datetime import timedelta
 from io import StringIO
 from urllib.parse import parse_qs, urlsplit
@@ -13,12 +14,21 @@ from django.core.cache import cache
 from django.core.management import call_command
 from django.utils import timezone
 
-from pubs.models import PubDirectory
-from pubs.price_map import save_price_snapshot
+from pubs.enrichment.matcher import geohash8
+from pubs.models import (
+    BeerBrand,
+    BeerProduct,
+    CanonicalPub,
+    PubAlias,
+    PubDirectory,
+    PubNameCorrection,
+    UserAddedPub,
+)
+from pubs.price_map import build_price_map, save_price_snapshot
 from pubs.tests.sitemaps import sitemap_xml
 from pubs.tests.test_beer_pages import _pub as _menu_pub
 from pubs.tests.test_beer_pages import _second_beer, _three_fresh_pubs, catalog  # noqa: F401
-from pubs.tests.test_price_map import BRNO, PRAGUE
+from pubs.tests.test_price_map import BRNO, PRAGUE, _rename
 from pubs.tests.test_price_map import _price as _indexed_price
 from pubs.tests.test_web_account import _member, _web, no_emails  # noqa: F401  (fixture)
 from pubs.tests.test_web_pubs import _pub
@@ -154,3 +164,63 @@ def test_log_a_beer_from_my_pubs_picks_the_pub_whose_stored_name_was_cleaned_for
     assert parse_qs(urlsplit(log_url).query)["n"] == [stored]
     linked = client.get(log_url).context["data"]["pubs"][0]
     assert (linked["name"], linked["linked"]) == (stored, True)
+
+
+def test_the_news_never_recommends_a_private_tap(client):
+    for name in ("Soukromý výčep u Jardy", "Pivnice U Rotundy"):
+        UserAddedPub.objects.create(client_id=uuid.uuid4(), cache_key=geohash8(50.0866, 14.4174 + len(name) / 1000),
+                                    name=name, lat=50.0866, lng=14.4174 + len(name) / 1000, city="Praha 1")
+
+    html = client.get("/novinky").content.decode()
+
+    assert "Pivnice U Rotundy" in html and "u Jardy" not in html
+
+
+def test_a_later_page_of_a_longer_beer_name_keeps_its_title_under_sixty_characters(client, monkeypatch):
+    from pubs import web_views
+
+    monkeypatch.setattr(web_views, "PUBS_PER_PAGE", 2)
+    brand = BeerBrand.objects.create(key="kozlovar-urquell", name="Kozlovar Urquell", rank=1)
+    for key, name in (("kozlovar-urquell", "Kozlovar Urquell"), ("kozlovar-urquell-tmavy", "Kozlovar Urquell Tmavý")):
+        BeerProduct.objects.create(key=key, brand=brand, brand_key=brand.key, brand_name=brand.name, name=name, aliases=[], rank=1)
+        for index in range(3):
+            _menu_pub(f"{name} hospoda {index}", [(name, 55 + index, 500)])
+    call_command("snapshot_beer_prices", stdout=StringIO())
+
+    titles = {
+        path: re.search(r"<title>(.*?)</title>", client.get(path).content.decode(), re.S).group(1)
+        for path in ("/pivo/kozlovar-urquell?page=2", "/en/beer/kozlovar-urquell?page=2",
+                     "/pivo/znacka/kozlovar-urquell?page=2", "/en/beer/brand/kozlovar-urquell?page=2")
+    }
+
+    assert list(titles.values()) == [
+        "Kozlovar Urquell: kde se čepuje, strana 2 | Na pivo",
+        "Kozlovar Urquell on tap, page 2 | Na pivo",
+        "Piva značky Kozlovar Urquell, strana 2 | Na pivo",
+        "Kozlovar Urquell beers, page 2 | Na pivo",
+    ]
+    assert all(len(title) <= 60 for title in titles.values())
+
+
+def test_a_pub_renamed_or_merged_into_a_private_tap_leaves_the_medians_and_the_floor():
+    for price in (48, 52, 56, 60, 64):
+        _indexed_price("Praha 2", price)
+    renamed = _indexed_price("Praha 2", 30, (50.0712, 14.4041))
+    _rename(renamed, "U Jardy")
+    PubNameCorrection.objects.create(client_id=uuid.uuid4(), cache_key=geohash8(renamed.lat, renamed.lng),
+                                     original_name="U Jardy", suggested_name="U Jardy - soukromý výčep",
+                                     lat=renamed.lat, lng=renamed.lng)
+    duplicate = _indexed_price("Praha 2", 32, (50.0734, 14.4302))
+    _rename(duplicate, "Na Hrázi")
+    canonical = CanonicalPub.objects.create(cache_key=geohash8(50.0735, 14.4303), name="Soukromý výčep Na Hrázi",
+                                            name_key="soukromy vycep na hrazi", lat=50.0735, lng=14.4303,
+                                            city="Praha 2", country="cz")
+    PubAlias.objects.create(canonical_pub=canonical, cache_key=duplicate.cache_key, name="Na Hrázi",
+                            name_key="na hrazi", lat=duplicate.lat, lng=duplicate.lng)
+
+    data = build_price_map()
+
+    assert (data["country"]["pubs"], data["country"]["median"]) == (5, 56)
+
+    call_command("snapshot_beer_prices", stdout=StringIO())
+    assert beer_index._index()["regions"]["CZ010"]["pubs"] == 5

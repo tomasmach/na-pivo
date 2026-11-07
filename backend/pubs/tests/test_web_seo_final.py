@@ -262,7 +262,7 @@ def test_a_long_pub_list_of_a_beer_goes_on_over_pages_a_crawler_can_follow(clien
     assert re.search(r'>3–3\sz\s3</span>', second)
     assert '<link rel="canonical" href="https://na-pivo.cz/pivo/testovar-11?page=2">' in second
     assert 'hreflang="en" href="https://na-pivo.cz/en/beer/testovar-11?page=2"' in second
-    assert _title(second) == "Testovar 11°: kde se čepuje a za kolik, strana 2 | Na pivo"
+    assert _title(second) == "Testovar 11°: kde se čepuje, strana 2 | Na pivo"
 
     past = client.get("/pivo/testovar-11?page=7")
     assert (past.status_code, past["Location"]) == (301, "/pivo/testovar-11?page=2")

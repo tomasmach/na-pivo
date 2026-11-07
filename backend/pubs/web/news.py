@@ -30,7 +30,7 @@ from pubs.price_map import public_floor, shows_price
 from pubs.pub_events import PubEvent
 from pubs.web.dates import time_tag, with_times
 from pubs.web.pages import render_page, web_page
-from pubs.web.places import place_name, pub_name
+from pubs.web.places import is_private_pub, place_name, pub_name
 from pubs.web.public_common import (
     PAGE_CACHE_SECONDS,
     breadcrumbs,
@@ -170,6 +170,8 @@ def _feed(week: int) -> dict:
             item["district"] = raw_city if raw_city != item["city"] else ""
             if place and names_match(place["name"], item["name"]):
                 item["name"] = place["name"]
+            if is_private_pub(item["name"]):
+                continue
             item["day"] = timezone.localdate(item.pop("at")).isoformat()
             shown.append(item)
             if len(shown) == MAX_ITEMS:
@@ -184,11 +186,16 @@ def _new_pubs() -> list[dict]:
         rows = UserAddedPub.objects.filter(
             active=True, created_at__gte=timezone.now() - timedelta(days=30)
         ).order_by("-created_at")[:20]
-        return [
-            {"key": pub.cache_key, "name": pub.name, "city": city_name(pub.city), "district": pub.city,
-             "day": timezone.localdate(pub.created_at).isoformat()}
-            for pub in rows
-        ]
+        places = _places(sorted({pub.cache_key for pub in rows}))
+        shown = []
+        for pub in rows:
+            place = places.get(pub.cache_key)
+            name = place["name"] if place and names_match(place["name"], pub.name) else pub.name
+            if is_private_pub(name):
+                continue
+            shown.append({"key": pub.cache_key, "name": name, "city": city_name(pub.city), "district": pub.city,
+                          "day": timezone.localdate(pub.created_at).isoformat()})
+        return shown
 
     return cache.get_or_set("web:news:new-pubs", build, PAGE_CACHE_SECONDS)
 
