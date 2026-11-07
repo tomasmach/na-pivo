@@ -32,9 +32,8 @@ function sitting(id: string) {
 }
 const dashboard = (friend: string) => ({ friends: [{ id: friend }], presence: [sitting(friend)], myPresence: { ...sitting('me'), visibleToParta: true } });
 
-let shown: string[] = [];
-function Probe() {
-  shown = useTablemates(PUB_KEY, 1, NOW).map((p) => p.id);
+function Probe({ onShow }: { onShow: (ids: string[]) => void }) {
+  onShow(useTablemates(PUB_KEY, 1, NOW).map((p) => p.id));
   return null;
 }
 
@@ -43,9 +42,10 @@ test('after an account switch the counter forgets the old crew and shows the new
   usePartaStore.setState({ dashboard: dashboard('klara') as never, generation: 1 });
   (fetchFriendsDashboard as jest.Mock).mockResolvedValue(dashboard('jana'));
   mockGeneration = 2;
+  const onShow = jest.fn();
   await act(async () => {
-    TestRenderer.create(<Probe />);
+    TestRenderer.create(<Probe onShow={onShow} />);
   });
   expect(usePartaStore.getState().generation).toBe(2);
-  expect(shown).toEqual(['jana']);
+  expect(onShow).toHaveBeenLastCalledWith(['jana']);
 });
