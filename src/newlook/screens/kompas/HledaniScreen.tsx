@@ -308,7 +308,7 @@ export function HledaniScreen() {
                   remember();
                   setFilters({ beerBrand: beerFilter(beerSuggestion) });
                   pick(null);
-                  router.navigate('/nv/kompas');
+                  router.dismissTo('/nv/kompas');
                 }}
               />
             </Card>

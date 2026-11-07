@@ -108,7 +108,7 @@ export function openNvPub(router: Router, pub: Pub, via?: 'card'): void {
 export function showOnKompas(router: Router, pub: Pub, view: MapView = 'okoli'): void {
   useKompasState.getState().pick(pub);
   useKompasState.getState().set({ mapView: view });
-  router.navigate('/nv/kompas');
+  router.dismissTo('/nv/kompas');
 }
 
 export function pubKey(pub: { lat: number; lng: number }): string {
