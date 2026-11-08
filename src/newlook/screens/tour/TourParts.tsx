@@ -6,7 +6,7 @@ import { beerCountLabel, t } from '@/i18n';
 import { StaticMapMarker } from '@/map/StaticMapMarker';
 import type { TourStop } from '@/tours/model';
 import { formatWalkDistance, walkingLeg } from '@/tours/stopFacts';
-import { tourRegion } from '@/tours/TourMap';
+import { tourFitCoordinates, tourRegion } from '@/tours/TourMap';
 
 import { Icon } from '../../components/Icon';
 import { D, Dot, Press, T } from '../../components/ui';
@@ -63,7 +63,7 @@ export function TourMap({
   const fit = () => {
     if (!coords.length) return;
     const pad = interactive ? { top: 160, right: 60, bottom: 260, left: 60 } : { top: 26, right: 30, bottom: 26, left: 30 };
-    ref.current?.fitToCoordinates(coords, { edgePadding: pad, animated: false });
+    ref.current?.fitToCoordinates(tourFitCoordinates(stops), { edgePadding: pad, animated: false });
   };
   return (
     <View style={[{ height, borderRadius: interactive ? 0 : 20, overflow: 'hidden', backgroundColor: C.card, borderWidth: interactive ? 0 : 1, borderColor: C.hairline }, style]}>

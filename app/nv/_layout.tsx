@@ -76,7 +76,7 @@ export default function NewLookLayout() {
         <Stack.Screen name="verejne-noci" options={{ animation: 'fade', gestureEnabled: false }} />
         <Stack.Screen name="prihlaseni" options={{ presentation: 'fullScreenModal', animation: 'slide_from_bottom' }} />
         <Stack.Screen name="tour-editor" options={{ presentation: 'modal', animation: 'slide_from_bottom' }} />
-        <Stack.Screen name="tour-mapa" options={{ animation: 'fade' }} />
+        <Stack.Screen name="tour-mapa" options={{ presentation: 'fullScreenModal', animation: 'fade', statusBarStyle: 'light' }} />
         <Stack.Screen name="nova-pozvanka" options={{ presentation: 'modal', animation: 'slide_from_bottom' }} />
         <Stack.Screen name="uctenka" options={{ presentation: 'fullScreenModal', animation: 'slide_from_bottom' }} />
         {SHEETS.map((name) => (

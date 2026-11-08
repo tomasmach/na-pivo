@@ -511,7 +511,18 @@ export function TourMapScreen() {
   return (
     <View style={{ flex: 1, backgroundColor: C.bg }}>
       <TourMap stops={stops} height="100%" interactive states={states} next={run ? target : undefined} planning={!run} />
-      <View style={[s.row, { position: 'absolute', top: insets.top + 4, left: SCREEN_X, right: SCREEN_X, gap: 10 }]}>
+      <View
+        pointerEvents="none"
+        style={{
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          right: 0,
+          height: insets.top + 110,
+          experimental_backgroundImage: 'linear-gradient(180deg, #0A0A0AF5 0%, #0A0A0AB3 60%, #0A0A0A00 100%)',
+        }}
+      />
+      <View style={[s.row, { position: 'absolute', top: insets.top + 3, left: SCREEN_X, right: SCREEN_X, gap: 10 }]}>
         <GlassButton icon="chevron-left" size={54} label={t.tours.back} onPress={() => nvBack(router)} />
         <Glass style={[s.fill, { height: 54, borderRadius: 27, paddingHorizontal: 18, justifyContent: 'center' }]}>
           <T s={15} w={700} numberOfLines={1}>
