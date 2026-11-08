@@ -58,6 +58,12 @@
             "android": {
                 "track": "production"
             }
+        },
+        "beta": {
+            "android": {
+                "track": "beta",
+                "serviceAccountKeyPath": "./google-service-account.json"
+            }
         }
     }
 }
