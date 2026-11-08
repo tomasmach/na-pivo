@@ -10,7 +10,7 @@ import { EMPTY_PUB_SEARCH_FILTERS, MAX_AMENITY_FILTERS, normalizePubSearchFilter
 import type { VisitedPubSummary } from '@/map/mapModel';
 import { pubPageParams } from '@/pubPage/openPubPage';
 import { useFocusedPubStore } from '@/stores/focusedPubStore';
-import { useSettingsStore } from '@/stores/settingsStore';
+import { useSettingsStore, type KompasView } from '@/stores/settingsStore';
 
 export type MapView = 'okoli' | 'stopy' | 'parta';
 export type PinMode = 'price' | 'count';
@@ -35,6 +35,8 @@ type KompasState = {
   cityPubs: { name: string; pubs: VisitedPubSummary[] } | null;
   /** A point aimed on the pin map, picked up by "Přidat hospodu". */
   pin: { lat: number; lng: number } | null;
+  /** Map or compass chosen on the tab itself or by a button that promises one; null follows Settings. */
+  view: KompasView | null;
   set: (patch: Partial<Omit<KompasState, 'set' | 'setFilters' | 'clearFilters' | 'pick'>>) => void;
   setFilters: (patch: Partial<PubSearchFilters>) => void;
   clearFilters: () => void;
@@ -51,6 +53,7 @@ export const useKompasState = create<KompasState>((set, get) => ({
   menuScan: null,
   cityPubs: null,
   pin: null,
+  view: null,
   set: (patch) => set(patch),
   setFilters: (patch) => set({ filters: normalizePubSearchFilters({ ...get().filters, ...patch }) }),
   clearFilters: () => {
@@ -89,6 +92,12 @@ export function setOpenOnly(on: boolean): void {
   if (useSettingsStore.getState().hideClosedPubs === on) return;
   useSettingsStore.getState().setHideClosedPubs(on);
   void updateAccountPreferences({ hideClosedPubs: on });
+}
+
+/** A new choice in Settings also drops the view picked on the tab, so the tab shows the choice on the way back. */
+export function setKompasView(view: KompasView): void {
+  useSettingsStore.getState().setKompasView(view);
+  useKompasState.getState().set({ view: null });
 }
 
 type Router = ReturnType<typeof useRouter>;

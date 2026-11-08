@@ -24,6 +24,7 @@ import {
 } from '@/data/beersClient';
 import { t } from '@/i18n';
 import { findBeerWatch, useBeerWatchStore } from '@/stores/beerWatchStore';
+import { useKompasState } from '../kompas/state';
 
 import { fmtCount, fmtDistance, fmtRating, kindLine, lastKnownPosition, myLatestRating, reviewDay, saveBeerRating, savedRating, toggleWatch } from './model';
 import { Stars } from './PivaScreen';
@@ -258,7 +259,10 @@ function BeerBody({ beer, beerRef, reload }: { beer: BeerPage; beerRef: BeerRef;
             </View>
             <Press
               haptic
-              onPress={() => router.dismissTo({ pathname: '/nv/kompas', params: { beer: beer.beerName, pub: nearest?.cacheKey ?? '' } })}
+              onPress={() => {
+                useKompasState.getState().set({ view: 'map' });
+                router.dismissTo({ pathname: '/nv/kompas', params: { beer: beer.beerName, pub: nearest?.cacheKey ?? '' } });
+              }}
               style={[s.row, { height: 42, borderRadius: 21, paddingHorizontal: 16, gap: 6, backgroundColor: C.yellow }]}
             >
               <Icon name="map" size={16} color={C.black} />

@@ -3,6 +3,7 @@ import { englishPlural } from '../enHelpers';
 
 export const commonEn: Strings['nv']['common'] = {
   tabKompas: 'Compass',
+  tabMapa: 'Map',
   tabVycep: 'Taproom',
   tabStamgast: 'Regular',
   tabPiva: 'Beers',

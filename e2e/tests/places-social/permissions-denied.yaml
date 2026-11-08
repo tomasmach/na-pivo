@@ -51,7 +51,7 @@ tags: [full, legacy-ui]
             notifications: deny
       - evalScript: ${output.local.request('/app/open', {})}
       - extendedWaitUntil:
-          visible: {text: 'Kompas'}
+          visible: {text: 'Mapa'}
           timeout: 60000
 - runFlow:
     file: ../../maestro/route.yaml

@@ -127,7 +127,9 @@ function toParty(k: Kompas) {
 
 export function KompasScreen() {
   const router = useRouter();
-  const [mode, setMode] = useState<'map' | 'compass'>('map');
+  const startView = useSettingsStore((st) => st.kompasView);
+  const mode = useKompasState((st) => st.view) ?? startView;
+  const setMode = (view: 'map' | 'compass') => useKompasState.getState().set({ view });
   const k = useKompas();
   const { arrived, target, dismissArrival } = k;
   const picked = useKompasState((st) => st.picked);

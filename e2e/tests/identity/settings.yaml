@@ -65,7 +65,7 @@ tags: [full, identity, legacy-ui]
       platform: Android
     commands:
       - extendedWaitUntil:
-          visible: { text: "Compass" }
+          visible: { text: "Map" }
           timeout: 60000
 - runFlow:
     file: ../../maestro/route.yaml
@@ -96,7 +96,7 @@ tags: [full, identity, legacy-ui]
       platform: Android
     commands:
       - extendedWaitUntil:
-          visible: { text: "Kompas" }
+          visible: { text: "Mapa" }
           timeout: 60000
 - runFlow:
     file: ../../maestro/route.yaml
