@@ -128,13 +128,8 @@ function toParty(k: Kompas) {
 export function KompasScreen() {
   const router = useRouter();
   const startView = useSettingsStore((st) => st.kompasView);
-  const [mode, setMode] = useState(startView);
-  // The tab keeps its screen mounted, so a new choice in Settings applies on the way back.
-  const [shownStart, setShownStart] = useState(startView);
-  if (shownStart !== startView) {
-    setShownStart(startView);
-    setMode(startView);
-  }
+  const mode = useKompasState((st) => st.view) ?? startView;
+  const setMode = (view: 'map' | 'compass') => useKompasState.getState().set({ view });
   const k = useKompas();
   const { arrived, target, dismissArrival } = k;
   const picked = useKompasState((st) => st.picked);

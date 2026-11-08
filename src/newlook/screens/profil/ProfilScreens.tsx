@@ -84,6 +84,7 @@ import { Button, Card, Chip, ChipWrap, D, IconButton, Kicker, Person, Press, Pro
 import { dialog, toast } from '../../ui/store';
 import { C, SCREEN_X, s } from '../../theme';
 import { Dial } from '../kompas/Dial';
+import { setKompasView } from '../kompas/state';
 import { usePartaStore } from '../parta/partaStore';
 import { ProfilAvatar } from './ProfilAvatar';
 import {
@@ -1017,7 +1018,7 @@ export function NastaveniScreen() {
                 { key: 'compass', label: P().settings.openOnCompass },
               ]}
               value={st.kompasView}
-              onChange={st.setKompasView}
+              onChange={setKompasView}
             />
           }
         />

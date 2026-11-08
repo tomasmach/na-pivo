@@ -308,6 +308,7 @@ export function HledaniScreen() {
                   remember();
                   setFilters({ beerBrand: beerFilter(beerSuggestion) });
                   pick(null);
+                  useKompasState.getState().set({ view: 'map' });
                   router.dismissTo('/nv/kompas');
                 }}
               />
