@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { View } from 'react-native';
 import QRCode from 'react-native-qrcode-svg';
 import { useIsFocused, useLocalSearchParams, useRouter, type Href } from 'expo-router';
+import { StatusBar } from 'expo-status-bar';
 import { nvBack } from '@/newlook/navigation';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -510,6 +511,8 @@ export function TourMapScreen() {
   const distance = leg ? formatWalkDistance(leg.meters).split(' ') : null;
   return (
     <View style={{ flex: 1, backgroundColor: C.bg }}>
+      {/* iOS presents this full-screen modal with a dark status bar in light system appearance unless the screen asks again. */}
+      <StatusBar style="light" />
       <TourMap stops={stops} height="100%" interactive states={states} next={run ? target : undefined} planning={!run} />
       <View
         pointerEvents="none"
