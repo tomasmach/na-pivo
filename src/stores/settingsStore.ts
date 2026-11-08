@@ -12,6 +12,7 @@ import { isBodyProfile, type BodyProfile } from '@/drinks/alcoholEstimate';
 
 export type Mode = 'nearest' | 'surprise';
 export type NavigationProvider = 'google' | 'mapy';
+export type KompasView = 'map' | 'compass';
 export interface HomePoint {
   lat: number;
   lng: number;
@@ -25,6 +26,8 @@ interface SettingsState {
   mode: Mode;
   homePoint: HomePoint | null;
   navigationProvider: NavigationProvider;
+  /** What the first tab opens on, and so what the tab is called. */
+  kompasView: KompasView;
   maxDistanceKm: number | null;
   priceCurrency: PriceCurrency;
   priceCurrencyRate: number;
@@ -71,6 +74,7 @@ interface SettingsState {
   setMode: (m: Mode) => void;
   setHomePoint: (point: HomePoint | null) => void;
   setNavigationProvider: (provider: NavigationProvider) => void;
+  setKompasView: (view: KompasView) => void;
   setMaxDistanceKm: (km: number | null) => void;
   setPriceCurrency: (currency: PriceCurrency, rateCzkPerUnit?: number) => void;
   setHapticEnabled: (v: boolean) => void;
@@ -104,6 +108,7 @@ export const useSettingsStore = create<SettingsState>()(
       mode: 'nearest',
       homePoint: null,
       navigationProvider: 'google',
+      kompasView: 'map',
       maxDistanceKm: null,
       priceCurrency: DEFAULT_PRICE_CURRENCY,
       priceCurrencyRate: 1,
@@ -138,6 +143,7 @@ export const useSettingsStore = create<SettingsState>()(
       setMode: (m) => set({ mode: m }),
       setHomePoint: (point) => set({ homePoint: point }),
       setNavigationProvider: (provider) => set({ navigationProvider: provider }),
+      setKompasView: (view) => set({ kompasView: view }),
       setMaxDistanceKm: (km) => set({ maxDistanceKm: km }),
       setPriceCurrency: (currency, rateCzkPerUnit) => {
         const rate = rateCzkPerUnit ?? getCurrencyRate(currency) ?? 1;
@@ -177,6 +183,7 @@ export const useSettingsStore = create<SettingsState>()(
         mode: state.mode,
         homePoint: state.homePoint,
         navigationProvider: state.navigationProvider,
+        kompasView: state.kompasView,
         maxDistanceKm: state.maxDistanceKm,
         priceCurrency: state.priceCurrency,
         priceCurrencyRate: state.priceCurrencyRate,
@@ -210,6 +217,7 @@ export const useSettingsStore = create<SettingsState>()(
           ...state,
           bodyProfile: isBodyProfile(state.bodyProfile) ? state.bodyProfile : null,
           alcoholEstimateHidden: state.alcoholEstimateHidden === true,
+          kompasView: state.kompasView === 'compass' ? 'compass' : 'map',
         };
       },
       onRehydrateStorage: () => (state) => {

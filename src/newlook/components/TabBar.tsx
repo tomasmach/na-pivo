@@ -7,6 +7,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { trackUiInteraction, type UiInteractionTarget } from '@/data/uxTelemetry';
 import { t } from '@/i18n';
 import { usePartaSignalStore } from '@/stores/partaSignalStore';
+import { useSettingsStore } from '@/stores/settingsStore';
 import { useActiveTourRun } from '@/tours/activeRun';
 import { runGlance } from '@/tours/glance';
 
@@ -23,6 +24,8 @@ const SIDE: Record<string, { label: () => string; icon: IconName }> = {
   piva: { label: () => t.nv.common.tabPiva, icon: 'star' },
   parta: { label: () => t.nv.common.tabParta, icon: 'users' },
 };
+
+const MAP_SIDE = { label: () => t.nv.common.tabMapa, icon: 'map' as IconName };
 
 // Výčep and Piva had no tab before the new look, so they send nothing.
 const TAB_TELEMETRY_TARGETS: Record<string, UiInteractionTarget> = {
@@ -42,6 +45,7 @@ export function TabBar({ state, navigateToTab }: BottomTabBarProps) {
   const insets = useSafeAreaInsets();
   const current = state.routes[state.index]?.name;
   const pendingRequests = usePartaSignalStore((st) => st.pendingRequests);
+  const kompasView = useSettingsStore((st) => st.kompasView);
   const partaBadgeText = usePartaSignalStore((st) => partaBadge(st.pendingRequests, st.unread, st.liveNow));
 
   const go = (name: string) => {
@@ -56,7 +60,7 @@ export function TabBar({ state, navigateToTab }: BottomTabBarProps) {
   };
 
   const tab = (name: string) => {
-    const side = SIDE[name];
+    const side = name === 'kompas' && kompasView === 'map' ? MAP_SIDE : SIDE[name];
     const label = side.label();
     const on = current === name;
     const badge = name === 'parta' ? partaBadgeText : null;

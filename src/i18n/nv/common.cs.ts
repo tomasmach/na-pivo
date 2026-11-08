@@ -3,6 +3,7 @@ import { czechPlural } from '../plural';
 
 export const commonCs = {
   tabKompas: 'Kompas',
+  tabMapa: 'Mapa',
   tabVycep: 'Výčep',
   tabStamgast: 'Štamgast',
   tabPiva: 'Piva',

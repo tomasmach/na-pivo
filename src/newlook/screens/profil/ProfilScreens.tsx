@@ -1007,6 +1007,21 @@ export function NastaveniScreen() {
       </T>
       <Card>
         <Row
+          title={P().settings.openOn}
+          trailing={
+            <Segmented
+              height={36}
+              style={{ width: 180 }}
+              options={[
+                { key: 'map', label: P().settings.openOnMap },
+                { key: 'compass', label: P().settings.openOnCompass },
+              ]}
+              value={st.kompasView}
+              onChange={st.setKompasView}
+            />
+          }
+        />
+        <Row
           last={false}
           title={P().settings.distance}
           trailing={<T s={15} w={600}>{distanceLabel(st.maxDistanceKm)}</T>}
