@@ -1,8 +1,9 @@
 import React, { useRef } from 'react';
 import { StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
-import MapView, { Marker, Polyline, PROVIDER_GOOGLE } from 'react-native-maps';
+import MapView, { Polyline, PROVIDER_GOOGLE } from 'react-native-maps';
 
 import { beerCountLabel, t } from '@/i18n';
+import { StaticMapMarker } from '@/map/StaticMapMarker';
 import type { TourStop } from '@/tours/model';
 import { formatWalkDistance, walkingLeg } from '@/tours/stopFacts';
 import { tourRegion } from '@/tours/TourMap';
@@ -85,7 +86,7 @@ export function TourMap({
       >
         {coords.length > 1 ? <Polyline coordinates={coords} strokeColor="#FFFFFFB3" strokeWidth={3} /> : null}
         {coords.map((c, i) => (
-          <Marker key={`${stops[i].id}-${states?.[i]}-${next}`} coordinate={c} anchor={{ x: 0.5, y: 0.5 }} tracksViewChanges={false}>
+          <StaticMapMarker key={`${stops[i].id}-${states?.[i]}-${next}`} coordinate={c} anchor={{ x: 0.5, y: 0.5 }}>
             {planning ? (
               <View style={[{ width: 24, height: 24, borderRadius: 12, backgroundColor: C.yellow, borderWidth: 2, borderColor: C.black }, s.center]}>
                 <T s={12} w={800} c={C.black}>
@@ -95,7 +96,7 @@ export function TourMap({
             ) : (
               <StopPin n={i + 1} state={states?.[i] ?? 'todo'} next={i === next} size={interactive ? 30 : 24} />
             )}
-          </Marker>
+          </StaticMapMarker>
         ))}
       </MapView>
       {onExpand ? (
