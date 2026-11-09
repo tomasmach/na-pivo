@@ -116,8 +116,8 @@ function postWhen(iso: string, now = new Date()): string {
 
 type NightChange = { round: { given: boolean; count: number } } | 'removed';
 /**
- * The open Duo shows the world and the crew feed side by side, and a friend's public night can be in
- * both: a round given or a night taken down in one shows in the other. Nothing is kept beyond that.
+ * A post's round and its removal go through the feeds that list it: on the open Duo the world and the
+ * crew feed can both list a friend's public night, and a change in one shows in the other.
  */
 const nightListeners = new Set<(id: string, change: NightChange) => void>();
 const tellFeeds = (id: string, change: NightChange) => nightListeners.forEach((listener) => listener(id, change));
@@ -125,18 +125,9 @@ const tellFeeds = (id: string, change: NightChange) => nightListeners.forEach((l
 const roundsInFlight = new Set<string>();
 
 const Post = memo(function Post({ night, showScope }: { night: PublishedNight; showScope: boolean }) {
-  const [given, setGiven] = useState(night.myRound);
-  const [count, setCount] = useState(night.rounds);
+  const given = night.myRound;
+  const count = night.rounds;
   const handle = authorHandle(night);
-  useEffect(() => {
-    const follow = (id: string, change: NightChange) => {
-      if (id !== night.id || change === 'removed') return;
-      setGiven(change.round.given);
-      setCount(change.round.count);
-    };
-    nightListeners.add(follow);
-    return () => void nightListeners.delete(follow);
-  }, [night.id]);
   const setRound = (round: { given: boolean; count: number }) => tellFeeds(night.id, { round });
 
   const toggleRound = () => {
@@ -320,11 +311,16 @@ function useFeed(scope: NightsFeedScope) {
   }, [scope, view.cursor]);
 
   useEffect(() => {
-    const drop = (id: string, change: NightChange) => {
-      if (change === 'removed') setState((prev) => ({ ...prev, nights: prev.nights?.filter((n) => n.id !== id) ?? null }));
-    };
-    nightListeners.add(drop);
-    return () => void nightListeners.delete(drop);
+    const follow = (id: string, change: NightChange) =>
+      setState((prev) => ({
+        ...prev,
+        nights:
+          change === 'removed'
+            ? (prev.nights?.filter((n) => n.id !== id) ?? null)
+            : (prev.nights?.map((n) => (n.id === id ? { ...n, myRound: change.round.given, rounds: change.round.count } : n)) ?? null),
+      }));
+    nightListeners.add(follow);
+    return () => void nightListeners.delete(follow);
   }, []);
 
   return { ...view, load, loadMore };
