@@ -1,7 +1,8 @@
-import React, { memo, useCallback, useEffect, useRef, useState } from 'react';
+import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Image, ScrollView, View } from 'react-native';
 import Animated from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { create } from 'zustand';
 
 import { reportProfileContent } from '@/data/auth';
 import { fetchLeaderboard } from '@/data/leaderboardsClient';
@@ -114,9 +115,14 @@ function postWhen(iso: string, now = new Date()): string {
   return d.toLocaleDateString(intlLocale, { day: 'numeric', month: 'numeric' });
 }
 
-const Post = memo(function Post({ night, showScope, onRemoved }: { night: PublishedNight; showScope: boolean; onRemoved: (id: string) => void }) {
-  const [given, setGiven] = useState(night.myRound);
-  const [count, setCount] = useState(night.rounds);
+/** The open Duo shows the world and the crew side by side, and a friend's public night can be in both: a round or a removal shows in both. */
+const useNightEdits = create<{ rounds: Record<string, { given: boolean; count: number }>; removed: Record<string, true> }>(() => ({ rounds: {}, removed: {} }));
+
+const Post = memo(function Post({ night, showScope }: { night: PublishedNight; showScope: boolean }) {
+  const edited = useNightEdits((st) => st.rounds[night.id]);
+  const given = edited?.given ?? night.myRound;
+  const count = edited?.count ?? night.rounds;
+  const setRound = (round: { given: boolean; count: number }) => useNightEdits.setState((st) => ({ rounds: { ...st.rounds, [night.id]: round } }));
   const busy = useRef(false);
   const handle = authorHandle(night);
 
@@ -124,15 +130,14 @@ const Post = memo(function Post({ night, showScope, onRemoved }: { night: Publis
     if (busy.current || night.isMine) return;
     busy.current = true;
     const turningOn = !given;
+    const before = { given, count };
     trackUiInteraction('night_react', turningOn ? 'toggle_on' : 'toggle_off');
-    setGiven(turningOn);
-    setCount((c) => Math.max(0, c + (turningOn ? 1 : -1)));
+    setRound({ given: turningOn, count: Math.max(0, count + (turningOn ? 1 : -1)) });
     void (turningOn ? reactToNight(night.id) : clearNightReaction(night.id)).then((res) => {
       busy.current = false;
       trackUiInteraction('night_react', res.ok || isRetriableNightError(res) ? 'success' : 'failure');
       if (res.ok) {
-        setCount(res.rounds);
-        setGiven(res.myRound);
+        setRound({ given: res.myRound, count: res.rounds });
         return;
       }
       if (isRetriableNightError(res)) {
@@ -140,8 +145,7 @@ const Post = memo(function Post({ night, showScope, onRemoved }: { night: Publis
         toast({ kind: 'offline', title: t.nv.vycep.roundQueued, icon: 'hand-platter' });
         return;
       }
-      setGiven(!turningOn);
-      setCount((c) => Math.max(0, c + (turningOn ? -1 : 1)));
+      setRound(before);
       toast({ kind: 'error', title: t.nv.vycep.roundError, icon: 'hand-platter' });
     });
   };
@@ -187,7 +191,7 @@ const Post = memo(function Post({ night, showScope, onRemoved }: { night: Publis
               if (!res.ok) void enqueueNightOp({ op: 'unpublish', clientId });
               useVycepStore.getState().markUnpublished(clientId);
               toast({ kind: 'info', title: t.nv.vycep.unpublished, icon: 'megaphone' });
-              onRemoved(night.id);
+              useNightEdits.setState((st) => ({ removed: { ...st.removed, [night.id]: true } }));
             });
           },
         },
@@ -277,6 +281,14 @@ function useFeed(scope: NightsFeedScope) {
     const mine = ++seq.current;
     void fetchNightsFeed(scope).then((res) => {
       if (mine !== seq.current) return;
+      // A removed night the server lists again was hung again.
+      const back = res.ok ? res.nights.filter((n) => useNightEdits.getState().removed[n.id]) : [];
+      if (back.length)
+        useNightEdits.setState((st) => {
+          const removed = { ...st.removed };
+          for (const n of back) delete removed[n.id];
+          return { removed };
+        });
       setState((prev) =>
         res.ok
           ? { scope, nights: res.nights, cursor: res.nextCursor, failed: false }
@@ -302,9 +314,10 @@ function useFeed(scope: NightsFeedScope) {
     });
   }, [scope, view.cursor]);
 
-  const remove = useCallback((id: string) => setState((prev) => ({ ...prev, nights: prev.nights?.filter((n) => n.id !== id) ?? null })), []);
+  const removed = useNightEdits((st) => st.removed);
+  const nights = useMemo(() => view.nights?.filter((n) => !removed[n.id]) ?? null, [removed, view.nights]);
 
-  return { ...view, load, loadMore, remove };
+  return { ...view, nights, load, loadMore };
 }
 
 function useSummary(scope: NightsFeedScope) {
@@ -391,7 +404,7 @@ function Feed({ scope, onScope }: { scope: Scope; onScope?: (scope: Scope) => vo
         keyExtractor={nightKey}
         renderItem={({ item, index }) => {
           // Everything in the world tab is public, so only your own night repeats who can see it.
-          const post = <Post night={item} showScope={scope === 'parta' || item.isMine} onRemoved={feed.remove} />;
+          const post = <Post night={item} showScope={scope === 'parta' || item.isMine} />;
           return index < FADED_POSTS ? <Animated.View entering={fadeIn}>{post}</Animated.View> : post;
         }}
         onEndReached={feed.loadMore}
