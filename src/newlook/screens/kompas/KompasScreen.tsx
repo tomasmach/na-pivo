@@ -297,8 +297,9 @@ function MapMode({ k, name, onCompass, beside = false }: { k: Kompas; name: Name
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
-        style={{ position: 'absolute', top: insets.top + 70, left: 0, right: 0 }}
-        contentContainerStyle={{ paddingHorizontal: SCREEN_X, gap: 8 }}
+        // Beside the compass the map's left edge is the fold, which its chips keep clear of.
+        style={{ position: 'absolute', top: insets.top + 70, left: beside ? SCREEN_X : 0, right: 0 }}
+        contentContainerStyle={{ paddingLeft: beside ? 0 : SCREEN_X, paddingRight: SCREEN_X, gap: 8 }}
       >
         {activeChip ? (
           <Press

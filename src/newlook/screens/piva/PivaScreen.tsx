@@ -34,6 +34,7 @@ import { useBeerWatchStore } from '@/stores/beerWatchStore';
 import { STYLE_FILTERS, fmtCount, fmtDistance, fmtRating, kindLine, lastKnownPosition, styleFilterLabel } from './model';
 import { degreeLabel, regionLabel, useRankingRegion } from './RankingFilterSheets';
 import { useLoad, type Load } from './states';
+import { useEdgeBleed } from '../../duo/paneContext';
 
 const SHADES = [C.yellow, '#F7F7F2B3', '#F7F7F273', '#F7F7F242', '#F7F7F229'];
 const ROMAN = ['I', 'II', 'III', 'IV', 'V'];
@@ -160,6 +161,7 @@ function PivaList({ tab, onTab }: { tab: PivaTab; onTab?: (tab: PivaTab) => void
   const p = t.nv.piva;
   const { book } = useBook();
   const collectionHalf = !onTab;
+  const bleed = useEdgeBleed(SCREEN_X);
   const [style, setStyle] = useState<BeerStyle | null>(null);
   const region = useRankingRegion((st) => st.region);
   const degree = useRankingRegion((st) => st.degree);
@@ -205,7 +207,7 @@ function PivaList({ tab, onTab }: { tab: PivaTab; onTab?: (tab: PivaTab) => void
         )}
         {tab !== 'mine' ? (
           <>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginHorizontal: -SCREEN_X }} contentContainerStyle={{ paddingHorizontal: SCREEN_X, gap: 8 }}>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={bleed.style} contentContainerStyle={[bleed.contentStyle, { gap: 8 }]}>
               <Chip label={regionLabel(region)} trailing="chevron-down" active={!!region} plain onPress={() => router.push('/nv/kraj')} />
               <Chip label={degreeLabel(degree)} trailing="chevron-down" active={!!degree} plain onPress={() => router.push('/nv/stupen')} />
               {STYLE_FILTERS.map((f) => (

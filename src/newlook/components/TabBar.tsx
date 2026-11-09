@@ -50,7 +50,7 @@ export function TabBar({ state, navigateToTab }: BottomTabBarProps) {
   const insets = useWindowInsets();
   const rail = useRailSide();
   // The open book shows the compass and the map together, so the tab is the compass again.
-  const { book } = useBook();
+  const { book, foldX, width } = useBook();
   const current = state.routes[state.index]?.name;
   const pendingRequests = usePartaSignalStore((st) => st.pendingRequests);
   const kompasView = useSettingsStore((st) => st.kompasView);
@@ -123,7 +123,8 @@ export function TabBar({ state, navigateToTab }: BottomTabBarProps) {
     const bottom = tabBarBottom(insets.bottom);
     return (
       <>
-        {tourStrip(bottom, { left: insets.left + 16, right: insets.right + 16 })}
+        {/* On the open book the strip stays in the left half, off the fold. */}
+        {tourStrip(bottom, { left: insets.left + 16, right: book ? width - foldX + 16 : insets.right + 16 })}
         <View
           pointerEvents="box-none"
           style={{ position: 'absolute', [rail]: edge, bottom, width: RAIL_WIDTH, alignItems: 'center', gap: 8 }}

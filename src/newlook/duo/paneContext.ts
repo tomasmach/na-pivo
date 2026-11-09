@@ -17,3 +17,18 @@ export const PaneProvider = PaneContext.Provider;
 export function usePane(): Pane | null {
   return useContext(PaneContext);
 }
+
+/**
+ * Margins and padding for a row that scrolls sideways out to the screen's
+ * edges. On the open book it stops at the content edge on the fold's side, so
+ * nothing you can tap scrolls into the 20 pt beside the fold.
+ */
+export function useEdgeBleed(inset: number): {
+  style: { marginLeft: number; marginRight: number };
+  contentStyle: { paddingLeft: number; paddingRight: number };
+} {
+  const side = usePane()?.side;
+  const left = side === 'right' ? 0 : inset;
+  const right = side === 'left' ? 0 : inset;
+  return { style: { marginLeft: -left, marginRight: -right }, contentStyle: { paddingLeft: left, paddingRight: right } };
+}

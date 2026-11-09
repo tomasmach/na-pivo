@@ -36,6 +36,7 @@ import { fadeIn } from '../../motion';
 import { C, SCREEN_X, s } from '../../theme';
 import { dialog, toast } from '../../ui/store';
 import { clockTime, daysUntil, routeLine } from './nightData';
+import { useEdgeBleed } from '../../duo/paneContext';
 
 export function RundaButton({ count, given, onPress, disabled }: { count: number; given: boolean; onPress: () => void; disabled?: boolean }) {
   if (disabled) {
@@ -352,6 +353,7 @@ function Feed({ scope, onScope }: { scope: Scope; onScope?: (scope: Scope) => vo
   const insets = useSafeAreaInsets();
   const tabSpace = useTabBarSpace();
   const crewHalf = !onScope && scope === 'parta';
+  const bleed = useEdgeBleed(SCREEN_X);
   const feedScope: NightsFeedScope = scope === 'svet' ? 'global' : 'friends';
   const autopublish = useVycepStore((st) => st.nightAutopublish);
   const feed = useFeed(feedScope);
@@ -430,7 +432,7 @@ function Feed({ scope, onScope }: { scope: Scope; onScope?: (scope: Scope) => vo
               </View>
             </View>
             {crewHalf ? null : (
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginHorizontal: -SCREEN_X }} contentContainerStyle={{ paddingHorizontal: SCREEN_X, gap: 8 }}>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={bleed.style} contentContainerStyle={[bleed.contentStyle, { gap: 8 }]}>
                 <Shortcut
                   icon="camera"
                   title={t.nv.vycep.shortcutContest}

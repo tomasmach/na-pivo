@@ -311,8 +311,9 @@ export function PartaScreen() {
               showsHorizontalScrollIndicator={false}
               snapToInterval={ticketW + 12}
               decelerationRate="fast"
-              style={{ marginHorizontal: -SCREEN_X }}
-              contentContainerStyle={{ paddingHorizontal: SCREEN_X, gap: 12 }}
+              // On the open Duo the invitations stop short of the fold beside them.
+              style={book ? { marginLeft: -SCREEN_X } : { marginHorizontal: -SCREEN_X }}
+              contentContainerStyle={{ paddingLeft: SCREEN_X, paddingRight: book ? 0 : SCREEN_X, gap: 12 }}
               onScroll={(e) => setPage(Math.round(e.nativeEvent.contentOffset.x / (ticketW + 12)))}
               scrollEventThrottle={32}
             >

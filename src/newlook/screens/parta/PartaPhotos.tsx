@@ -18,6 +18,7 @@ import { C, SCREEN_X, s } from '../../theme';
 import { byMonth } from '../vycep/PhotoScreens';
 import { personInitial } from './partaModel';
 import { fromRemote, partaStripPhotos, photoWhen, type ViewerPhoto } from './photoModel';
+import { useEdgeBleed } from '../../duo/paneContext';
 
 /** The list the full-screen viewer swipes through; set right before opening it. */
 const usePhotoViewer = create<{ photos: ViewerPhoto[] }>(() => ({ photos: [] }));
@@ -52,11 +53,12 @@ function usePartaPhotos(): ViewerPhoto[] {
 export function PartaPhotoStrip() {
   const router = useRouter();
   const photos = usePartaPhotos();
+  const bleed = useEdgeBleed(SCREEN_X);
   if (photos.length === 0) return null;
   return (
     <View style={{ gap: 12 }}>
       <SectionTitle title={t.nv.parta.freshPhotos} action={t.nv.parta.lastSevenDays} />
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginHorizontal: -SCREEN_X }} contentContainerStyle={{ paddingHorizontal: SCREEN_X, gap: 8 }}>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={bleed.style} contentContainerStyle={[bleed.contentStyle, { gap: 8 }]}>
         {photos.map((photo, i) => (
           <Press key={photo.key} onPress={() => openViewer(router, photos, i)} accessibilityRole="imagebutton" accessibilityLabel={`${photo.author.name}, ${photo.title}`}>
             <Image source={{ uri: photo.uri }} style={{ width: 100, height: 124, borderRadius: 16, backgroundColor: C.card }} />
