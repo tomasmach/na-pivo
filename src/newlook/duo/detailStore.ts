@@ -35,19 +35,42 @@ let nextKey = 0;
 interface DetailState {
   /** Per tab, the pages stacked over it on the iPhone Duo: its right half on the book, the whole tab folded. */
   pages: Record<string, DetailPage[]>;
+  /** Pages already gone from the stack that still slide out on screen. */
+  leaving: Record<string, DetailPage[]>;
   push: (tab: string, page: Omit<DetailPage, 'key'>) => void;
+  /** What a selection in the primary column does: the page replaces whatever the right half showed. */
+  show: (tab: string, page: Omit<DetailPage, 'key'>) => void;
   replace: (tab: string, page: Omit<DetailPage, 'key'>) => void;
-  pop: (tab: string) => void;
+  /** Back. `animated: false` when a swipe has already moved the page away. */
+  pop: (tab: string, animated?: boolean) => void;
+  /** A page that finished sliding out. */
+  forget: (tab: string, key: string) => void;
+  /** Back to the tab's own screen, as tapping its tab again does. */
+  popToRoot: (tab: string) => void;
   clear: () => void;
 }
 
+const page = (p: Omit<DetailPage, 'key'>): DetailPage => ({ ...p, key: `d${nextKey++}` });
+
 export const useDetailStore = create<DetailState>((set) => ({
   pages: {},
-  push: (tab, page) => set((st) => ({ pages: { ...st.pages, [tab]: [...(st.pages[tab] ?? []), { ...page, key: `d${nextKey++}` }] } })),
-  replace: (tab, page) =>
-    set((st) => ({ pages: { ...st.pages, [tab]: [...(st.pages[tab] ?? []).slice(0, -1), { ...page, key: `d${nextKey++}` }] } })),
-  pop: (tab) => set((st) => ({ pages: { ...st.pages, [tab]: (st.pages[tab] ?? []).slice(0, -1) } })),
-  clear: () => set({ pages: {} }),
+  leaving: {},
+  push: (tab, p) => set((st) => ({ pages: { ...st.pages, [tab]: [...(st.pages[tab] ?? []), page(p)] } })),
+  show: (tab, p) => set((st) => ({ pages: { ...st.pages, [tab]: [page(p)] } })),
+  replace: (tab, p) => set((st) => ({ pages: { ...st.pages, [tab]: [...(st.pages[tab] ?? []).slice(0, -1), page(p)] } })),
+  pop: (tab, animated = true) =>
+    set((st) => {
+      const stack = st.pages[tab] ?? [];
+      const top = stack[stack.length - 1];
+      if (!top) return st;
+      return {
+        pages: { ...st.pages, [tab]: stack.slice(0, -1) },
+        leaving: animated ? { ...st.leaving, [tab]: [...(st.leaving[tab] ?? []), top] } : st.leaving,
+      };
+    }),
+  forget: (tab, key) => set((st) => ({ leaving: { ...st.leaving, [tab]: (st.leaving[tab] ?? []).filter((p) => p.key !== key) } })),
+  popToRoot: (tab) => set((st) => ({ pages: { ...st.pages, [tab]: [] }, leaving: { ...st.leaving, [tab]: [] } })),
+  clear: () => set({ pages: {}, leaving: {} }),
 }));
 
 // A friend or invitation page belongs to the account that opened it.
@@ -64,5 +87,9 @@ export function detailPathname(page: DetailPage): string {
 
 export function useDetailPages(tab: string): DetailPage[] {
   return useDetailStore((st) => st.pages[tab] ?? EMPTY);
+}
+
+export function useLeavingPages(tab: string): DetailPage[] {
+  return useDetailStore((st) => st.leaving[tab] ?? EMPTY);
 }
 

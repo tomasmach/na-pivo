@@ -83,6 +83,24 @@ describe('useNvRouter', () => {
     jest.mocked(useSafeAreaInsets).mockReturnValue({ top: 0, right: 0, bottom: 0, left: 0 });
   });
 
+  it('replaces the right half when the book selects another place from the tab, like a split view', async () => {
+    openBook();
+    const { result } = await renderHook(() => useNvRouter(), { wrapper: wrapper(tabPane) });
+    result.current.push(PUB);
+    result.current.push({ pathname: '/nv/pivo/[id]', params: { id: 'b1' } });
+    expect(useDetailStore.getState().pages.kompas?.map((p) => p.route)).toEqual(['pivo']);
+  });
+
+  it('slides a page out after going back and forgets it when it has left', async () => {
+    useDetailStore.getState().push('parta', { route: 'kamos', params: { id: 'f1' } });
+    useDetailStore.getState().pop('parta');
+    expect(useDetailStore.getState().pages.parta).toEqual([]);
+    const [leaving] = useDetailStore.getState().leaving.parta ?? [];
+    expect(leaving?.route).toBe('kamos');
+    useDetailStore.getState().forget('parta', leaving!.key);
+    expect(useDetailStore.getState().leaving.parta).toEqual([]);
+  });
+
   it('still covers the window with screens that are not details', async () => {
     openBook();
     const { result } = await renderHook(() => useNvRouter(), { wrapper: wrapper(tabPane) });

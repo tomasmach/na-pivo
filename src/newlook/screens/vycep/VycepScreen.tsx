@@ -26,7 +26,7 @@ import { useVycepStore } from '@/stores/vycepStore';
 
 import { BottomFade, TabHeader, TopFade, useTabBarSpace, useTabHeaderScroll } from '../../components/chrome';
 import { BookTab } from '../../duo/BookTab';
-import { useNvRouter } from '../../duo/details';
+import { useDetailPages, useNvRouter } from '../../duo/details';
 import { useBook } from '../../duo/layout';
 import { StatusCard } from '../../components/StatusCard';
 import { Icon, type IconName } from '../../components/Icon';
@@ -79,9 +79,14 @@ export function RundaButton({ count, given, onPress, disabled }: { count: number
   );
 }
 
-function Shortcut({ icon, title, sub, onPress }: { icon: IconName; title: string; sub: string; onPress: () => void }) {
+function Shortcut({ icon, title, sub, onPress, selected }: { icon: IconName; title: string; sub: string; onPress: () => void; selected?: boolean }) {
   return (
-    <Press onPress={onPress} style={{ width: 118, padding: 12, gap: 6, borderRadius: 18, backgroundColor: C.card }}>
+    <Press
+      onPress={onPress}
+      accessibilityState={selected ? { selected: true } : undefined}
+      // Open beside the feed on the iPhone Duo, like a selected row in a split view.
+      style={{ width: 118, padding: 12, gap: 6, borderRadius: 18, backgroundColor: selected ? C.ring : C.card }}
+    >
       <Icon name={icon} size={16} color={C.yellow} />
       <View style={{ gap: 2 }}>
         <T s={14} w={700}>
@@ -353,6 +358,7 @@ function Feed({ scope, onScope }: { scope: Scope; onScope?: (scope: Scope) => vo
   const insets = useSafeAreaInsets();
   const tabSpace = useTabBarSpace();
   const crewHalf = !onScope && scope === 'parta';
+  const openRoute = useDetailPages('vycep').at(-1)?.route;
   const bleed = useEdgeBleed(SCREEN_X);
   const feedScope: NightsFeedScope = scope === 'svet' ? 'global' : 'friends';
   const autopublish = useVycepStore((st) => st.nightAutopublish);
@@ -437,18 +443,21 @@ function Feed({ scope, onScope }: { scope: Scope; onScope?: (scope: Scope) => vo
                   title={t.nv.vycep.shortcutContest}
                   sub={contestDays === null ? '' : contestDays > 0 ? t.nv.vycep.shortcutContestLeft(contestDays) : t.nv.vycep.shortcutContestToday}
                   onPress={() => router.push('/nv/fotopivar')}
+                  selected={openRoute === 'fotopivar'}
                 />
                 <Shortcut
                   icon="route"
                   title={t.nv.vycep.shortcutTour}
                   sub={plan ? t.nv.vycep.shortcutTourSub(plan.stops.length) : t.nv.vycep.shortcutTourEmpty}
                   onPress={() => router.push('/nv/tour')}
+                  selected={openRoute === 'tour'}
                 />
                 <Shortcut
                   icon="trophy"
                   title={t.nv.vycep.shortcutBoards}
                   sub={rank === undefined ? '' : rank ? t.nv.vycep.shortcutBoardsRank(rank) : t.nv.vycep.shortcutBoardsNone}
                   onPress={() => router.push('/nv/zebricky')}
+                  selected={openRoute === 'zebricky'}
                 />
               </ScrollView>
             )}

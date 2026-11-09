@@ -32,7 +32,7 @@ const DETAIL_PATHS: Record<string, DetailRoute> = {
   '/nv/zebricky': 'zebricky',
 };
 
-export { detailPathname, useDetailPages, useDetailStore, type DetailPage, type DetailRoute } from './detailStore';
+export { detailPathname, useDetailPages, useDetailStore, useLeavingPages, type DetailPage, type DetailRoute } from './detailStore';
 
 /** The detail a href opens, or null for any other screen. */
 export function detailOf(href: Href): Omit<DetailPage, 'key'> | null {
@@ -88,7 +88,10 @@ export function useNvRouter(): Router {
     const store = useDetailStore.getState;
     const open = (href: Href, fallback: () => void) => {
       const detail = detailOf(href);
-      if (detail) store().push(tab, detail);
+      // Like a split view: a selection in the tab replaces the right half on the book; inside a page,
+      // or folded, it goes on top of the stack.
+      if (detail && book && !page) store().show(tab, detail);
+      else if (detail) store().push(tab, detail);
       else fallback();
     };
     return {
@@ -98,17 +101,17 @@ export function useNvRouter(): Router {
       replace: (href, options) => {
         const detail = detailOf(href);
         if (detail && page) store().replace(tab, detail);
-        else if (detail) store().push(tab, detail);
+        else if (detail) open(href, () => undefined);
         else if (page) {
           // Replacing a page with a task: the page goes and the task opens over the tabs, which stay.
-          store().pop(tab);
+          store().pop(tab, false);
           router.push(href, options);
         } else router.replace(href, options);
       },
       back: () => (page ? store().pop(tab) : router.back()),
       canGoBack: () => (page ? true : router.canGoBack()),
     };
-  }, [page, router, tab]);
+  }, [book, page, router, tab]);
 }
 
 const screens: Partial<Record<DetailRoute, React.ComponentType>> = {};

@@ -12,6 +12,7 @@ import { runGlance } from '@/tours/glance';
 
 import { enterTiming, fadeInTiming, fadeOutTiming } from '../motion';
 import { useTourSegment } from '../screens/tour/tourSegment';
+import { useDetailStore } from '../duo/detailStore';
 import { useBook, useRailSide, useWindowInsets } from '../duo/layout';
 import { C, TAB_BAR_HEIGHT, s } from '../theme';
 import { Glass, tabBarBottom } from './chrome';
@@ -63,6 +64,8 @@ export function TabBar({ state, navigateToTab }: BottomTabBarProps) {
   const press = (name: string) => {
     const target = TAB_TELEMETRY_TARGETS[name];
     if (target && current !== name) trackUiInteraction(target, 'select');
+    // Tapping the open tab again goes back to its own screen, as iOS does with a navigation stack.
+    if (current === name) useDetailStore.getState().popToRoot(name);
     go(name);
   };
 
