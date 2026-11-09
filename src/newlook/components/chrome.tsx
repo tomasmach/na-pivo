@@ -195,8 +195,8 @@ export function BackHeader({
 }) {
   const router = useRouter();
   return (
-    <View style={[s.row, { justifyContent: 'space-between', height: 44 }, style]}>
-      <View style={[s.row, s.fill, { gap: 14 }]}>
+    <View pointerEvents="box-none" style={[s.row, { justifyContent: 'space-between', height: 44 }, style]}>
+      <View pointerEvents="box-none" style={[s.row, s.fill, { gap: 14 }]}>
         <IconButton icon={icon} label={t.nv.profil.chrome.back} onPress={onBack ?? (() => nvBack(router))} iconSize={20} />
         {heading ? (
           <D s={44} accessibilityRole="header" numberOfLines={1} style={{ flexShrink: 1 }}>
@@ -211,7 +211,9 @@ export function BackHeader({
           </T>
         </View>
       ) : null}
-      <View style={[s.row, { gap: 10 }]}>{right}</View>
+      <View pointerEvents="box-none" style={[s.row, { gap: 10 }]}>
+        {right}
+      </View>
     </View>
   );
 }
@@ -287,10 +289,15 @@ export function Screen({
   );
   const headerView = (
     <View
+      pointerEvents="box-none"
       style={[{ paddingTop: headerTop }, floatHeader && { position: 'absolute', top: 0, left: 0, right: 0 }]}
       onLayout={(e) => setHeaderH(e.nativeEvent.layout.height)}
     >
-      {header ? <View style={{ paddingHorizontal: SCREEN_X, paddingBottom: 4 }}>{header}</View> : null}
+      {header ? (
+        <View pointerEvents="box-none" style={{ paddingHorizontal: SCREEN_X, paddingBottom: 4 }}>
+          {header}
+        </View>
+      ) : null}
     </View>
   );
   return (
