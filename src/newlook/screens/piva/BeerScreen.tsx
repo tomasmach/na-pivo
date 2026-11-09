@@ -177,9 +177,9 @@ function BeerBody({ beer, beerRef, reload }: { beer: BeerPage; beerRef: BeerRef;
   const sheetParams = { id: beer.productKey ?? '-', name: beer.beerName, brewery: beer.breweryName };
 
   const header = (
-    <View style={[s.row, { justifyContent: 'space-between' }]}>
+    <View pointerEvents="box-none" style={[s.row, { justifyContent: 'space-between' }]}>
       <BackButton />
-      <View style={[s.row, { gap: 10 }]}>
+      <View pointerEvents="box-none" style={[s.row, { gap: 10 }]}>
         <IconButton
           icon={watched ? 'bell-ring' : 'bell'}
           size={40}

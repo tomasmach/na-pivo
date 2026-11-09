@@ -117,14 +117,6 @@ export function UctenkaScreen() {
     return night.sessions.filter((session) => session.drinks.some((drink) => drink.beerName.trim().toLocaleLowerCase() === key)).at(-1)?.pubName ?? '';
   };
 
-  const header = (
-    <View style={[s.row, { justifyContent: 'space-between' }]}>
-      <IconButton icon="x" onPress={close} label={copy.close} />
-      <T s={15} w={700} c={C.muted}>
-        {copy.done}
-      </T>
-    </View>
-  );
   const footer = (
     <View style={{ gap: 10 }}>
       <View style={[s.row, { gap: 10 }]}>
@@ -140,7 +132,13 @@ export function UctenkaScreen() {
   );
 
   return (
-    <Screen header={header} footer={footer} padTop={16}>
+    // "Dopito" sits in the close button's row but scrolls away with the receipt, so only the button floats over it.
+    <Screen header={<IconButton icon="x" onPress={close} label={copy.close} />} footer={footer} padTop={-48}>
+      <View style={[s.row, { justifyContent: 'flex-end', height: 44 }]}>
+        <T s={15} w={700} c={C.muted}>
+          {copy.done}
+        </T>
+      </View>
       <View>
         <View style={{ backgroundColor: PAPER, borderTopLeftRadius: 6, borderTopRightRadius: 6, paddingHorizontal: 20, paddingTop: 20, paddingBottom: 18 }}>
           <View style={[s.row, { justifyContent: 'space-between' }]}>

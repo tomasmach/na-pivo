@@ -208,9 +208,9 @@ export function PubScreen() {
       : null;
 
   const header = (
-    <View style={[s.row, { justifyContent: 'space-between' }]}>
+    <View pointerEvents="box-none" style={[s.row, { justifyContent: 'space-between' }]}>
       <IconButton icon="chevron-left" size={40} iconSize={18} onPress={() => nvBack(router)} label={L().back} />
-      <View style={[s.row, { gap: 10 }]}>
+      <View pointerEvents="box-none" style={[s.row, { gap: 10 }]}>
         <IconButton icon="heart" size={40} iconSize={18} color={fav ? C.yellow : C.white} label={fav ? L().favoriteRemove : L().favoriteAdd} onPress={toggleFavorite} />
         <IconButton
           icon="share"
