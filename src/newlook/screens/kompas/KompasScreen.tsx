@@ -343,15 +343,20 @@ function MapMode({ k, name, onCompass, beside = false }: { k: Kompas; name: Name
       </ScrollView>
 
       <Animated.View layout={layoutMove} style={{ position: 'absolute', right: SCREEN_X - 8, bottom: tabSpace + cardSpace + 12, gap: 8 }}>
-        <Press
-          haptic
-          onPress={() => openAddPub(router)}
-          accessibilityRole="button"
-          accessibilityLabel={L().addPub}
-          style={[{ width: 46, height: 46, borderRadius: 23, backgroundColor: C.yellow }, s.center, shadow.raised]}
-        >
-          <Icon name="map-pin-plus" size={20} color={C.black} />
-        </Press>
+        {beside ? (
+          // The compass beside it has the window's yellow button.
+          <GlassButton icon="map-pin-plus" label={L().addPub} onPress={() => openAddPub(router)} />
+        ) : (
+          <Press
+            haptic
+            onPress={() => openAddPub(router)}
+            accessibilityRole="button"
+            accessibilityLabel={L().addPub}
+            style={[{ width: 46, height: 46, borderRadius: 23, backgroundColor: C.yellow }, s.center, shadow.raised]}
+          >
+            <Icon name="map-pin-plus" size={20} color={C.black} />
+          </Press>
+        )}
         <View>
           <GlassButton icon="layers" label={L().layers} onPress={() => router.push('/nv/vrstvy')} />
           {layersDot ? (
