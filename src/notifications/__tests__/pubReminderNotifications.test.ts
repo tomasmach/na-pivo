@@ -203,6 +203,34 @@ describe('geofence task failures', () => {
   });
 });
 
+describe('geofence enter burst', () => {
+  it('leaves one reminder when iOS reports several pubs at once after registration', async () => {
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date(2026, 10, 9, 18, 2));
+    await AsyncStorage.setItem('na-pivo-pub-reminders-enabled', 'true');
+    await AsyncStorage.setItem('na-pivo-pub-reminder-geofences', JSON.stringify({
+      a: 'U Áčka', b: 'U Béčka', c: 'U Céčka',
+    }));
+    const osPending = new Map<string, string>();
+    let nextId = 0;
+    mockScheduleNotification.mockImplementation(async (request: {
+      identifier?: string; content: { data: { pubId: string } };
+    }) => {
+      const id = request.identifier ?? `random-${nextId++}`;
+      osPending.set(id, request.content.data.pubId);
+      return id;
+    });
+    mockCancelNotification.mockImplementation(async (id: string) => { osPending.delete(id); });
+
+    await Promise.all(['a', 'b', 'c'].map((pubId) =>
+      mockTaskHandler({ data: { eventType: 1, region: { identifier: pubId } } })));
+
+    expect(osPending.size).toBe(1);
+    const stored = JSON.parse((await AsyncStorage.getItem('na-pivo-pub-reminder-state'))!);
+    expect([...osPending.values()]).toEqual([stored.pendingReminder.pubId]);
+  });
+});
+
 describe('initializePubReminderNotifications', () => {
   it('lets compass startup go first and defers the catalogue-backed geofence refresh', async () => {
     jest.useFakeTimers();
