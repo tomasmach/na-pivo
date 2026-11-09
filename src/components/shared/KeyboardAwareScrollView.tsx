@@ -25,6 +25,8 @@ interface KeyboardAwareScrollViewProps extends ScrollViewProps {
   keyboardAvoidedExternally?: boolean;
   /** Also keep this much below the focused field in view, so the next field is not cut off. */
   revealBelow?: number;
+  /** Keep the focused field this far below the top edge, under a header that floats over the content. */
+  revealAbove?: number;
 }
 
 function focusedTextInputHandle(): number | null {
@@ -48,6 +50,7 @@ export const KeyboardAwareScrollView = forwardRef<ScrollViewInstance, KeyboardAw
     contentContainerStyle,
     keyboardAvoidedExternally = false,
     revealBelow = 0,
+    revealAbove = 0,
     onContentSizeChange,
     onFocus,
     onLayout,
@@ -116,13 +119,14 @@ export const KeyboardAwareScrollView = forwardRef<ScrollViewInstance, KeyboardAw
             // The new architecture measures against the scroll content, not the visible part.
             const fieldY = contentY - scrollYRef.current;
             const fieldBottom = fieldY + fieldHeight + revealBelow;
+            const visibleTop = revealAbove + Spacing.sm;
             let deltaY = 0;
-            if (fieldY < Spacing.sm && !onlyBelow) {
-              deltaY = fieldY - Spacing.sm;
+            if (fieldY < visibleTop && !onlyBelow) {
+              deltaY = fieldY - visibleTop;
             } else if (fieldBottom > keyboardTop) {
               // A parent may already have lifted the view, so the keyboard top can sit
               // too high; never scroll the top of the field out of sight.
-              deltaY = Math.min(fieldBottom - keyboardTop, Math.max(0, fieldY - Spacing.sm));
+              deltaY = Math.min(fieldBottom - keyboardTop, Math.max(0, fieldY - visibleTop));
             } else {
               return;
             }
@@ -160,7 +164,7 @@ export const KeyboardAwareScrollView = forwardRef<ScrollViewInstance, KeyboardAw
         scrollIntoView();
       }, 300);
     },
-    [cancelScheduledScroll, keyboardAvoidedExternally, onFocus, revealBelow],
+    [cancelScheduledScroll, keyboardAvoidedExternally, onFocus, revealAbove, revealBelow],
   );
 
   // A parent that lifts this view shrinks the viewport after focus, and a

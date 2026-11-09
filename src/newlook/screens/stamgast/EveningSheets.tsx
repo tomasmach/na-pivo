@@ -330,12 +330,18 @@ function rejectedLine(drink: TallyDrink): string {
   return hint ? t.nv.stamgast.rejectedWhy(hint) : t.myBeers.drinkRejected;
 }
 
-function drinkActions(router: ReturnType<typeof useRouter>, day: string, startedAt: string, drink: TallyDrink, lastOne: boolean) {
+export function drinkActions(
+  router: ReturnType<typeof useRouter>,
+  day: string,
+  startedAt: string,
+  drink: TallyDrink,
+  { onRemoved, removeDrink = (id) => deleteSessionDrink(startedAt, id) }: { onRemoved?: () => void; removeDrink?: (id: string) => boolean } = {},
+) {
   const old = t.myBeers;
   const rejected = drink.syncStatus === 'rejected';
   const edit = () => router.push({ pathname: '/nv/opravit-pivo', params: { day, id: drink.id } });
   const remove = () => {
-    if (deleteSessionDrink(startedAt, drink.id) && lastOne) nvBack(router);
+    if (removeDrink(drink.id)) onRemoved?.();
   };
   dialog({
     title: drink.beerName,
@@ -535,7 +541,7 @@ export function EveningDetailScreen() {
             <Row
               key={drink.id}
               last={i === arr.length - 1}
-              onPress={session ? () => drinkActions(router, night.day, session.startedAt, drink, arr.length === 1) : undefined}
+              onPress={session ? () => drinkActions(router, night.day, session.startedAt, drink, { onRemoved: arr.length === 1 ? () => nvBack(router) : undefined }) : undefined}
               chevron={!!session && drink.syncStatus === 'rejected'}
               leading={
                 <T s={13} c={C.muted} style={{ width: 38 }}>

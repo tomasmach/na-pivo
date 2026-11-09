@@ -963,6 +963,7 @@ def test_account_export_includes_owned_night_story_and_only_owned_comments(clien
     assert exported_night["roast_basis"] == "Čtyři piva a jedna limonáda"
     assert exported_night["participant_ids"] == [participant_id]
     assert exported_night["photo_ids"] == [photo_id]
+    assert exported_night["hide_photos"] is False
     assert exported_night["game_ids"] == [game_id]
     assert body["published_night_comments"] == [
         {

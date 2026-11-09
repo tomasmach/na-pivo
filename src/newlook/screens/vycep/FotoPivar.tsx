@@ -26,12 +26,30 @@ import { D, T, Button, Kicker, Press, Segmented } from '../../components/ui';
 import { NO_VALUE } from '../../format';
 import { C, SCREEN_X, s } from '../../theme';
 import { dialog, toast } from '../../ui/store';
+import { openViewer } from '../parta/PartaPhotos';
+import { personInitial } from '../parta/partaModel';
+import type { ViewerPhoto } from '../parta/photoModel';
 import { daysUntil } from './nightData';
 import { useNvRouter } from '../../duo/details';
 import { usePaneWidth } from '../../duo/pane';
 
 function handleOf(account: FriendProfile): string {
   return account.nickname ? `@${account.nickname}` : account.displayName || t.nv.vycep.authorFallback;
+}
+
+function viewerPhoto(entry: PhotoContestEntry): ViewerPhoto {
+  const name = entry.isMine ? t.nv.vycep.me : handleOf(entry.account);
+  return {
+    key: entry.id,
+    uri: entry.imageUrl,
+    title: entry.beerName || entry.pubName || t.nv.vycep.photoFallbackTitle,
+    pubName: entry.beerName ? entry.pubName : '',
+    // The entry carries when it joined the round, not when the photo was taken.
+    takenAt: '',
+    caption: entry.caption,
+    visibility: 'public',
+    author: { initial: personInitial(entry.account), name, short: name, id: entry.isMine ? undefined : entry.account.id },
+  };
 }
 
 /** The round snapshot ranked by rundas, refreshed whenever the screen gets focus. */
@@ -296,10 +314,13 @@ export function FotoPivarScreen() {
               .map((e, i) => {
                 const h = (c + i) % 2 ? 170 : 210;
                 const sub = [e.beerName, e.pubName].filter(Boolean).join(' · ') || e.caption;
+                const name = e.isMine ? t.nv.vycep.me : handleOf(e.account);
                 return (
                   <View key={e.id} style={{ gap: 6 }}>
                     <View>
-                      <Image source={{ uri: e.imageUrl }} style={{ width: col, height: h, borderRadius: 20, backgroundColor: C.card }} />
+                      <Press onPress={() => openViewer(router, entries.map(viewerPhoto), entries.indexOf(e))} accessibilityRole="imagebutton" accessibilityLabel={name}>
+                        <Image source={{ uri: e.imageUrl }} style={{ width: col, height: h, borderRadius: 20, backgroundColor: C.card }} />
+                      </Press>
                       <Press hitSlop={8} accessibilityLabel={t.nv.vycep.entryMenu} onPress={() => entryMenu(e)} style={[{ position: 'absolute', right: 10, top: 10, width: 28, height: 28, borderRadius: 14, backgroundColor: C.onYellowMuted }, s.center]}>
                         <Icon name="ellipsis" size={14} />
                       </Press>
@@ -317,9 +338,16 @@ export function FotoPivarScreen() {
                         </T>
                       </Press>
                     </View>
-                    <T s={14} w={700} numberOfLines={1}>
-                      {e.isMine ? t.nv.vycep.me : handleOf(e.account)}
-                    </T>
+                    <Press
+                      disabled={e.isMine}
+                      onPress={() => router.push({ pathname: '/nv/kamos/[id]', params: { id: e.account.id } })}
+                      accessibilityRole={e.isMine ? undefined : 'button'}
+                      style={{ alignSelf: 'flex-start', maxWidth: '100%' }}
+                    >
+                      <T s={14} w={700} numberOfLines={1}>
+                        {name}
+                      </T>
+                    </Press>
                     {sub ? (
                       <T s={12} c={C.muted} numberOfLines={2} style={{ marginTop: -4 }}>
                         {sub}

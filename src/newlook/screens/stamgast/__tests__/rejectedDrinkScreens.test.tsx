@@ -137,3 +137,15 @@ it('the fix form sends the corrected price again', async () => {
 
   expect(fixSessionDrink).toHaveBeenCalledWith(at(19), expect.objectContaining({ id: 'bad' }), { beerName: 'Plzeň', drinkType: 'beer', priceCzk: 45 });
 });
+
+it('the counter removes a row drink through its own undo, not the diary edit', () => {
+  const { drinkActions } = require('@/newlook/screens/stamgast/EveningSheets');
+  const removeDrink = jest.fn(() => true);
+  drinkActions(mockRouter, '2026-10-24', at(19), evening.drinks[0], { removeDrink });
+
+  dialog.mock.calls[0][0].actions[2].onPress();
+  dialog.mock.calls[1][0].actions[1].onPress();
+
+  expect(removeDrink).toHaveBeenCalledWith('ok');
+  expect(deleteSessionDrink).not.toHaveBeenCalled();
+});

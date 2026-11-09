@@ -50,6 +50,8 @@ import { FriendEveningCard, leaveFriendHome, useFriendHomeEvening } from '../par
 import { joinNames, personInitial } from '../parta/partaModel';
 import { useTablemates } from '../parta/tablemates';
 import { DiaryView } from './DiaryView';
+import { drinkActions } from './EveningSheets';
+import { nightsOf } from './eveningData';
 import { durationLabel, nameStatesDegree, servingLine } from './stamgastFormat';
 import { OUTSIDE_ICON, currentCountPlace, useCountPlace, useCountPlaceHost, useNvPlaceStore } from './placeStore';
 
@@ -525,24 +527,33 @@ function CounterView() {
             <T s={16} w={700}>
               {copy.tonightList}
             </T>
-            {spent > 0 && !atFriend ? <T s={14} w={600} c={C.muted}>{formatPrice(spent, priceCurrency)}</T> : null}
+            {session && drinks.length ? (
+              <Press testID="counter-undo-last" hitSlop={10} onPress={() => removeCountedDrink(session.drinks[session.drinks.length - 1].id)} style={[s.row, { gap: 6 }]}>
+                <Icon name="undo-2" size={15} color={C.yellow} />
+                <T s={14} w={700} c={C.yellow}>
+                  {copy.undoLast}
+                </T>
+              </Press>
+            ) : null}
           </View>
-          {drinks.length ? (
+          {session && drinks.length ? (
             drinks.map((d, i) => (
-              <Animated.View key={d.id} entering={i === 0 ? fadeIn : undefined} style={[s.row, { height: 62, gap: 12 }]}>
-                <Tile icon={normalizeDrinkType(d.drinkType) === 'beer' ? 'beer' : 'circle-dot'} />
-                <View style={[s.fill, { gap: 2 }]}>
-                  <T s={15} w={600} numberOfLines={1}>
-                    {d.beerName}
-                  </T>
-                  <T s={13} c={C.muted}>{servingLine(d, inPub)}</T>
-                </View>
-                <View style={{ alignItems: 'flex-end', gap: 2 }}>
-                  {typeof d.priceCzk === 'number' ? <T s={15} w={600}>{formatPrice(d.priceCzk, priceCurrency)}</T> : null}
-                  <T s={12} c={C.muted}>
-                    {formatClock(new Date(d.at))}
-                  </T>
-                </View>
+              <Animated.View key={d.id} entering={i === 0 ? fadeIn : undefined}>
+                <Press onPress={() => drinkActions(router, nightsOf([session])[0].day, session.startedAt, d, { removeDrink: removeCountedDrink })} style={[s.row, { height: 62, gap: 12 }]}>
+                  <Tile icon={normalizeDrinkType(d.drinkType) === 'beer' ? 'beer' : 'circle-dot'} />
+                  <View style={[s.fill, { gap: 2 }]}>
+                    <T s={15} w={600} numberOfLines={1}>
+                      {d.beerName}
+                    </T>
+                    <T s={13} c={C.muted}>{servingLine(d, inPub)}</T>
+                  </View>
+                  <View style={{ alignItems: 'flex-end', gap: 2 }}>
+                    {typeof d.priceCzk === 'number' ? <T s={15} w={600}>{formatPrice(d.priceCzk, priceCurrency)}</T> : null}
+                    <T s={12} c={C.muted}>
+                      {formatClock(new Date(d.at))}
+                    </T>
+                  </View>
+                </Press>
               </Animated.View>
             ))
           ) : (
@@ -550,20 +561,6 @@ function CounterView() {
               {copy.tonightEmpty}
             </T>
           )}
-          {drinks.length ? (
-            <Press
-              onPress={() => {
-                const last = session?.drinks[session.drinks.length - 1];
-                if (last) removeCountedDrink(last.id);
-              }}
-              style={[s.row, { height: 44, gap: 8 }]}
-            >
-              <Icon name="undo-2" size={15} color={C.muted} />
-              <T s={13} w={600} c={C.muted}>
-                {copy.undoLast}
-              </T>
-            </Press>
-          ) : null}
         </View>
       </ScrollView>
       <BottomFade height={tabSpace + 130} />

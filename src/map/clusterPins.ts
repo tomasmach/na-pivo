@@ -1,7 +1,7 @@
 type Point = { lat: number; lng: number };
 type Viewport = { longitudeDelta: number };
 
-export type PinCluster = Point & { key: string; count: number; members: Point[] };
+export type PinCluster<P extends Point = Point> = Point & { key: string; count: number; members: P[] };
 
 /** A pub joins a cluster this close to its first pub, in points. Keeps bubbles apart on screen. */
 const RADIUS_PT = 64;
@@ -24,6 +24,12 @@ export function zoomOf(viewport: Viewport, widthPt: number): number {
   return Math.log2((360 * widthPt) / (256 * Math.max(viewport.longitudeDelta, 1e-9)));
 }
 
+/** Whether two bubbles this far apart would overlap on screen at this viewport. */
+export function bubblesOverlap(a: Point, b: Point, viewport: Viewport, widthPt: number): boolean {
+  const ptToDeg = 360 / (256 * 2 ** zoomOf(viewport, widthPt));
+  return Math.hypot(a.lng - b.lng, mercatorY(a.lat) - mercatorY(b.lat)) < BUBBLE_GAP_PT * ptToDeg;
+}
+
 /**
  * Groups pins that would overlap. The zoom snaps to quarter steps and the order does not depend
  * on the viewport, so a pan keeps the same groups and only a zoom step regroups them.
@@ -32,7 +38,7 @@ export function clusterPins<P extends Point>(
   pins: readonly P[],
   viewport: Viewport,
   widthPt: number,
-): { singles: P[]; clusters: PinCluster[] } {
+): { singles: P[]; clusters: PinCluster<P>[] } {
   if (pins.length < 2 || zoomOf(viewport, widthPt) >= NO_CLUSTER_ZOOM) return { singles: [...pins], clusters: [] };
   const zoom = Math.floor(zoomOf(viewport, widthPt) * 4) / 4;
   const ptToDeg = 360 / (256 * 2 ** zoom);
@@ -81,7 +87,7 @@ export function clusterPins<P extends Point>(
     }
   }
   const singles: P[] = [];
-  const clusters: PinCluster[] = [];
+  const clusters: PinCluster<P>[] = [];
   for (const g of groups) {
     if (g.members.length === 1) singles.push(g.members[0]);
     else clusters.push({ key: g.key, lat: latOf(g.y), lng: g.x, count: g.members.length, members: g.members });

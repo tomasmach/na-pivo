@@ -981,6 +981,7 @@ def _published_night_story_updates(data: dict, account: Account) -> dict:
         # captured offline become the hero after its upload eventually lands.
         # Serialization still resolves only this author's friends-visible rows.
         updates["photo_ids"] = [str(value) for value in data["photo_ids"]]
+        updates["hide_photos"] = not updates["photo_ids"]
 
     snapshot = _snapshot_party_evening(data, account)
     if snapshot is None:
@@ -12603,6 +12604,7 @@ def _export_account_data(account: Account) -> dict:
                 "roast_basis": night.roast_basis,
                 "participant_ids": list(night.participant_ids or []),
                 "photo_ids": list(night.photo_ids or []),
+                "hide_photos": night.hide_photos,
                 "game_ids": list(night.game_ids or []),
                 "visibility": night.visibility,
                 "is_removed": night.is_removed,

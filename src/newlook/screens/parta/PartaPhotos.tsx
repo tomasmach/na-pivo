@@ -24,7 +24,7 @@ import { usePaneWidth } from '../../duo/pane';
 /** The list the full-screen viewer swipes through; set right before opening it. */
 const usePhotoViewer = create<{ photos: ViewerPhoto[] }>(() => ({ photos: [] }));
 
-function openViewer(router: ReturnType<typeof useRouter>, photos: ViewerPhoto[], index: number) {
+export function openViewer(router: ReturnType<typeof useRouter>, photos: ViewerPhoto[], index: number) {
   usePhotoViewer.setState({ photos });
   router.push({ pathname: '/nv/fotky-party', params: { i: String(index) } });
 }
@@ -83,7 +83,8 @@ export function PartaPhotoScreen() {
   // The viewer's pages are as wide as its panel on the iPhone Duo, not the window.
   const width = usePaneWidth();
   const { i } = useLocalSearchParams<{ i?: string }>();
-  const photos = usePhotoViewer((st) => st.photos);
+  // A viewer opened from this one (author's profile, then a photo) replaces the shared list.
+  const [photos] = useState(() => usePhotoViewer.getState().photos);
   const start = Math.min(Math.max(Number(i) || 0, 0), Math.max(photos.length - 1, 0));
   const [index, setIndex] = useState(start);
   const close = <IconButton icon="x" size={40} iconSize={18} bg="#0A0A0A99" onPress={() => nvBack(router)} label={t.nv.common.close} />;
@@ -117,12 +118,17 @@ export function PartaPhotoScreen() {
             <Image source={{ uri: item.uri }} style={{ width, height: imageH, backgroundColor: C.card }} resizeMode="cover" />
             <View style={{ position: 'absolute', top: imageH - 140, left: 0, right: 0, height: 140, experimental_backgroundImage: `linear-gradient(180deg, ${C.bg}00 0%, ${C.bg} 100%)` }} />
             <View style={{ paddingHorizontal: SCREEN_X, gap: 12, marginTop: -44 }}>
-              <View style={[s.row, { gap: 10 }]}>
+              <Press
+                disabled={!item.author.id}
+                onPress={() => item.author.id && router.push({ pathname: '/nv/kamos/[id]', params: { id: item.author.id } })}
+                accessibilityRole={item.author.id ? 'button' : undefined}
+                style={[s.row, { gap: 10, alignSelf: 'flex-start' }]}
+              >
                 <Person initial={item.author.initial} size={32} />
                 <T s={15} w={600}>
                   {item.author.name}
                 </T>
-              </View>
+              </Press>
               <D s={34}>{item.title}</D>
               <T s={14} c={C.muted}>
                 {[item.pubName, photoWhen(item.takenAt)].filter(Boolean).join(' · ')}

@@ -240,8 +240,8 @@ export function BackHeader({
   const shownActions = actionsInColumn ? [] : (actions ?? []);
   if (inColumn && !title && !heading && !right && !shownActions.length) return null;
   return (
-    <View style={[s.row, { justifyContent: 'space-between', height: 44 }, style]}>
-      <View style={[s.row, s.fill, { gap: 14 }]}>
+    <View pointerEvents="box-none" style={[s.row, { justifyContent: 'space-between', height: 44 }, style]}>
+      <View pointerEvents="box-none" style={[s.row, s.fill, { gap: 14 }]}>
         {inColumn ? null : <IconButton icon={icon} label={t.nv.profil.chrome.back} onPress={back} iconSize={20} />}
         {heading ? (
           <D s={44} accessibilityRole="header" numberOfLines={1} style={{ flexShrink: 1 }}>
@@ -256,7 +256,7 @@ export function BackHeader({
           </T>
         </View>
       ) : null}
-      <View style={[s.row, { gap: 10 }]}>
+      <View pointerEvents="box-none" style={[s.row, { gap: 10 }]}>
         {right}
         {shownActions.map((a) => (
           <IconButton key={`${a.icon}-${a.label}`} icon={a.icon} size={40} iconSize={18} color={a.color} label={a.label} onPress={a.onPress} />
@@ -322,6 +322,7 @@ export function Screen({
   scrollProps,
   padTop = 8,
   modal = false,
+  fixedHeader = false,
 }: {
   children: React.ReactNode;
   tab?: boolean;
@@ -334,9 +335,12 @@ export function Screen({
   padTop?: number;
   /** Shown with `presentation: 'modal'`. On iOS that is a sheet that already starts below the status bar. */
   modal?: boolean;
+  /** Keeps a header with text in place; a header of round buttons floats and content scrolls under it. */
+  fixedHeader?: boolean;
 }) {
   const insets = useSafeAreaInsets();
   const headerTop = modal && Platform.OS === 'ios' ? 16 : insets.top + 8;
+  const floatHeader = !!header && scroll && !modal && !fixedHeader;
   const tabSpace = useTabBarSpace();
   const bottomBase = tab ? tabSpace : Math.max(insets.bottom, 16);
   const [footerH, setFooterH] = useState(52);
@@ -354,14 +358,27 @@ export function Screen({
   const keyboardTop = keyboardHeight > 0 ? keyboardHeight + (Platform.OS === 'android' ? insets.bottom : 0) : 0;
   const footerRoom = footer && keyboardTop > 0 ? Math.max(footerBottom, keyboardTop + 12) + footerH + 8 : 0;
   const footerSpace = footer ? footerH + 32 : 0;
+  // Before the first layout, assume the 44-point BackHeader so the content does not jump.
+  const floatingHeaderH = headerH || headerTop + 48;
   const content = (
-    <View style={[{ paddingHorizontal: SCREEN_X, gap, paddingTop: padTop }, contentStyle]}>{children}</View>
+    <View style={[{ paddingHorizontal: SCREEN_X, gap, paddingTop: padTop + (floatHeader ? floatingHeaderH : 0) }, contentStyle]}>{children}</View>
+  );
+  const headerView = (
+    <View
+      pointerEvents="box-none"
+      style={[{ paddingTop: headerTop }, floatHeader && { position: 'absolute', top: 0, left: 0, right: 0 }]}
+      onLayout={(e) => setHeaderH(e.nativeEvent.layout.height)}
+    >
+      {header ? (
+        <View pointerEvents="box-none" style={{ paddingHorizontal: SCREEN_X, paddingBottom: 4 }}>
+          {header}
+        </View>
+      ) : null}
+    </View>
   );
   return (
     <View style={{ flex: 1, backgroundColor: C.bg, paddingBottom: footerRoom }}>
-      <View style={{ paddingTop: headerTop }} onLayout={(e) => setHeaderH(e.nativeEvent.layout.height)}>
-        {header ? <View style={{ paddingHorizontal: SCREEN_X, paddingBottom: 4 }}>{header}</View> : null}
-      </View>
+      {floatHeader ? null : headerView}
       {scroll ? (
         <KeyboardAwareScrollView
           scrollEventThrottle={16}
@@ -373,6 +390,7 @@ export function Screen({
           }}
           keyboardAvoidedExternally={!!footer}
           revealBelow={NEXT_FIELD_REVEAL}
+          revealAbove={floatHeader ? floatingHeaderH : 0}
           showsVerticalScrollIndicator={false}
           contentContainerStyle={{ paddingBottom: footerRoom > 0 ? 24 : bottomBase + footerSpace + 24 }}
           keyboardShouldPersistTaps="handled"
@@ -382,7 +400,8 @@ export function Screen({
       ) : (
         <View style={{ flex: 1, paddingBottom: bottomBase + footerSpace }}>{content}</View>
       )}
-      {scroll && scrolled && headerH > 0 ? <TopFade below={headerH} /> : null}
+      {floatHeader ? <TopFade /> : scroll && scrolled && headerH > 0 ? <TopFade below={headerH} /> : null}
+      {floatHeader ? headerView : null}
       <BottomFade height={(tab ? tabSpace : 0) + (footer ? footerH + 68 : 40)} />
       {footer ? (
         <Animated.View

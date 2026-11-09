@@ -5,11 +5,12 @@ import { fetchFriendsLive } from '@/data/friendsClient';
 import { trackUiInteraction, type UiInteractionTarget } from '@/data/uxTelemetry';
 import { t } from '@/i18n';
 import { buildLivePubs } from '@/map/mapModel';
+import { useSettingsStore } from '@/stores/settingsStore';
 
 import { Sheet } from '../../components/overlays';
 import { Icon, type IconName } from '../../components/Icon';
 import { Card, Press, Row, T, Toggle } from '../../components/ui';
-import { C, s, shadow } from '../../theme';
+import { C, s } from '../../theme';
 import { useKompasState, type MapView } from './state';
 
 const VIEWS: { key: MapView; label: () => string; icon: IconName }[] = [
@@ -42,6 +43,8 @@ const LAYER_TARGETS: Record<MapView, UiInteractionTarget> = {
 export function VrstvySheet() {
   const L = t.nv.kompas;
   const st = useKompasState();
+  const showPubBeers = useSettingsStore((s) => s.showPubBeers);
+  const setShowPubBeers = useSettingsStore((s) => s.setShowPubBeers);
   const live = useLiveFriendCount();
   return (
     <Sheet title={L.layersTitle} scroll={false}>
@@ -92,30 +95,8 @@ export function VrstvySheet() {
         <T s={15} w={700} c={C.muted}>
           {L.pinsGroup}
         </T>
-        <View style={[s.row, { height: 42, borderRadius: 21, padding: 3, backgroundColor: C.tintSoft }]}>
-          {(
-            [
-              ['price', L.pinPrice, 'banknote'],
-              ['count', L.pinCount, 'beer'],
-            ] as const
-          ).map(([k, label, icon]) => {
-            const on = st.pinMode === k;
-            return (
-              <Press
-                key={k}
-                haptic
-                onPress={() => st.set({ pinMode: k })}
-                style={[s.fill, s.row, { justifyContent: 'center', alignSelf: 'stretch', gap: 6, borderRadius: 18 }, on && { backgroundColor: C.white, ...shadow.soft }]}
-              >
-                <Icon name={icon} size={15} color={on ? C.black : C.text2} />
-                <T s={14} w={on ? 800 : 600} c={on ? C.black : C.text2}>
-                  {label}
-                </T>
-              </Press>
-            );
-          })}
-        </View>
         <Card>
+          <Row title={L.pinCount} trailing={<Toggle value={showPubBeers} onChange={setShowPubBeers} />} />
           <Row last title={L.onlyDrunk} trailing={<Toggle value={st.onlyDrunk} onChange={(v) => st.set({ onlyDrunk: v })} />} />
         </Card>
       </View>

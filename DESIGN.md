@@ -57,6 +57,19 @@ se nemění.
   ses naposledy dotkl, a ztmavení pokryje celé okno. Karta sheetu má zaoblený i ten
   spodní roh, který nesedí na rohu displeje.
 
+## Počty piv na mapě nového vzhledu (9. 11. 2026)
+
+Špendlík hospody dál ukazuje cenu piva. Když tam minulý týden pili aspoň tři lidé,
+má vpravo nahoře žlutý odznak jako mapa 2.x: `C.yellow`, výška 20, radius 10,
+černý obrys 1,5 bodu, ikona piva 11 a počet 11/800, nad 99 „99+“. Do špendlíku
+zasahuje jen 6 bodů, aby nezakryl cenu. Shluk ukazuje součet piv svých hospod,
+kromě shluku schovaného pod cílovým špendlíkem, kde by se součet četl jako počet cíle.
+Karta hospody na mapě má pod otevírací dobou řádek „Minulý týden tu padlo N piv“
+s ikonou piva 13 v `onYellowMuted`. Hospoda, která sdílí geohash buňku s jinou,
+počet nemá, protože server piva počítá po buňkách. Ve Vrstvách je v „Na pinech“
+vypínač „Počty piv za minulý týden“ (uložené `showPubBeers`, výchozí zapnuto) místo
+přepínače cena / počty.
+
 ## Pohyb nového vzhledu (1. 11. 2026)
 
 Nový vzhled (`src/newlook`, `app/nv`) se nehoupe. Žádná pružina s dojezdem, žádný

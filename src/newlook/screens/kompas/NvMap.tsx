@@ -3,7 +3,7 @@ import { StyleSheet, View } from 'react-native';
 import { useIsFocused } from 'expo-router';
 import MapView, { Marker, Polyline, PROVIDER_GOOGLE, type MapStyleElement, type Region } from 'react-native-maps';
 
-import { clusterCamera, clusterPins, NO_CLUSTER_ZOOM, targetPin, type PinCluster } from '@/map/clusterPins';
+import { bubblesOverlap, clusterCamera, clusterPins, NO_CLUSTER_ZOOM, targetPin, type PinCluster } from '@/map/clusterPins';
 import { StaticMapMarker } from '@/map/StaticMapMarker';
 import { visiblePins } from '@/map/visiblePins';
 import { trackPinsSeen } from '@/data/pubReachClient';
@@ -33,7 +33,7 @@ export const GRAY_MAP: MapStyleElement[] = [
 
 type Point = { lat: number; lng: number };
 /** `key` is the pub's cell; `id` tells apart pubs that share one cell. */
-export type MapPin = Point & { key: string; id: string; label: string | null };
+export type MapPin = Point & { key: string; id: string; label: string | null; beers: number };
 export type MapFriend = Point & { key: string; initial: string };
 export type MapCity = Point & { key: string; name: string; count: number };
 export type NvMapHandle = { centerOn: (at: Point) => void };
@@ -56,7 +56,6 @@ type Props = {
   friends: MapFriend[];
   cities: MapCity[];
   view: 'okoli' | 'stopy' | 'parta';
-  pinMode: 'price' | 'count';
   selectedCity?: string | null;
   onPub?: (id: string) => void;
   onCity?: (key: string) => void;
@@ -70,7 +69,7 @@ type Props = {
 };
 
 export const NvMap = forwardRef<NvMapHandle, Props>(function NvMap(
-  { pins, me, target, friends, cities, view, pinMode, selectedCity, onPub, onCity, onRegion, showRoute = true, bottomPadding = 0, coveredTop = 0, coveredRight = 0 },
+  { pins, me, target, friends, cities, view, selectedCity, onPub, onCity, onRegion, showRoute = true, bottomPadding = 0, coveredTop = 0, coveredRight = 0 },
   handle,
 ) {
   const ref = useRef<MapView>(null);
@@ -125,12 +124,15 @@ export const NvMap = forwardRef<NvMapHandle, Props>(function NvMap(
   const targetKey = target?.key ?? null;
   const targetLat = target?.lat;
   const targetLng = target?.lng;
-  const { singles, clusters } = useMemo(() => {
-    if (view === 'stopy') return { singles: [], clusters: [] };
+  const { singles, clusters, clusterUnderTarget } = useMemo(() => {
+    if (view === 'stopy') return { singles: [], clusters: [], clusterUnderTarget: null };
     // The pub the compass points at stays its own pin, never inside a cluster.
     const own = targetKey && targetLat != null && targetLng != null ? targetPin(pins, { key: targetKey, lat: targetLat, lng: targetLng }) : undefined;
-    const grouped = clusterPins(own ? pins.filter((p) => p !== own) : pins, viewport, size.width || 390);
-    return { singles: own ? [...grouped.singles, own] : grouped.singles, clusters: grouped.clusters };
+    const width = size.width || 390;
+    const grouped = clusterPins(own ? pins.filter((p) => p !== own) : pins, viewport, width);
+    // A cluster peeking out from under the target pin would lend it the cluster's beers.
+    const under = own ? grouped.clusters.find((c) => bubblesOverlap(c, own, viewport, width)) : undefined;
+    return { singles: own ? [...grouped.singles, own] : grouped.singles, clusters: grouped.clusters, clusterUnderTarget: under?.key ?? null };
   }, [pins, targetKey, targetLat, targetLng, view, viewport, size.width]);
 
   // Counts a pub as seen once the map stops on it as its own pin; a pub inside a cluster bubble is not shown.
@@ -184,8 +186,8 @@ export const NvMap = forwardRef<NvMapHandle, Props>(function NvMap(
           ) : null}
         </>
       ) : null}
-      <PubMarkers pins={singles} targetKey={targetKey} pinMode={pinMode} onPress={pressPub} />
-      <ClusterMarkers clusters={clusters} onPress={pressCluster} />
+      <PubMarkers pins={singles} targetKey={targetKey} onPress={pressPub} />
+      <ClusterMarkers clusters={clusters} quietKey={clusterUnderTarget} onPress={pressCluster} />
       {view === 'parta' ? <FriendMarkers friends={friends} /> : null}
       {view === 'stopy' ? <CityMarkers cities={cities} selected={selectedCity ?? null} onPress={pressCity} /> : null}
     </MapView>
@@ -195,38 +197,52 @@ export const NvMap = forwardRef<NvMapHandle, Props>(function NvMap(
 const PubMarkers = memo(function PubMarkers({
   pins,
   targetKey,
-  pinMode,
   onPress,
 }: {
   pins: MapPin[];
   targetKey: string | null;
-  pinMode: 'price' | 'count';
   onPress: (id: string) => void;
 }) {
   return pins.map((p) => (
     <StaticMapMarker
-      key={`${p.id}-${p.key === targetKey}-${pinMode}-${p.label ?? ''}`}
+      key={`${p.id}-${p.key === targetKey}-${p.label ?? ''}-${p.beers}`}
       coordinate={{ latitude: p.lat, longitude: p.lng }}
       anchor={{ x: 0.5, y: 0.5 }}
       onPress={() => onPress(p.id)}
       zIndex={p.key === targetKey ? 2 : 0}
     >
-      <PubPin label={p.label} target={p.key === targetKey} mode={pinMode} />
+      <WithBeers beers={p.beers}>
+        <PubPin label={p.label} target={p.key === targetKey} />
+      </WithBeers>
     </StaticMapMarker>
   ));
 });
 
-const ClusterMarkers = memo(function ClusterMarkers({ clusters, onPress }: { clusters: PinCluster[]; onPress: (cluster: PinCluster) => void }) {
-  return clusters.map((c) => (
-    <StaticMapMarker
-      key={`${c.key}-${c.count}`}
-      coordinate={{ latitude: c.lat, longitude: c.lng }}
-      anchor={{ x: 0.5, y: 0.5 }}
-      onPress={() => onPress(c)}
-    >
-      <ClusterPin count={c.count} />
-    </StaticMapMarker>
-  ));
+const ClusterMarkers = memo(function ClusterMarkers({
+  clusters,
+  quietKey,
+  onPress,
+}: {
+  clusters: PinCluster<MapPin>[];
+  /** The cluster whose beers stay unshown. */
+  quietKey: string | null;
+  onPress: (cluster: PinCluster<MapPin>) => void;
+}) {
+  return clusters.map((c) => {
+    const beers = c.key === quietKey ? 0 : c.members.reduce((sum, pin) => sum + pin.beers, 0);
+    return (
+      <StaticMapMarker
+        key={`${c.key}-${c.count}-${beers}`}
+        coordinate={{ latitude: c.lat, longitude: c.lng }}
+        anchor={{ x: 0.5, y: 0.5 }}
+        onPress={() => onPress(c)}
+      >
+        <WithBeers beers={beers}>
+          <ClusterPin count={c.count} />
+        </WithBeers>
+      </StaticMapMarker>
+    );
+  });
 });
 
 const FriendMarkers = memo(function FriendMarkers({ friends }: { friends: MapFriend[] }) {
@@ -251,8 +267,8 @@ const CityMarkers = memo(function CityMarkers({ cities, selected, onPress }: { c
   ));
 });
 
-export function PubPin({ label, target, mode }: { label: string | null; target: boolean; mode: 'price' | 'count' }) {
-  const showIcon = mode === 'count' || !label || target;
+export function PubPin({ label, target }: { label: string | null; target: boolean }) {
+  const showIcon = !label || target;
   if (target && !label) {
     return (
       <View style={[{ width: 38, height: 38, borderRadius: 19, backgroundColor: C.yellow, borderWidth: 2, borderColor: C.black }, s.center]}>
@@ -277,10 +293,34 @@ export function PubPin({ label, target, mode }: { label: string | null; target: 
     >
       {showIcon ? <Icon name="beer" size={target ? 16 : 14} color={C.black} /> : null}
       {label ? (
-        <T s={target ? 15 : 13} w={target ? 800 : mode === 'count' ? 800 : 700} c={C.black}>
+        <T s={target ? 15 : 13} w={target ? 800 : 700} c={C.black}>
           {label}
         </T>
       ) : null}
+    </View>
+  );
+}
+
+const BADGE_ROOM = 14;
+
+/** Last week's beers in the pin's top right corner, as the 2.x map had them. */
+function WithBeers({ beers, children }: { beers: number; children: React.ReactNode }) {
+  if (!beers) return <>{children}</>;
+  // Even padding keeps the pin itself in the middle, where the marker is anchored.
+  return (
+    <View style={{ padding: BADGE_ROOM }}>
+      {children}
+      <View
+        style={[
+          s.row,
+          { position: 'absolute', top: 0, right: 0, height: 20, borderRadius: 10, paddingHorizontal: 5, gap: 2, backgroundColor: C.yellow, borderWidth: 1.5, borderColor: C.black },
+        ]}
+      >
+        <Icon name="beer" size={11} color={C.black} />
+        <T s={11} w={800} c={C.black}>
+          {beers > 99 ? '99+' : beers}
+        </T>
+      </View>
     </View>
   );
 }

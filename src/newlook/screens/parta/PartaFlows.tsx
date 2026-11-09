@@ -320,7 +320,7 @@ export function ZebrickyScreen() {
   ];
 
   return (
-    <Screen header={<BackHeader heading={t.nv.parta.boards} />} gap={16} padTop={20}>
+    <Screen fixedHeader header={<BackHeader heading={t.nv.parta.boards} />} gap={16} padTop={20}>
       <Segmented
         height={38}
         options={[

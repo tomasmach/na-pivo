@@ -106,6 +106,8 @@ function mergePubs(previous: Pub[], incoming: Pub[]): Pub[] {
 
 export interface BeerMapData {
   pubs: Pub[];
+  /** The loaded pubs BEFORE the price cap. */
+  loadedPubs: Pub[];
   /** Known reference prices of the loaded pubs BEFORE the price cap — feeds
    *  the filter sheet's histogram, which must show the full distribution. */
   nearbyPrices: number[];
@@ -410,6 +412,7 @@ export function useBeerMap(
 
   return {
     pubs: pricedPubs,
+    loadedPubs: visiblePubs,
     nearbyPrices,
     searchArea,
     visitedPubs,

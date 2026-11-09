@@ -387,6 +387,7 @@ export function TourVyberScreen() {
   const kicker = replaceStop ? t.tours.replaceStop : !browsing ? null : anchor ? t.tours.nearStop(stops.indexOf(anchor) + 1) : userCenter ? tx.nearYou : null;
   return (
     <Screen
+      fixedHeader
       header={
         <View style={[s.row, { gap: 10 }]}>
           <IconButton icon="chevron-left" size={44} iconSize={18} onPress={() => nvBack(router)} label={t.tours.back} />
