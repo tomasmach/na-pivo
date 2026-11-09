@@ -16,6 +16,7 @@ import { pickAndPrepareBeerPhoto, type BeerPhotoSource } from '@/data/beerPhotoP
 import { enqueueBeerPhoto, persistBeerPhotoLocally } from '@/data/beerPhotosQueue';
 import { fetchBeerPage, submitBeerStyle, type BeerDegree, type StyleAnswer } from '@/data/beersClient';
 import { intlLocale, t } from '@/i18n';
+import { useVycepStore } from '@/stores/vycepStore';
 
 import { myLatestRating, saveBeerRating, savedRating } from './model';
 import { Loading, useLoad } from './states';
@@ -72,7 +73,8 @@ function RatingForm({ beer, params }: { beer: RatedBeer; params: Params }) {
   const [stars, setStars] = useState(Number(params.stars) || (existing ? Math.round(existing) : 0));
   const [tags, setTags] = useState<BeerTag[]>(latest?.tags ?? []);
   const [text, setText] = useState(latest?.note ?? '');
-  const [visibility, setVisibility] = useState<BeerCheckInVisibility>(latest?.visibility ?? 'private');
+  const shareDefault = useVycepStore((st) => st.shareDefault);
+  const [visibility, setVisibility] = useState<BeerCheckInVisibility>(latest?.visibility ?? shareDefault);
   const [photoUri, setPhotoUri] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [style, setStyle] = useState<StyleAnswer | null>(null);
@@ -126,8 +128,7 @@ function RatingForm({ beer, params }: { beer: RatedBeer; params: Params }) {
           pubCacheKey: payload.pubCacheKey || undefined,
           pubName: payload.pubName || undefined,
           pubCity: payload.pubCity || undefined,
-          // Photos have no public audience yet; a public rating shares its photo with the party.
-          visibility: visibility === 'private' ? 'private' : 'friends',
+          visibility,
           takenAt: new Date().toISOString(),
         }),
       );

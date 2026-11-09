@@ -37,6 +37,7 @@ from __future__ import annotations
 
 import re
 import uuid
+from datetime import timedelta
 
 from django.conf import settings
 from django.core.exceptions import ValidationError as DjangoValidationError
@@ -1584,24 +1585,32 @@ class PublishedNightSerializer(serializers.ModelSerializer):
         ordered = [visible[value] for value in requested if value in visible]
         return FriendProfileSerializer(ordered, many=True, context=self.context).data
 
-    def get_hero_photos(self, obj: PublishedNight) -> list[dict]:
-        if not obj.photo_ids or not self._may_see_social_snapshot(obj):
-            return []
-        requested = [str(value) for value in obj.photo_ids]
-        rows = BeerPhoto.objects.filter(
-            Q(public_id__in=requested) | Q(client_id__in=requested),
-            account=obj.account,
+    def _hero_photo_rows(self, obj: PublishedNight) -> list[BeerPhoto]:
+        shared = BeerPhoto.objects.filter(
+            account_id=obj.account_id,
             visibility__in=(BeerPhoto.Visibility.FRIENDS, BeerPhoto.Visibility.PUBLIC),
         )
+        if not obj.photo_ids:
+            # Same window as the app's photo pick: a photo is often taken just
+            # before the first logged beer or while rating after the last one.
+            taken = (obj.started_at - timedelta(hours=1), obj.ended_at + timedelta(hours=3))
+            return list(
+                shared.filter(taken_at__range=taken).order_by("-taken_at", "-pk")[:6]
+            )
+        requested = [str(value) for value in obj.photo_ids]
         by_reference = {}
-        for row in rows:
+        for row in shared.filter(Q(public_id__in=requested) | Q(client_id__in=requested)):
             by_reference[str(row.public_id)] = row
             by_reference[str(row.client_id)] = row
+        return [by_reference[value] for value in requested if value in by_reference]
+
+    def get_hero_photos(self, obj: PublishedNight) -> list[dict]:
+        if obj.hide_photos or not self._may_see_social_snapshot(obj):
+            return []
         result = []
         seen = set()
-        for value in requested:
-            row = by_reference.get(value)
-            if row is None or row.pk in seen:
+        for row in self._hero_photo_rows(obj):
+            if row.pk in seen:
                 continue
             image_url = _photo_image_url(row.image, self.context.get("request"))
             if not image_url:
