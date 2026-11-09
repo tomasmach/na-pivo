@@ -85,7 +85,7 @@ function Shortcut({ icon, title, sub, onPress, selected }: { icon: IconName; tit
       onPress={onPress}
       accessibilityState={selected ? { selected: true } : undefined}
       // Open beside the feed on the iPhone Duo, like a selected row in a split view.
-      style={{ width: 118, padding: 12, gap: 6, borderRadius: 18, backgroundColor: selected ? C.yellowSoft : C.card, borderWidth: 1, borderColor: selected ? C.yellowEdge : 'transparent' }}
+      style={{ width: 118, padding: 12, gap: 6, borderRadius: 18, backgroundColor: selected ? C.yellowSoft : C.card }}
     >
       <Icon name={icon} size={16} color={C.yellow} />
       <View style={{ gap: 2 }}>

@@ -30,6 +30,10 @@ export interface DetailPage {
   params: Record<string, string>;
   /** Shown by a selection in the book's left half: it fades in and out instead of sliding. */
   shown?: boolean;
+  /** Shown in place of another page, which fades out over it, so it needs no fade of its own. */
+  beneath?: boolean;
+  /** Replaced by a selection: it fades out however it came. */
+  fadeOut?: boolean;
 }
 
 let nextKey = 0;
@@ -66,9 +70,18 @@ export const useDetailStore = create<DetailState>((set) => ({
   show: (tab, p) =>
     set((st) => {
       const stack = st.pages[tab] ?? [];
-      // Selecting what is already open beside the list leaves it as it is, scroll and all.
-      if (stack.length === 1 && stack[0].route === p.route && samePage(stack[0].params, p.params)) return st;
-      return { pages: { ...st.pages, [tab]: [{ ...page(p), shown: true }] } };
+      const first = stack[0];
+      const top = stack[stack.length - 1];
+      const leaving = st.leaving[tab] ?? [];
+      // Selecting what is already open beside the list goes back to it, scroll and all.
+      if (first && first.route === p.route && samePage(first.params, p.params)) {
+        if (stack.length === 1) return st;
+        return { pages: { ...st.pages, [tab]: [first] }, leaving: { ...st.leaving, [tab]: [...leaving, top] } };
+      }
+      return {
+        pages: { ...st.pages, [tab]: [{ ...page(p), shown: true, beneath: !!top }] },
+        leaving: top ? { ...st.leaving, [tab]: [...leaving, { ...top, fadeOut: true }] } : st.leaving,
+      };
     }),
   replace: (tab, p) => set((st) => ({ pages: { ...st.pages, [tab]: [...(st.pages[tab] ?? []).slice(0, -1), page(p)] } })),
   pop: (tab, animated = true) =>

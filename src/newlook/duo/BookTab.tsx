@@ -8,7 +8,7 @@ import { C } from '../theme';
 import { DetailPageView, useDetailPages, useDetailStore, useLeavingPages, type DetailPage } from './details';
 import { useBook, useLastHalf, useRailSide, useWindowInsets } from './layout';
 import { PaneProvider, usePaneWidth, type Pane } from './pane';
-import { ColumnSlotProvider, useColumnSlot } from './paneContext';
+import { ColumnSlotProvider, MUTED_COLUMN_SLOT, useColumnSlot } from './paneContext';
 
 /**
  * A tab as one screen, or on the open book as two halves split on the fold:
@@ -71,6 +71,7 @@ export function BookTab({ tab, left, right }: { tab: string; left: React.ReactNo
                 // A selection in the book's left half replaces the right half in place, like a split view;
                 // anything else comes in from the side like a navigation push, and leaves the way it came.
                 slideIn={!page.shown}
+                split={split}
                 bleed={bleed}
                 width={split ? rightWidth : leftWidth}
               />
@@ -110,6 +111,7 @@ function PageLayer({
   top,
   leaving,
   slideIn,
+  split,
   bleed,
   width,
 }: {
@@ -118,6 +120,7 @@ function PageLayer({
   top: boolean;
   leaving: boolean;
   slideIn: boolean;
+  split: boolean;
   bleed: number;
   width: number;
 }) {
@@ -137,13 +140,15 @@ function PageLayer({
       'worklet';
       if (done) runOnJS(forget)();
     };
-    if (slideIn) x.set(withTiming(width + bleed, SWIPE_OUT, gone));
+    // Folded, every page is on the navigation stack and leaves like one.
+    if ((slideIn || !split) && !page.fadeOut) x.set(withTiming(width + bleed, SWIPE_OUT, gone));
     else fade.set(withTiming(0, FADE_OUT, gone));
     // Runs once, when the page starts leaving.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [leaving]);
+  // A page shown beside the list is the root of the right half on the book, which a swipe does not close.
   const swipe = Gesture.Pan()
-    .enabled(top)
+    .enabled(top && (slideIn || !split))
     .hitSlop({ left: 0, width: EDGE })
     .activeOffsetX(10)
     .failOffsetY([-12, 12])
@@ -165,15 +170,14 @@ function PageLayer({
   return (
     <GestureDetector gesture={swipe}>
       <Animated.View
-        entering={slideIn ? undefined : fadeIn}
+        entering={slideIn || page.beneath ? undefined : fadeIn}
         style={[StyleSheet.absoluteFill, { backgroundColor: C.bg }, follow]}
         accessibilityElementsHidden={!top}
         importantForAccessibility={top ? 'auto' : 'no-hide-descendants'}
         pointerEvents={top ? 'auto' : 'none'}
       >
         <View style={{ flex: 1, marginRight: bleed }}>
-          {/* A page under the top one keeps its Back and actions out of the column. */}
-          <ColumnSlotProvider value={top ? slot : null}>
+          <ColumnSlotProvider value={top || !slot ? slot : MUTED_COLUMN_SLOT}>
             <DetailPageView page={page} />
           </ColumnSlotProvider>
         </View>

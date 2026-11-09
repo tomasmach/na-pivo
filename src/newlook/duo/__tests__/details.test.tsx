@@ -88,7 +88,21 @@ describe('useNvRouter', () => {
     const { result } = await renderHook(() => useNvRouter(), { wrapper: wrapper(tabPane) });
     result.current.push(PUB);
     result.current.push({ pathname: '/nv/pivo/[id]', params: { id: 'b1' } });
-    expect(useDetailStore.getState().pages.kompas?.map((p) => p.route)).toEqual(['pivo']);
+    const [beer] = useDetailStore.getState().pages.kompas ?? [];
+    expect(beer).toMatchObject({ route: 'pivo', beneath: true });
+    // The pub fades out over the beer, so the tab's own right half never shows in between.
+    expect(useDetailStore.getState().leaving.kompas).toEqual([expect.objectContaining({ route: 'hospoda', fadeOut: true })]);
+  });
+
+  it('goes back to the selected page when its row is selected again under a page pushed from it', async () => {
+    openBook();
+    const { result } = await renderHook(() => useNvRouter(), { wrapper: wrapper(tabPane) });
+    result.current.push(PUB);
+    const pub = useDetailStore.getState().pages.kompas![0];
+    useDetailStore.getState().push('kompas', { route: 'pivo', params: { id: 'b1' } });
+    result.current.push(PUB);
+    expect(useDetailStore.getState().pages.kompas).toEqual([pub]);
+    expect(useDetailStore.getState().leaving.kompas?.map((p) => p.route)).toEqual(['pivo']);
   });
 
   it('pushes what the right half opens on top, like a navigation stack inside the second column', async () => {

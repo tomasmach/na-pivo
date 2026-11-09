@@ -61,6 +61,9 @@ const ColumnSlotContext = createContext<ColumnSlot | null>(null);
 /** Set by a screen beside the iPhone Duo's side column, which shows Back and the screen's actions in that column. */
 export const ColumnSlotProvider = ColumnSlotContext.Provider;
 
+/** For a page under the top one or leaving: its Back and actions go nowhere, and it does not draw them itself either. */
+export const MUTED_COLUMN_SLOT: ColumnSlot = { setBack: () => {}, setActions: () => {} };
+
 export function useColumnSlot(): ColumnSlot | null {
   return useContext(ColumnSlotContext);
 }

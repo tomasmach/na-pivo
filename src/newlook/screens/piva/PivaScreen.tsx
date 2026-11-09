@@ -92,7 +92,7 @@ function RankRow({
       style={[
         s.row,
         { paddingVertical: 12, gap: 12, borderBottomWidth: 1, borderBottomColor: C.hairline },
-        selected && { backgroundColor: C.ring, marginHorizontal: -12, paddingHorizontal: 12, borderRadius: 16, borderBottomColor: 'transparent' },
+        selected && { backgroundColor: C.yellowSoft, marginHorizontal: -12, paddingHorizontal: 12, borderRadius: 16, borderBottomColor: 'transparent' },
       ]}
     >
       <View style={{ width: 34, alignItems: 'center', gap: 2 }}>

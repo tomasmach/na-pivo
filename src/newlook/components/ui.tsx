@@ -402,7 +402,7 @@ export function Row({
         s.row,
         { minHeight: height, gap: 12, paddingVertical: 10 },
         !last && { borderBottomWidth: 1, borderBottomColor: C.hairline },
-        selected && { backgroundColor: C.ring, marginHorizontal: -12, paddingHorizontal: 12, borderRadius: 16, borderBottomColor: 'transparent' },
+        selected && { backgroundColor: C.yellowSoft, marginHorizontal: -12, paddingHorizontal: 12, borderRadius: 16, borderBottomColor: 'transparent' },
       ]}
     >
       {leading}
