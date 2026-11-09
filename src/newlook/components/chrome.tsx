@@ -271,7 +271,7 @@ export function PageActions({ actions }: { actions: ColumnAction[] }) {
   const inColumn = useColumnActions(actions);
   if (inColumn) return null;
   return (
-    <View style={[s.row, { gap: 10, marginLeft: 'auto' }]}>
+    <View pointerEvents="box-none" style={[s.row, { gap: 10, marginLeft: 'auto' }]}>
       {actions.map((a) => (
         <IconButton key={`${a.icon}-${a.label}`} icon={a.icon} size={40} iconSize={18} color={a.color} label={a.label} onPress={a.onPress} />
       ))}
@@ -402,7 +402,7 @@ export function Screen({
       )}
       {floatHeader ? <TopFade /> : scroll && scrolled && headerH > 0 ? <TopFade below={headerH} /> : null}
       {floatHeader ? headerView : null}
-      <BottomFade height={(tab ? tabSpace : 0) + (footer ? footerH + 68 : 40)} />
+      <BottomFade height={(tab ? tabSpace : 0) + (footer ? footerH + 68 : 40)} denseFrom={footer ? footerBottom + footerH : undefined} />
       {footer ? (
         <Animated.View
           onLayout={(e) => setFooterH(e.nativeEvent.layout.height)}
@@ -441,9 +441,13 @@ export function TopFade({ below }: { below?: number }) {
   );
 }
 
-/** `tabBar` leaves the bar alone where Liquid Glass shows the content under it. */
-export function BottomFade({ height, tabBar = false }: { height: number; tabBar?: boolean }) {
+/**
+ * `tabBar` leaves the bar alone where Liquid Glass shows the content under it. `denseFrom` is the
+ * distance from the bottom where the fade must already hide content, so none shows between buttons.
+ */
+export function BottomFade({ height, tabBar = false, denseFrom }: { height: number; tabBar?: boolean; denseFrom?: number }) {
   if (tabBar && glassAvailable) return null;
+  const dense = denseFrom === undefined ? 40 : Math.min(40, Math.max(0, Math.round(((height - denseFrom) / height) * 100)));
   return (
     <View
       pointerEvents="none"
@@ -453,7 +457,7 @@ export function BottomFade({ height, tabBar = false }: { height: number; tabBar?
         right: 0,
         bottom: 0,
         height,
-        experimental_backgroundImage: `linear-gradient(180deg, ${C.bg}00 0%, ${C.bg}F2 40%, ${C.bg} 100%)`,
+        experimental_backgroundImage: `linear-gradient(180deg, ${C.bg}00 0%, ${C.bg}F2 ${dense}%, ${C.bg} 100%)`,
       }}
     />
   );

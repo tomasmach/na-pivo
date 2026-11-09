@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { ScrollView, View } from 'react-native';
+import { View } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Polygon } from 'react-native-svg';
@@ -12,7 +12,7 @@ import { useSettingsStore } from '@/stores/settingsStore';
 import { useTallyStore } from '@/stores/tallyStore';
 import { formatPrice } from '@/utils/currency';
 
-import { BottomFade, TopFade } from '../../components/chrome';
+import { Screen } from '../../components/chrome';
 import { Icon, type IconName } from '../../components/Icon';
 import { Button, D, IconButton, Press, T } from '../../components/ui';
 import { useNvRouter } from '../../duo/details';
@@ -119,140 +119,139 @@ export function UctenkaScreen() {
     return night.sessions.filter((session) => session.drinks.some((drink) => drink.beerName.trim().toLocaleLowerCase() === key)).at(-1)?.pubName ?? '';
   };
 
+  const footer = (
+    <View style={{ gap: 10 }}>
+      <View style={[s.row, { gap: 10 }]}>
+        <Button label={copy.sticker} icon="sticker" kind="raised" flex onPress={() => router.push({ pathname: '/nv/nalepky', params: { day: night.day } })} />
+        <Button label={copy.edit} icon="pencil" kind="raised" style={{ paddingHorizontal: 20 }} onPress={() => router.push({ pathname: '/nv/dopsat', params: { day: night.day } })} />
+      </View>
+      {hangs ? (
+        <NightHangsNote visibility={hangs.visibility} />
+      ) : (
+        <Button label={copy.postToVycep} icon="megaphone" height={56} onPress={() => router.push({ pathname: '/nv/vyvesit', params: { day: night.day } })} />
+      )}
+    </View>
+  );
+
   return (
-    <View style={{ flex: 1, backgroundColor: C.bg }}>
-      <ScrollView contentContainerStyle={{ paddingTop: insets.top + 8, paddingHorizontal: SCREEN_X, gap: 20, paddingBottom: 200 }} showsVerticalScrollIndicator={false}>
-        <View style={[s.row, { justifyContent: 'space-between' }]}>
-          <IconButton icon="x" onPress={close} label={copy.close} />
-          <T s={15} w={700} c={C.muted}>
-            {copy.done}
+    // "Dopito" sits in the close button's row but scrolls away with the receipt, so only the button floats over it.
+    <Screen header={<IconButton icon="x" onPress={close} label={copy.close} />} footer={footer} padTop={-48}>
+      <View style={[s.row, { justifyContent: 'flex-end', height: 44 }]}>
+        <T s={15} w={700} c={C.muted}>
+          {copy.done}
+        </T>
+      </View>
+      <View>
+        <View style={{ backgroundColor: PAPER, borderTopLeftRadius: 6, borderTopRightRadius: 6, paddingHorizontal: 20, paddingTop: 20, paddingBottom: 18 }}>
+          <View style={[s.row, { justifyContent: 'space-between' }]}>
+            <D s={22} c={INK}>
+              {copy.receiptBrand}
+            </D>
+            <T s={13} w={600} c="#14141499">
+              {copy.nightNo(nightOrdinal(nights, night.day))}
+            </T>
+          </View>
+          <T s={13} c="#14141499" style={{ marginTop: 6 }}>
+            {copy.receiptDate(copy.weekdaysLong[d.getDay()], d.getDate(), d.getMonth() + 1, d.getFullYear())}
           </T>
-        </View>
-        <View>
-          <View style={{ backgroundColor: PAPER, borderTopLeftRadius: 6, borderTopRightRadius: 6, paddingHorizontal: 20, paddingTop: 20, paddingBottom: 18 }}>
-            <View style={[s.row, { justifyContent: 'space-between' }]}>
-              <D s={22} c={INK}>
-                {copy.receiptBrand}
-              </D>
-              <T s={13} w={600} c="#14141499">
-                {copy.nightNo(nightOrdinal(nights, night.day))}
+          {more > 0 ? (
+            <View style={{ position: 'absolute', right: 40, top: 46, transform: [{ rotate: '-8deg' }], backgroundColor: C.yellow, borderRadius: 6, paddingHorizontal: 10, paddingVertical: 5 }}>
+              <T s={10} w={900} c={INK} style={{ letterSpacing: 1, textAlign: 'center' }}>
+                {copy.moreThanLast(more)}
               </T>
             </View>
-            <T s={13} c="#14141499" style={{ marginTop: 6 }}>
-              {copy.receiptDate(copy.weekdaysLong[d.getDay()], d.getDate(), d.getMonth() + 1, d.getFullYear())}
-            </T>
-            {more > 0 ? (
-              <View style={{ position: 'absolute', right: 40, top: 46, transform: [{ rotate: '-8deg' }], backgroundColor: C.yellow, borderRadius: 6, paddingHorizontal: 10, paddingVertical: 5 }}>
-                <T s={10} w={900} c={INK} style={{ letterSpacing: 1, textAlign: 'center' }}>
-                  {copy.moreThanLast(more)}
+          ) : null}
+          <Dashed />
+          {night.pubs.map((pub, i) => (
+            <View key={`${pub.pubKey}:${i}`} style={[s.row, { justifyContent: 'space-between', paddingVertical: 6, gap: 12 }]}>
+              <View style={s.fill}>
+                <T s={16} w={700} c={INK} numberOfLines={1}>
+                  {pub.name}
+                </T>
+                <T s={12} c="#14141499">
+                  {copy.timeRange(formatClock(new Date(pub.firstAt)), formatClock(new Date(pub.lastAt)))}
                 </T>
               </View>
-            ) : null}
-            <Dashed />
-            {night.pubs.map((pub, i) => (
-              <View key={`${pub.pubKey}:${i}`} style={[s.row, { justifyContent: 'space-between', paddingVertical: 6, gap: 12 }]}>
-                <View style={s.fill}>
-                  <T s={16} w={700} c={INK} numberOfLines={1}>
-                    {pub.name}
-                  </T>
-                  <T s={12} c="#14141499">
-                    {copy.timeRange(formatClock(new Date(pub.firstAt)), formatClock(new Date(pub.lastAt)))}
-                  </T>
-                </View>
-                <D s={26} c={INK}>{`${pub.beers}×`}</D>
-              </View>
-            ))}
-            <View style={[s.row, { justifyContent: 'space-between', alignItems: 'flex-end', marginTop: 20 }]}>
-              <T s={12} w={900} c={INK} style={{ letterSpacing: 2 }}>
-                {copy.total}
-              </T>
-              <D s={52} lh={1} c={INK}>
-                {copy.totalBeers(night.beers)}
-              </D>
+              <D s={26} c={INK}>{`${pub.beers}×`}</D>
             </View>
-            <View style={[s.row, { justifyContent: 'space-between', marginTop: 10 }]}>
+          ))}
+          <View style={[s.row, { justifyContent: 'space-between', alignItems: 'flex-end', marginTop: 20 }]}>
+            <T s={12} w={900} c={INK} style={{ letterSpacing: 2 }}>
+              {copy.total}
+            </T>
+            <D s={52} lh={1} c={INK}>
+              {copy.totalBeers(night.beers)}
+            </D>
+          </View>
+          <View style={[s.row, { justifyContent: 'space-between', marginTop: 10 }]}>
+            <T s={13} c="#141414B3">
+              {copy.atTable}
+            </T>
+            <T s={13} w={800} c={INK}>
+              {durationLabel(minutesBetween(night.startMs, night.endMs))}
+            </T>
+          </View>
+          {night.priced ? (
+            <View style={[s.row, { justifyContent: 'space-between', marginTop: 6 }]}>
               <T s={13} c="#141414B3">
-                {copy.atTable}
+                {copy.spentPrivate}
               </T>
               <T s={13} w={800} c={INK}>
-                {durationLabel(minutesBetween(night.startMs, night.endMs))}
+                {formatPrice(night.spentCzk, currency)}
               </T>
             </View>
-            {night.priced ? (
-              <View style={[s.row, { justifyContent: 'space-between', marginTop: 6 }]}>
-                <T s={13} c="#141414B3">
-                  {copy.spentPrivate}
-                </T>
-                <T s={13} w={800} c={INK}>
-                  {formatPrice(night.spentCzk, currency)}
-                </T>
-              </View>
-            ) : null}
-            <T s={12} c="#14141499" style={{ marginTop: 14 }}>
-              {copy.cheers}
+          ) : null}
+          <T s={12} c="#14141499" style={{ marginTop: 14 }}>
+            {copy.cheers}
+          </T>
+        </View>
+        <Zigzag width={paperW} />
+      </View>
+      {beers.length ? (
+        <View style={{ backgroundColor: C.card, borderRadius: 24, paddingHorizontal: 16, paddingBottom: 6 }}>
+          <View style={[s.row, { height: 52, justifyContent: 'space-between', borderBottomWidth: 1, borderBottomColor: C.hairline }]}>
+            <T s={17} w={700}>
+              {copy.howWasIt}
             </T>
           </View>
-          <Zigzag width={paperW} />
-        </View>
-        {beers.length ? (
-          <View style={{ backgroundColor: C.card, borderRadius: 24, paddingHorizontal: 16, paddingBottom: 6 }}>
-            <View style={[s.row, { height: 52, justifyContent: 'space-between', borderBottomWidth: 1, borderBottomColor: C.hairline }]}>
-              <T s={17} w={700}>
-                {copy.howWasIt}
-              </T>
-            </View>
-            {beers.map((beer, i) => {
-              const pubName = pubOfBeer(beer.name);
-              const stars = myRating(ratings, beer.name);
-              const rate = () => router.push({ pathname: '/nv/hodnoceni', params: { id: '-', name: beer.name, pub: pubName } });
-              return (
-                <View key={beer.name} style={[s.row, { height: 58, gap: 10 }, i < beers.length - 1 && { borderBottomWidth: 1, borderBottomColor: C.hairline }]}>
-                  <View style={[s.fill, { gap: 2 }]}>
-                    <T s={16} w={600} numberOfLines={1}>
-                      {beer.name}
-                    </T>
-                    <T s={12} c={C.muted} numberOfLines={1}>
-                      {copy.ratedSub(beer.count, pubName)}
-                    </T>
-                  </View>
-                  {stars ? (
-                    <Press haptic onPress={rate} hitSlop={8} accessibilityLabel={copy.myRatingA11y(stars)}>
-                      <Stars n={stars} size={14} />
-                    </Press>
-                  ) : (
-                    <Press haptic onPress={rate} style={[s.row, { height: 38, borderRadius: 19, paddingHorizontal: 12, gap: 6, backgroundColor: C.control }]}>
-                      <Icon name="star" size={16} color={C.yellow} />
-                      <T s={15} w={700}>
-                        {copy.rate}
-                      </T>
-                      <Icon name="chevron-right" size={14} color={C.text2} />
-                    </Press>
-                  )}
+          {beers.map((beer, i) => {
+            const pubName = pubOfBeer(beer.name);
+            const stars = myRating(ratings, beer.name);
+            const rate = () => router.push({ pathname: '/nv/hodnoceni', params: { id: '-', name: beer.name, pub: pubName } });
+            return (
+              <View key={beer.name} style={[s.row, { height: 58, gap: 10 }, i < beers.length - 1 && { borderBottomWidth: 1, borderBottomColor: C.hairline }]}>
+                <View style={[s.fill, { gap: 2 }]}>
+                  <T s={16} w={600} numberOfLines={1}>
+                    {beer.name}
+                  </T>
+                  <T s={12} c={C.muted} numberOfLines={1}>
+                    {copy.ratedSub(beer.count, pubName)}
+                  </T>
                 </View>
-              );
-            })}
-          </View>
-        ) : null}
-        {(summary && summary.xp > 0) || medalLabel ? (
-          <View style={[s.row, { gap: 8, flexWrap: 'wrap' }]}>
-            {summary && summary.xp > 0 ? <NightChip icon="zap" label={copy.receiptXp(summary.xp)} /> : null}
-            {medal && medalLabel ? <NightChip icon={badgeIcon(medal.badge.key)} label={medalLabel} /> : null}
-          </View>
-        ) : null}
-      </ScrollView>
-      <TopFade />
-      <BottomFade height={210} />
-      <View style={{ position: 'absolute', left: SCREEN_X, right: SCREEN_X, bottom: Math.max(insets.bottom, 16) + 4, gap: 10 }}>
-        <View style={[s.row, { gap: 10 }]}>
-          <Button label={copy.sticker} icon="sticker" kind="raised" flex onPress={() => router.push({ pathname: '/nv/nalepky', params: { day: night.day } })} />
-          <Button label={copy.edit} icon="pencil" kind="raised" style={{ paddingHorizontal: 20 }} onPress={() => router.push({ pathname: '/nv/dopsat', params: { day: night.day } })} />
+                {stars ? (
+                  <Press haptic onPress={rate} hitSlop={8} accessibilityLabel={copy.myRatingA11y(stars)}>
+                    <Stars n={stars} size={14} />
+                  </Press>
+                ) : (
+                  <Press haptic onPress={rate} style={[s.row, { height: 38, borderRadius: 19, paddingHorizontal: 12, gap: 6, backgroundColor: C.control }]}>
+                    <Icon name="star" size={16} color={C.yellow} />
+                    <T s={15} w={700}>
+                      {copy.rate}
+                    </T>
+                    <Icon name="chevron-right" size={14} color={C.text2} />
+                  </Press>
+                )}
+              </View>
+            );
+          })}
         </View>
-        {hangs ? (
-          <NightHangsNote visibility={hangs.visibility} />
-        ) : (
-          <Button label={copy.postToVycep} icon="megaphone" height={56} onPress={() => router.push({ pathname: '/nv/vyvesit', params: { day: night.day } })} />
-        )}
-      </View>
-    </View>
+      ) : null}
+      {(summary && summary.xp > 0) || medalLabel ? (
+        <View style={[s.row, { gap: 8, flexWrap: 'wrap' }]}>
+          {summary && summary.xp > 0 ? <NightChip icon="zap" label={copy.receiptXp(summary.xp)} /> : null}
+          {medal && medalLabel ? <NightChip icon={badgeIcon(medal.badge.key)} label={medalLabel} /> : null}
+        </View>
+      ) : null}
+    </Screen>
   );
 }

@@ -183,6 +183,7 @@ export function Sheet({
   scroll = true,
   contentStyle,
   kicker,
+  onBack,
 }: {
   title?: string;
   children: React.ReactNode;
@@ -193,6 +194,8 @@ export function Sheet({
   scroll?: boolean;
   contentStyle?: StyleProp<ViewStyle>;
   kicker?: React.ReactNode;
+  /** Back arrow before the title, for a sheet that returns to the previous step. */
+  onBack?: () => void;
 }) {
   const router = useRouter();
   const routeKey = useRoute().key;
@@ -290,8 +293,9 @@ export function Sheet({
         ]}
       >
         <View style={{ position: 'absolute', top: 8, alignSelf: 'center', width: 36, height: 5, borderRadius: 3, backgroundColor: '#FFFFFF40' }} />
-        {title || closeIcon ? (
+        {title || closeIcon || onBack ? (
           <View style={[s.row, { justifyContent: 'space-between', paddingHorizontal: SCREEN_X, marginBottom: 6, minHeight: 40 }]}>
+            {onBack ? <IconButton icon="chevron-left" size={40} iconSize={18} onPress={onBack} label={t.nv.profil.chrome.back} style={{ marginRight: 12 }} /> : null}
             <View style={[s.fill, { gap: 4 }]}>
               {kicker}
               {title ? <D s={30}>{title}</D> : null}

@@ -25,6 +25,9 @@ const PUB_REMINDER_GEOFENCES_KEY = 'na-pivo-pub-reminder-geofences';
 const TALLY_STORE_KEY = 'na-pivo-tally';
 
 const PUB_REMINDER_NOTIFICATION_KIND = 'pub_reminder';
+/** Scheduling under a fixed id replaces the previous pending reminder in the OS,
+ * so the phone never holds more than one, whatever the stored state says. */
+const PUB_REMINDER_NOTIFICATION_ID = 'na-pivo-pub-reminder';
 
 /** iOS monitors at most 20 regions per app — cap the fleet to the nearest pubs. */
 const MAX_GEOFENCES = 20;
@@ -169,6 +172,7 @@ async function hasActiveCounterSession(): Promise<boolean> {
 async function schedulePubReminder(pubName: string, pubId: string, fireAtMs: number): Promise<string | null> {
   if (!Notifications) return null;
   return Notifications.scheduleNotificationAsync({
+    identifier: PUB_REMINDER_NOTIFICATION_ID,
     content: {
       title: t.notifications.pubReminderTitle(pubName),
       body: t.notifications.pubReminderBody,
@@ -204,7 +208,22 @@ async function writePubReminderState(state: PubReminderState): Promise<void> {
   await writeJson(PUB_REMINDER_STATE_KEY, state);
 }
 
-export async function cancelPendingPubReminder(): Promise<void> {
+/** Every (re)registration makes iOS report all regions the phone is already
+ * inside at once. Run state changes one at a time, or each concurrent Enter
+ * reads "nothing pending" and schedules its own reminder. */
+let reminderStateQueue: Promise<void> = Promise.resolve();
+
+function serializeReminderState(work: () => Promise<void>): Promise<void> {
+  const run = reminderStateQueue.then(work);
+  reminderStateQueue = run.catch(() => undefined);
+  return run;
+}
+
+export function cancelPendingPubReminder(): Promise<void> {
+  return serializeReminderState(cancelPendingPubReminderNow);
+}
+
+async function cancelPendingPubReminderNow(): Promise<void> {
   const nowMs = Date.now();
   const state = await readPubReminderState(nowMs);
   const pending = state.pendingReminder;
@@ -364,7 +383,7 @@ async function handleGeofenceEnter(pubId: string): Promise<void> {
   if (!(await isReminderEnabled())) return;
   if (Date.now() < notificationRetryAfter || !Notifications) return;
   if ((await Notifications.getPermissionsAsync()).status !== 'granted') {
-    await cancelPendingPubReminder();
+    await cancelPendingPubReminderNow();
     return;
   }
 
@@ -378,7 +397,7 @@ async function handleGeofenceEnter(pubId: string): Promise<void> {
   const state = await readPubReminderState(now.getTime());
   const hasCounterSession = await hasActiveCounterSession();
   if (hasCounterSession) {
-    if (state.pendingReminder) await cancelPendingPubReminder();
+    if (state.pendingReminder) await cancelPendingPubReminderNow();
     else await writePubReminderState(state);
     return;
   }
@@ -440,9 +459,9 @@ TaskManager?.defineTask(PUB_REMINDER_GEOFENCE_TASK, async ({ data, error }) => {
     const pubId = region?.identifier;
     if (typeof pubId !== 'string' || !pubId) return;
     if (eventType === Location.GeofencingEventType.Enter) {
-      await handleGeofenceEnter(pubId);
+      await serializeReminderState(() => handleGeofenceEnter(pubId));
     } else if (eventType === Location.GeofencingEventType.Exit) {
-      await handleGeofenceExit(pubId);
+      await serializeReminderState(() => handleGeofenceExit(pubId));
     }
   } catch {
     // Expo otherwise logs the raw native exception from a rejected task. Keep

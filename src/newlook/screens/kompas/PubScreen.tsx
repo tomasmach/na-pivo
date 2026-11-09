@@ -1,12 +1,11 @@
 import React, { useEffect } from 'react';
-import { ScrollView, View } from 'react-native';
+import { View } from 'react-native';
 import MapView, { Marker, PROVIDER_GOOGLE } from 'react-native-maps';
 import Animated from 'react-native-reanimated';
 import { useRouter } from 'expo-router';
 import { nvBack } from '@/newlook/navigation';
 import { useNvRouter } from '../../duo/details';
 import { usePaneWidth } from '../../duo/pane';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { haversineMeters } from '@/compass/distance';
 import { geohash8 } from '@/data/geohash';
@@ -23,7 +22,7 @@ import { formatPrice } from '@/utils/currency';
 import { dateTimeFormat, numberFormat } from '@/utils/intlFormat';
 import { openPubInMaps } from '@/utils/maps';
 
-import { BackButton, BackHeader, BottomFade, PageActions, Screen, TopFade } from '../../components/chrome';
+import { BackButton, BackHeader, PageActions, Screen } from '../../components/chrome';
 import { Ghost } from '../../components/StatusCard';
 import { Icon } from '../../components/Icon';
 import { Button, D, Dot, IconButton, Press, ProgressRing, T } from '../../components/ui';
@@ -164,7 +163,6 @@ function eventWhen(event: Parameters<typeof eventDay>[0], now: Date): string {
 export function PubScreen() {
   const router = useNvRouter();
   const mapWidth = usePaneWidth();
-  const insets = useSafeAreaInsets();
   const { key, pub: opened } = useParamPub();
   const details = usePubDetails(opened, key);
   const { pub } = details;
@@ -212,164 +210,165 @@ export function PubScreen() {
       ? numberFormat({ minimumFractionDigits: 1, maximumFractionDigits: 1 }).format(pub.rating)
       : null;
 
+  const header = (
+    <View pointerEvents="box-none" style={[s.row, { justifyContent: 'space-between' }]}>
+      <BackButton onPress={() => nvBack(router)} label={L().back} />
+      <PageActions
+        actions={[
+          { icon: 'heart', label: fav ? L().favoriteRemove : L().favoriteAdd, color: fav ? C.yellow : C.white, onPress: toggleFavorite },
+          { icon: 'share', label: L().share, onPress: () => router.push({ pathname: '/nv/sdilet-hospodu', params: { ...params(), url: buildPubShareUrl(pub) } }) },
+          {
+            icon: 'ellipsis',
+            label: L().more,
+            // In the iPhone Duo's overflow sheet a plain "Další" would say nothing.
+            menuLabel: L().wrongTitle,
+            onPress: () => {
+              trackUiInteraction('compass_report_open');
+              router.push({ pathname: '/nv/nesedi', params: params() });
+            },
+          },
+        ]}
+      />
+    </View>
+  );
+  const footer = (
+    <View style={[s.row, { gap: 10 }]}>
+      <Button label={L().guideMe} icon="navigation" flex onPress={guide} />
+      <IconButton icon="compass" size={52} iconSize={23} color={C.yellow} label={L().showOnCompass} onPress={() => showOnKompas(router, pub)} />
+    </View>
+  );
+
   return (
-    <View style={{ flex: 1, backgroundColor: C.bg }}>
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingTop: insets.top + 8, paddingBottom: 140 }}>
-        <View style={{ paddingHorizontal: SCREEN_X, gap: 18, paddingBottom: 24 }}>
-          <View style={[s.row, { justifyContent: 'space-between' }]}>
-            <BackButton onPress={() => nvBack(router)} label={L().back} />
-            <PageActions
-              actions={[
-                { icon: 'heart', label: fav ? L().favoriteRemove : L().favoriteAdd, color: fav ? C.yellow : C.white, onPress: toggleFavorite },
-                { icon: 'share', label: L().share, onPress: () => router.push({ pathname: '/nv/sdilet-hospodu', params: { ...params(), url: buildPubShareUrl(pub) } }) },
-                {
-                  icon: 'ellipsis',
-                  label: L().more,
-                  // In the iPhone Duo's overflow sheet a plain "Další" would say nothing.
-                  menuLabel: L().wrongTitle,
-                  onPress: () => {
-                    trackUiInteraction('compass_report_open');
-                    router.push({ pathname: '/nv/nesedi', params: params() });
-                  },
-                },
-              ]}
-            />
-          </View>
-          <View style={{ gap: 6 }}>
-            <D s={44} accessibilityRole="header">
-              {pub.name}
-            </D>
-            <View style={[s.row, { gap: 6, flexWrap: 'wrap' }]}>
-              <Dot color={hours.tone === 'open' ? C.open : C.muted} size={7} />
-              <T s={15} w={600} c={hours.tone === 'open' ? C.open : C.muted}>
-                {hours.tone === 'open' ? (hours.until ? L().openUntil(hours.until) : L().openNow) : hours.tone === 'closed' ? L().closedNow : L().hoursUnknown}
+    <Screen header={header} footer={footer} gap={0} padTop={14} contentStyle={{ paddingHorizontal: 0 }}>
+      <View style={{ paddingHorizontal: SCREEN_X, gap: 18, paddingBottom: 24 }}>
+        <View style={{ gap: 6 }}>
+          <D s={44} accessibilityRole="header">
+            {pub.name}
+          </D>
+          <View style={[s.row, { gap: 6, flexWrap: 'wrap' }]}>
+            <Dot color={hours.tone === 'open' ? C.open : C.muted} size={7} />
+            <T s={15} w={600} c={hours.tone === 'open' ? C.open : C.muted}>
+              {hours.tone === 'open' ? (hours.until ? L().openUntil(hours.until) : L().openNow) : hours.tone === 'closed' ? L().closedNow : L().hoursUnknown}
+            </T>
+            {distance != null || area ? (
+              <T s={15} c={C.muted}>
+                {L().distanceArea(distance != null ? distanceLabel(distance) : '', area)}
               </T>
-              {distance != null || area ? (
-                <T s={15} c={C.muted}>
-                  {L().distanceArea(distance != null ? distanceLabel(distance) : '', area)}
-                </T>
-              ) : null}
-            </View>
-          </View>
-          <Press onPress={() => showOnKompas(router, pub)} style={{ height: 112, borderRadius: 20, overflow: 'hidden', backgroundColor: C.card }}>
-            <MapView
-              // Rebuilt when the iPhone Duo folds or opens: Google drops the pin and the centre on a resize.
-              key={mapWidth}
-              provider={PROVIDER_GOOGLE}
-              style={{ flex: 1 }}
-              customMapStyle={GRAY_MAP}
-              initialRegion={{ latitude: pub.lat, longitude: pub.lng, latitudeDelta: 0.004, longitudeDelta: 0.004 }}
-              scrollEnabled={false}
-              zoomEnabled={false}
-              rotateEnabled={false}
-              pitchEnabled={false}
-              pointerEvents="none"
-              userInterfaceStyle="dark"
-            >
-              <Marker coordinate={{ latitude: pub.lat, longitude: pub.lng }} anchor={{ x: 0.5, y: 0.5 }} tracksViewChanges={false}>
-                <View style={[{ width: 38, height: 38, borderRadius: 19, backgroundColor: C.yellow, borderWidth: 2, borderColor: C.black }, s.center]}>
-                  <Icon name="beer" size={18} color={C.black} />
-                </View>
-              </Marker>
-            </MapView>
-            <View style={[s.row, { position: 'absolute', right: 10, bottom: 12, height: 34, borderRadius: 17, paddingHorizontal: 12, gap: 6, backgroundColor: '#0A0A0AD9', borderWidth: 1, borderColor: C.line }]}>
-              <Icon name="map" size={15} color={C.yellow} />
-              <T s={13} w={700}>
-                {L().showOnMap}
-              </T>
-            </View>
-          </Press>
-          <View style={[s.row, { gap: 14, paddingVertical: 14, paddingHorizontal: 16, borderRadius: 20, backgroundColor: C.card }]}>
-            <View style={{ width: 40, height: 40 }}>
-              <ProgressRing size={40} progress={Math.max(0.02, details.mappedPercent / 100)} stroke={4} track={C.hairline} />
-            </View>
-            <View style={[s.fill, { gap: 2 }]}>
-              <T s={16} w={700}>
-                {L().mapped(details.mappedPercent)}
-              </T>
-              <T s={13} c={C.muted}>
-                {L().mappedSub}
-              </T>
-            </View>
-            <Press haptic onPress={() => router.push({ pathname: '/nv/doplnit-info', params: params() })} style={[{ height: 36, borderRadius: 18, paddingHorizontal: 14, backgroundColor: C.control }, s.center]}>
-              <T s={14} w={700} c={C.yellow}>
-                {L().fill}
-              </T>
-            </Press>
+            ) : null}
           </View>
         </View>
-        <Band />
-        <Section title={L().onTap} meta={verified}>
-          {details.taps.length ? (
-            <Animated.View entering={fadeIn}>
-              {details.taps.map((tap, i) => (
-                <Press key={`${tap.name}-${tap.volumeMl ?? ''}`} onPress={() => router.push({ pathname: '/nv/pivo/[id]', params: { id: '-', name: tap.name } })}>
-                  <Line
-                    title={tap.name}
-                    sub={tap.volumeMl ? formatVolume(tap.volumeMl) : undefined}
-                    value={tap.priceCzk ? formatPrice(tap.priceCzk, currency) : undefined}
-                    last={i === details.taps.length - 1}
-                  />
-                </Press>
-              ))}
-            </Animated.View>
-          ) : !details.hoursLoaded ? (
-            // One tap row high, the shortest answer the menu can have.
-            <Ghost height={TAP_ROW_HEIGHT - 12} radius={14} style={{ marginVertical: 6 }} />
-          ) : (
-            <Animated.View entering={fadeIn}>
-              <T s={16} c={C.text2} style={{ paddingVertical: 10 }}>
-                {L().noTaps}
-              </T>
-              <AddLink label={L().addTaps} onPress={() => router.push({ pathname: '/nv/doplnit-info', params: { ...params(), tab: 'piva' } })} />
-            </Animated.View>
-          )}
-        </Section>
-        <Band />
-        <Section title={L().events}>
-          {details.events.map((event) => (
-            <Line key={event.id} title={event.title} sub={eventWhen(event, details.now)} />
-          ))}
-          <AddLink label={L().suggestEvent} onPress={() => router.push({ pathname: '/nv/navrhnout-akci', params: params() })} />
-        </Section>
-        <Band />
-        <Section title={L().tabHours}>
-          {details.week ? (
-            <WeekHours week={details.week} now={details.now} />
-          ) : pub.openingHours?.trim() ? (
-            <T s={16} c={C.text2} style={{ paddingVertical: 10 }}>
-              {pub.openingHours}
+        <Press onPress={() => showOnKompas(router, pub)} style={{ height: 112, borderRadius: 20, overflow: 'hidden', backgroundColor: C.card }}>
+          <MapView
+            // Rebuilt when the iPhone Duo folds or opens: Google drops the pin and the centre on a resize.
+            key={mapWidth}
+            provider={PROVIDER_GOOGLE}
+            style={{ flex: 1 }}
+            customMapStyle={GRAY_MAP}
+            initialRegion={{ latitude: pub.lat, longitude: pub.lng, latitudeDelta: 0.004, longitudeDelta: 0.004 }}
+            scrollEnabled={false}
+            zoomEnabled={false}
+            rotateEnabled={false}
+            pitchEnabled={false}
+            pointerEvents="none"
+            userInterfaceStyle="dark"
+          >
+            <Marker coordinate={{ latitude: pub.lat, longitude: pub.lng }} anchor={{ x: 0.5, y: 0.5 }} tracksViewChanges={false}>
+              <View style={[{ width: 38, height: 38, borderRadius: 19, backgroundColor: C.yellow, borderWidth: 2, borderColor: C.black }, s.center]}>
+                <Icon name="beer" size={18} color={C.black} />
+              </View>
+            </Marker>
+          </MapView>
+          <View style={[s.row, { position: 'absolute', right: 10, bottom: 12, height: 34, borderRadius: 17, paddingHorizontal: 12, gap: 6, backgroundColor: '#0A0A0AD9', borderWidth: 1, borderColor: C.line }]}>
+            <Icon name="map" size={15} color={C.yellow} />
+            <T s={13} w={700}>
+              {L().showOnMap}
             </T>
-          ) : !details.hoursLoaded ? (
-            <Ghost height={TAP_ROW_HEIGHT - 12} radius={14} style={{ marginVertical: 6 }} />
-          ) : (
-            <Animated.View entering={fadeIn}>
-              <T s={16} c={C.text2} style={{ paddingVertical: 10 }}>
-                {L().hoursUnknown}
-              </T>
-              <AddLink label={L().addHours} onPress={() => router.push({ pathname: '/nv/doplnit-info', params: params() })} />
-            </Animated.View>
-          )}
-        </Section>
-        <Band />
-        <Section title={L().about}>
-          {details.beersLastWeek ? <Line title={L().lastWeekBeers(details.beersLastWeek)} sub={L().lastWeekBeersSub} /> : null}
-          {ratingValue ? (
-            <Line
-              title={L().rating(ratingValue, numberFormat().format(pub.ratingCount ?? 0))}
-              sub="Firmy.cz"
-              last={!details.visit}
-            />
-          ) : null}
-          {details.visit ? <VisitLine pubKey={details.visit.cacheKey} name={pub.name} visitCount={details.visit.visitCount} lastVisitedAt={details.visit.lastVisitedAt} /> : null}
-        </Section>
-      </ScrollView>
-      <TopFade />
-      <BottomFade height={184} />
-      <View style={[s.row, { position: 'absolute', left: SCREEN_X, right: SCREEN_X, bottom: Math.max(insets.bottom, 16) + 4, gap: 10 }]}>
-        <Button label={L().guideMe} icon="navigation" flex onPress={guide} />
-        <IconButton icon="compass" size={52} iconSize={23} color={C.yellow} label={L().showOnCompass} onPress={() => showOnKompas(router, pub)} />
+          </View>
+        </Press>
+        <View style={[s.row, { gap: 14, paddingVertical: 14, paddingHorizontal: 16, borderRadius: 20, backgroundColor: C.card }]}>
+          <View style={{ width: 40, height: 40 }}>
+            <ProgressRing size={40} progress={Math.max(0.02, details.mappedPercent / 100)} stroke={4} track={C.hairline} />
+          </View>
+          <View style={[s.fill, { gap: 2 }]}>
+            <T s={16} w={700}>
+              {L().mapped(details.mappedPercent)}
+            </T>
+            <T s={13} c={C.muted}>
+              {L().mappedSub}
+            </T>
+          </View>
+          <Press haptic onPress={() => router.push({ pathname: '/nv/doplnit-info', params: params() })} style={[{ height: 36, borderRadius: 18, paddingHorizontal: 14, backgroundColor: C.control }, s.center]}>
+            <T s={14} w={700} c={C.yellow}>
+              {L().fill}
+            </T>
+          </Press>
+        </View>
       </View>
-    </View>
+      <Band />
+      <Section title={L().onTap} meta={verified}>
+        {details.taps.length ? (
+          <Animated.View entering={fadeIn}>
+            {details.taps.map((tap, i) => (
+              <Press key={`${tap.name}-${tap.volumeMl ?? ''}`} onPress={() => router.push({ pathname: '/nv/pivo/[id]', params: { id: '-', name: tap.name } })}>
+                <Line
+                  title={tap.name}
+                  sub={tap.volumeMl ? formatVolume(tap.volumeMl) : undefined}
+                  value={tap.priceCzk ? formatPrice(tap.priceCzk, currency) : undefined}
+                  last={i === details.taps.length - 1}
+                />
+              </Press>
+            ))}
+          </Animated.View>
+        ) : !details.hoursLoaded ? (
+          // One tap row high, the shortest answer the menu can have.
+          <Ghost height={TAP_ROW_HEIGHT - 12} radius={14} style={{ marginVertical: 6 }} />
+        ) : (
+          <Animated.View entering={fadeIn}>
+            <T s={16} c={C.text2} style={{ paddingVertical: 10 }}>
+              {L().noTaps}
+            </T>
+            <AddLink label={L().addTaps} onPress={() => router.push({ pathname: '/nv/doplnit-info', params: { ...params(), tab: 'piva' } })} />
+          </Animated.View>
+        )}
+      </Section>
+      <Band />
+      <Section title={L().events}>
+        {details.events.map((event) => (
+          <Line key={event.id} title={event.title} sub={eventWhen(event, details.now)} />
+        ))}
+        <AddLink label={L().suggestEvent} onPress={() => router.push({ pathname: '/nv/navrhnout-akci', params: params() })} />
+      </Section>
+      <Band />
+      <Section title={L().tabHours}>
+        {details.week ? (
+          <WeekHours week={details.week} now={details.now} />
+        ) : pub.openingHours?.trim() ? (
+          <T s={16} c={C.text2} style={{ paddingVertical: 10 }}>
+            {pub.openingHours}
+          </T>
+        ) : !details.hoursLoaded ? (
+          <Ghost height={TAP_ROW_HEIGHT - 12} radius={14} style={{ marginVertical: 6 }} />
+        ) : (
+          <Animated.View entering={fadeIn}>
+            <T s={16} c={C.text2} style={{ paddingVertical: 10 }}>
+              {L().hoursUnknown}
+            </T>
+            <AddLink label={L().addHours} onPress={() => router.push({ pathname: '/nv/doplnit-info', params: params() })} />
+          </Animated.View>
+        )}
+      </Section>
+      <Band />
+      <Section title={L().about}>
+        {details.beersLastWeek ? <Line title={L().lastWeekBeers(details.beersLastWeek)} sub={L().lastWeekBeersSub} /> : null}
+        {ratingValue ? (
+          <Line
+            title={L().rating(ratingValue, numberFormat().format(pub.ratingCount ?? 0))}
+            sub="Firmy.cz"
+            last={!details.visit}
+          />
+        ) : null}
+        {details.visit ? <VisitLine pubKey={details.visit.cacheKey} name={pub.name} visitCount={details.visit.visitCount} lastVisitedAt={details.visit.lastVisitedAt} /> : null}
+      </Section>
+    </Screen>
   );
 }
