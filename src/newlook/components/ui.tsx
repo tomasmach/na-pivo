@@ -132,7 +132,8 @@ export function Button({
   // A dimmed yellow turns brown on the dark ground, so a disabled primary sits back as a plain control.
   const dimmedPrimary = !!disabled && kind === 'primary';
   // The open iPhone Duo keeps one yellow call to action per window: the right half speaks quietly.
-  const quiet = kind === 'primary' && usePane()?.side === 'right';
+  const pane = usePane();
+  const quiet = kind === 'primary' && pane?.side === 'right';
   const k = dimmedPrimary ? DISABLED_PRIMARY : BUTTON[quiet ? 'raised' : kind];
   const labelSize = height >= 56 ? 17 : height >= 50 ? 16 : 15;
   return (
