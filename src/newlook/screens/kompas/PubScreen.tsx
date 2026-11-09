@@ -22,7 +22,7 @@ import { formatPrice } from '@/utils/currency';
 import { dateTimeFormat, numberFormat } from '@/utils/intlFormat';
 import { openPubInMaps } from '@/utils/maps';
 
-import { BackHeader, BottomFade, Screen, TopFade } from '../../components/chrome';
+import { BackButton, BackHeader, BottomFade, Screen, TopFade } from '../../components/chrome';
 import { Ghost } from '../../components/StatusCard';
 import { Icon } from '../../components/Icon';
 import { Button, D, Dot, IconButton, Press, ProgressRing, T } from '../../components/ui';
@@ -215,7 +215,7 @@ export function PubScreen() {
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingTop: insets.top + 8, paddingBottom: 140 }}>
         <View style={{ paddingHorizontal: SCREEN_X, gap: 18, paddingBottom: 24 }}>
           <View style={[s.row, { justifyContent: 'space-between' }]}>
-            <IconButton icon="chevron-left" size={40} iconSize={18} onPress={() => nvBack(router)} label={L().back} />
+            <BackButton onPress={() => nvBack(router)} label={L().back} />
             <View style={[s.row, { gap: 10 }]}>
               <IconButton icon="heart" size={40} iconSize={18} color={fav ? C.yellow : C.white} label={fav ? L().favoriteRemove : L().favoriteAdd} onPress={toggleFavorite} />
               <IconButton

@@ -393,9 +393,8 @@ function Feed({ scope, onScope }: { scope: Scope; onScope?: (scope: Scope) => vo
         ListHeaderComponentStyle={{ gap: 16 }}
         ListHeaderComponent={
           <>
-            {crewHalf ? (
-              <TabHeader tab="vycep-parta" title={t.nv.vycep.scopeParta} />
-            ) : (
+            {/* The crew half opens with its summary card, which names it; a second "Parta" title would read as the Parta tab. */}
+            {crewHalf ? null : (
               <TabHeader tab="vycep" title={t.nv.vycep.title}>
                 <Button label={t.nv.vycep.publishCta} icon="plus" height={44} style={{ paddingHorizontal: 18 }} onPress={publish} />
               </TabHeader>

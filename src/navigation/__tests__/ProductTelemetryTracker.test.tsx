@@ -3,6 +3,7 @@ import { usePathname } from 'expo-router';
 
 import { trackScreenViewed } from '@/data/productTelemetry';
 import { ProductTelemetryTracker } from '@/navigation/ProductTelemetryTracker';
+import { useDetailStore } from '@/newlook/duo/detailStore';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -44,6 +45,17 @@ describe('ProductTelemetryTracker', () => {
       ['compass', undefined],
       ['pub_page', 'compass'],
       ['compass', 'pub_page'],
+    ]);
+  });
+
+  it('counts a page opened over a tab on the iPhone Duo like the pushed screen', () => {
+    show('/nv/parta');
+    act(() => useDetailStore.getState().push('parta', { route: 'kamos', params: { id: 'friend-1' } }));
+    act(() => useDetailStore.getState().pop('parta'));
+    expect(views()).toEqual([
+      ['friends', undefined],
+      ['friend_profile', 'friends'],
+      ['friends', 'friend_profile'],
     ]);
   });
 

@@ -1,11 +1,12 @@
 import React from 'react';
 import { act, renderHook } from '@testing-library/react-native';
 import { useWindowDimensions } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useAccountStore } from '@/stores/accountStore';
 
 import { DetailPageProvider, detailOf, useDetailStore, useNvRouter, type DetailPage } from '../details';
-import { PaneProvider, type Pane } from '../pane';
+import { PaneProvider, type Pane } from '../paneContext';
 
 const router = { push: jest.fn(), navigate: jest.fn(), replace: jest.fn(), back: jest.fn(), canGoBack: jest.fn(() => false) };
 jest.mock('expo-router', () => ({
@@ -69,6 +70,16 @@ describe('useNvRouter', () => {
     result.current.push(PUB);
     expect(router.push).not.toHaveBeenCalled();
     expect(useDetailStore.getState().pages.kompas?.map((p) => p.route)).toEqual(['hospoda']);
+  });
+
+  it('opens a pub from a tab as a page of the tab on the folded Duo, so unfolding keeps it', async () => {
+    jest.mocked(useWindowDimensions).mockReturnValue({ width: 466, height: 678, scale: 3, fontScale: 1 });
+    jest.mocked(useSafeAreaInsets).mockReturnValue({ top: 0, right: 84, bottom: 34, left: 0 });
+    const { result } = await renderHook(() => useNvRouter(), { wrapper: wrapper({ tab: 'kompas', side: 'single', width: 382 }) });
+    result.current.push(PUB);
+    expect(router.push).not.toHaveBeenCalled();
+    expect(useDetailStore.getState().pages.kompas?.map((p) => p.route)).toEqual(['hospoda']);
+    jest.mocked(useSafeAreaInsets).mockReturnValue({ top: 0, right: 0, bottom: 0, left: 0 });
   });
 
   it('still covers the window with screens that are not details', async () => {

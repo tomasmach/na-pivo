@@ -18,7 +18,7 @@ import { usePartaSignalStore } from '@/stores/partaSignalStore';
 
 import { BottomFade, TabHeader, TopFade, useTabBarSpace, useTabHeaderScroll } from '../../components/chrome';
 import { BookTab } from '../../duo/BookTab';
-import { useNvRouter } from '../../duo/details';
+import { useDetailPages, useNvRouter } from '../../duo/details';
 import { useBook } from '../../duo/layout';
 import { usePaneWidth } from '../../duo/pane';
 import { StatusCard } from '../../components/StatusCard';
@@ -216,7 +216,7 @@ export function PartaScreen() {
   const [page, setPage] = useState(0);
   const ticketW = Math.min(300, width - SCREEN_X * 2 - 50);
   const onScroll = useTabHeaderScroll('parta');
-  const onPeopleScroll = useTabHeaderScroll('parta-lide');
+  const onPlansScroll = useTabHeaderScroll('parta-pozvanky');
   const { book } = useBook();
 
   useFocusEffect(
@@ -285,25 +285,14 @@ export function PartaScreen() {
     router.push({ pathname: '/nv/kamos/[id]', params: { id } });
   };
   const plansList = plans ?? [];
+  const incoming = dashboard?.incomingRequests ?? [];
+  const openPage = useDetailPages('parta').at(-1);
 
-  const live = (
+  const invitationsTitle = (
+    <SectionTitle title={t.nv.parta.invitations} action={plansList.length ? t.nv.parta.plan : undefined} onAction={() => router.push('/nv/nova-pozvanka')} />
+  );
+  const carousel = (
     <>
-        <TabHeader tab="parta" title={t.nv.parta.title}>
-          <Button label={t.nv.parta.pingPartyShort} icon="bell-ring" height={44} style={{ paddingHorizontal: 16 }} onPress={() => router.push('/nv/cinknout')} />
-          <IconButton icon="user-plus" label={t.nv.parta.addA11y} onPress={() => router.push('/nv/sprava-party')} />
-        </TabHeader>
-        {failed && dashboard ? (
-          <Press onPress={() => void load()} style={[s.row, { gap: 10, paddingHorizontal: 4 }]}>
-            <Icon name="wifi-off" size={16} color={C.muted} />
-            <T s={13} c={C.muted} style={s.fill}>
-              {t.nv.parta.offline}
-            </T>
-            <T s={13} w={700} c={C.yellow}>
-              {t.nv.parta.retry}
-            </T>
-          </Press>
-        ) : null}
-        <SectionTitle title={t.nv.parta.invitations} action={plansList.length ? t.nv.parta.plan : undefined} onAction={() => router.push('/nv/nova-pozvanka')} />
         {plansList.length ? (
           <View style={{ gap: 12 }}>
             <ScrollView
@@ -311,9 +300,9 @@ export function PartaScreen() {
               showsHorizontalScrollIndicator={false}
               snapToInterval={ticketW + 12}
               decelerationRate="fast"
-              // On the open Duo the invitations stop short of the fold beside them.
-              style={book ? { marginLeft: -SCREEN_X } : { marginHorizontal: -SCREEN_X }}
-              contentContainerStyle={{ paddingLeft: SCREEN_X, paddingRight: book ? 0 : SCREEN_X, gap: 12 }}
+              // On the open Duo the invitations start at the content edge beside the fold.
+              style={book ? { marginRight: -SCREEN_X } : { marginHorizontal: -SCREEN_X }}
+              contentContainerStyle={{ paddingLeft: book ? 0 : SCREEN_X, paddingRight: SCREEN_X, gap: 12 }}
               onScroll={(e) => setPage(Math.round(e.nativeEvent.contentOffset.x / (ticketW + 12)))}
               scrollEventThrottle={32}
             >
@@ -344,12 +333,14 @@ export function PartaScreen() {
         ) : (
           <StatusCard text={t.nv.parta.nothingPlanned} action={t.nv.parta.newInvite} actionIcon="plus" onAction={() => router.push('/nv/nova-pozvanka')} />
         )}
-        {dashboard ? (
-          <Animated.View entering={fadeIn} style={{ gap: 20 }}>
-            {dashboard.incomingRequests.length ? (
+    </>
+  );
+  const requests = (
+    <>
+            {incoming.length ? (
               <>
-                <SectionTitle title={t.nv.parta.requestsTitle(dashboard.incomingRequests.length)} />
-                {dashboard.incomingRequests.map((req) => (
+                <SectionTitle title={t.nv.parta.requestsTitle(incoming.length)} />
+                {incoming.map((req) => (
                   <View key={req.id} style={{ paddingHorizontal: 16, borderRadius: 24, borderWidth: 1, borderColor: C.hairline }}>
                     <Row
                       last
@@ -376,6 +367,10 @@ export function PartaScreen() {
                 ))}
               </>
             ) : null}
+    </>
+  );
+  const outNow = (
+    <>
             <SectionTitle title={t.nv.parta.outNow} action={t.nv.parta.outCount(outCount, friends.length + 1)} />
             <Card>
               <Row
@@ -394,22 +389,12 @@ export function PartaScreen() {
                 <LiveRow key={p.account.id} profile={p.account} last={i === homePresence.length - 1} sub={t.nv.parta.atSomeonesHome} />
               ))}
             </Card>
-          </Animated.View>
-        ) : failed && plans !== null ? (
-          // Without plans the invitations card above already says the load failed.
-          <StatusCard text={t.nv.parta.loadFailed} action={t.nv.parta.retry} onAction={() => void load()} />
-        ) : null}
     </>
   );
-  const people = (
+  const wholeParty = (
     <>
-      {book ? <TabHeader tab="parta-lide" title={t.nv.parta.wholeParty} /> : null}
-      {dashboard ? (
-        <Animated.View entering={fadeIn} style={{ gap: 20 }}>
-            <PartaPhotoStrip />
             {friends.length === 0 || rest.length ? (
               <>
-                {book ? null : (
                 <SectionTitle
                   title={t.nv.parta.wholeParty}
                   action={String(friends.length)}
@@ -418,13 +403,12 @@ export function PartaScreen() {
                     router.push('/nv/sprava-party');
                   }}
                 />
-                )}
                 <Card>
                   {friends.length === 0 ? (
                     <Row last leading={<Tile icon="user-plus" />} title={t.nv.parta.inviteFirst} chevron onPress={() => router.push('/nv/sprava-party')} />
                   ) : (
                     rest.map((f, i, arr) => {
-                      const stats = dashboard.friendStats[f.id];
+                      const stats = dashboard?.friendStats[f.id];
                       return (
                         <Row
                           key={f.id}
@@ -433,6 +417,7 @@ export function PartaScreen() {
                           title={personName(f)}
                           sub={lastTogetherLabel(stats?.lastSharedAt ?? null, stats?.lastPubName ?? '')}
                           chevron
+                          selected={openPage?.route === 'kamos' && openPage.params.id === f.id}
                           onPress={() => openFriend(f.id)}
                         />
                       );
@@ -441,8 +426,10 @@ export function PartaScreen() {
                 </Card>
               </>
             ) : null}
-        </Animated.View>
-      ) : null}
+    </>
+  );
+  const home = (
+    <>
         {/* Waits for the first load, so it doesn't show up under the loading card and then jump down. */}
         {dashboard || failed ? (
           <Animated.View entering={fadeIn}>
@@ -462,10 +449,19 @@ export function PartaScreen() {
         ) : null}
     </>
   );
+  // The friends and the crew wait for the dashboard; without plans the invitations card already says the load failed.
+  const dash = (children: React.ReactNode) =>
+    dashboard ? (
+      <Animated.View entering={fadeIn} style={{ gap: 20 }}>
+        {children}
+      </Animated.View>
+    ) : failed && plans !== null ? (
+      <StatusCard text={t.nv.parta.loadFailed} action={t.nv.parta.retry} onAction={() => void load()} />
+    ) : null;
   const column = (content: React.ReactNode, scrollKey: string) => (
     <View style={{ flex: 1, backgroundColor: C.bg }}>
       <Animated.ScrollView
-        onScroll={scrollKey === 'parta' ? onScroll : onPeopleScroll}
+        onScroll={scrollKey === 'parta' ? onScroll : onPlansScroll}
         scrollEventThrottle={16}
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{ paddingTop: insets.top + 8, paddingHorizontal: SCREEN_X, gap: 20, paddingBottom: tabSpace + 30 }}
@@ -476,15 +472,83 @@ export function PartaScreen() {
       <BottomFade height={tabSpace + 40} tabBar />
     </View>
   );
-  // On the open Duo who is out and the invitations stay left, the whole crew lists on the right.
-  if (book) return <BookTab tab="parta" left={column(live, 'parta')} right={column(people, 'parta-lide')} />;
+  // On the open Duo the people stay on the left, so a friend opens beside the list; invitations and photos go right.
+  if (book) {
+    return (
+      <BookTab
+        tab="parta"
+        left={column(
+          <>
+        <TabHeader tab="parta" title={t.nv.parta.title}>
+          <Button label={t.nv.parta.pingPartyShort} icon="bell-ring" height={44} style={{ paddingHorizontal: 16 }} onPress={() => router.push('/nv/cinknout')} />
+          <IconButton icon="user-plus" label={t.nv.parta.addA11y} onPress={() => router.push('/nv/sprava-party')} />
+        </TabHeader>
+        {failed && dashboard ? (
+          <Press onPress={() => void load()} style={[s.row, { gap: 10, paddingHorizontal: 4 }]}>
+            <Icon name="wifi-off" size={16} color={C.muted} />
+            <T s={13} c={C.muted} style={s.fill}>
+              {t.nv.parta.offline}
+            </T>
+            <T s={13} w={700} c={C.yellow}>
+              {t.nv.parta.retry}
+            </T>
+          </Press>
+        ) : null}
+            {dash(
+              <>
+                {requests}
+                {outNow}
+                {wholeParty}
+              </>,
+            )}
+          </>,
+          'parta',
+        )}
+        right={column(
+          <>
+            <TabHeader tab="parta-pozvanky" title={t.nv.parta.invitations}>
+              {plansList.length ? <IconButton icon="plus" label={t.nv.parta.newInvite} onPress={() => router.push('/nv/nova-pozvanka')} /> : null}
+            </TabHeader>
+            {carousel}
+            {dashboard ? <PartaPhotoStrip /> : null}
+            {home}
+          </>,
+          'parta-pozvanky',
+        )}
+      />
+    );
+  }
   return (
     <BookTab
       tab="parta"
       left={column(
         <>
-          {live}
-          {people}
+        <TabHeader tab="parta" title={t.nv.parta.title}>
+          <Button label={t.nv.parta.pingPartyShort} icon="bell-ring" height={44} style={{ paddingHorizontal: 16 }} onPress={() => router.push('/nv/cinknout')} />
+          <IconButton icon="user-plus" label={t.nv.parta.addA11y} onPress={() => router.push('/nv/sprava-party')} />
+        </TabHeader>
+        {failed && dashboard ? (
+          <Press onPress={() => void load()} style={[s.row, { gap: 10, paddingHorizontal: 4 }]}>
+            <Icon name="wifi-off" size={16} color={C.muted} />
+            <T s={13} c={C.muted} style={s.fill}>
+              {t.nv.parta.offline}
+            </T>
+            <T s={13} w={700} c={C.yellow}>
+              {t.nv.parta.retry}
+            </T>
+          </Press>
+        ) : null}
+          {invitationsTitle}
+          {carousel}
+          {dash(
+            <>
+              {requests}
+              {outNow}
+              <PartaPhotoStrip />
+              {wholeParty}
+            </>,
+          )}
+          {home}
         </>,
         'parta',
       )}

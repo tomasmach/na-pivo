@@ -7,7 +7,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Icon } from '../../components/Icon';
 import { StatusCard } from '../../components/StatusCard';
 import { Chip, ChipWrap, D, IconButton, Kicker, Press, Stack, T } from '../../components/ui';
-import { TopFade } from '../../components/chrome';
+import { BackButton, TopFade } from '../../components/chrome';
 import { dialog, toast } from '../../ui/store';
 import { C, SCREEN_X, s } from '../../theme';
 import { RundaButton } from '../vycep/VycepScreen';
@@ -133,7 +133,7 @@ export function BeerScreen() {
         <BeerBody beer={page.state.data} beerRef={ref} reload={page.retry} />
       ) : (
         <View style={{ paddingTop: insets.top + 8, paddingHorizontal: SCREEN_X }}>
-          <IconButton icon="chevron-left" size={40} iconSize={18} onPress={() => nvBack(router)} label={t.nv.piva.back} />
+          <BackButton onPress={() => nvBack(router)} label={t.nv.piva.back} />
           {page.state.status === 'loading' ? <Loading pad={80} /> : <StatusCard text={t.nv.piva.beer.failed} action={t.nv.piva.retry} onAction={page.retry} style={{ marginTop: 24 }} />}
         </View>
       )}
@@ -186,7 +186,7 @@ function BeerBody({ beer, beerRef, reload }: { beer: BeerPage; beerRef: BeerRef;
     <View style={{ flex: 1, backgroundColor: C.bg }}>
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingTop: insets.top + 8, paddingHorizontal: SCREEN_X, gap: 22, paddingBottom: insets.bottom + 40 }}>
         <View style={[s.row, { justifyContent: 'space-between' }]}>
-          <IconButton icon="chevron-left" size={40} iconSize={18} onPress={() => nvBack(router)} label={p.back} />
+          <BackButton onPress={() => nvBack(router)} label={p.back} />
           <View style={[s.row, { gap: 10 }]}>
             <IconButton
               icon={watched ? 'bell-ring' : 'bell'}

@@ -380,6 +380,7 @@ export function Row({
   subColor = C.muted,
   titleWeight = 600,
   chevron,
+  selected,
 }: {
   title: React.ReactNode;
   sub?: React.ReactNode;
@@ -392,6 +393,8 @@ export function Row({
   subColor?: string;
   titleWeight?: Weight;
   chevron?: boolean;
+  /** The row whose page is open beside the list, on the open iPhone Duo. */
+  selected?: boolean;
 }) {
   const body = (
     <View
@@ -399,6 +402,7 @@ export function Row({
         s.row,
         { minHeight: height, gap: 12, paddingVertical: 10 },
         !last && { borderBottomWidth: 1, borderBottomColor: C.hairline },
+        selected && { backgroundColor: C.ring, marginHorizontal: -12, paddingHorizontal: 12, borderRadius: 16, borderBottomColor: 'transparent' },
       ]}
     >
       {leading}
@@ -425,7 +429,7 @@ export function Row({
     </View>
   );
   return onPress ? (
-    <Press onPress={onPress} accessibilityRole="button">
+    <Press onPress={onPress} accessibilityRole="button" accessibilityState={selected ? { selected: true } : undefined}>
       {body}
     </Press>
   ) : (

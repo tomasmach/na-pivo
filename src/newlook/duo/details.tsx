@@ -1,15 +1,13 @@
 import React, { createContext, useContext, useMemo } from 'react';
 import { useLocalSearchParams, useRouter, type Href } from 'expo-router';
-import { create } from 'zustand';
 
-import { useAccountStore } from '@/stores/accountStore';
-
-import { useBook } from './layout';
-import { usePane } from './pane';
+import { useDetailStore, type DetailPage, type DetailRoute } from './detailStore';
+import { useBook, useRailSide } from './layout';
+import { usePane } from './paneContext';
 
 /**
- * Pages that open into the right half of a tab on the open book instead of
- * covering the window: a pub, a beer, a friend, an invitation, an evening and your profile.
+ * Pages that open as a page of the tab on the iPhone Duo instead of covering
+ * the window: a pub, a beer, a friend, an invitation, an evening and your profile.
  */
 const DETAIL_PATHS = {
   '/nv/hospoda/[id]': 'hospoda',
@@ -20,15 +18,7 @@ const DETAIL_PATHS = {
   '/nv/profil': 'profil',
 } as const;
 
-export type DetailRoute = (typeof DETAIL_PATHS)[keyof typeof DETAIL_PATHS];
-
-export interface DetailPage {
-  key: string;
-  route: DetailRoute;
-  params: Record<string, string>;
-}
-
-let nextKey = 0;
+export { detailPathname, useDetailPages, useDetailStore, type DetailPage, type DetailRoute } from './detailStore';
 
 /** The detail a href opens, or null for any other screen. */
 export function detailOf(href: Href): Omit<DetailPage, 'key'> | null {
@@ -41,35 +31,6 @@ export function detailOf(href: Href): Omit<DetailPage, 'key'> | null {
     if (value !== undefined && value !== null) params[name] = String(value);
   }
   return { route, params };
-}
-
-interface DetailState {
-  /** Per tab, the pages stacked in its right half. They wait while the Duo is folded. */
-  pages: Record<string, DetailPage[]>;
-  push: (tab: string, page: Omit<DetailPage, 'key'>) => void;
-  replace: (tab: string, page: Omit<DetailPage, 'key'>) => void;
-  pop: (tab: string) => void;
-  clear: () => void;
-}
-
-export const useDetailStore = create<DetailState>((set) => ({
-  pages: {},
-  push: (tab, page) => set((st) => ({ pages: { ...st.pages, [tab]: [...(st.pages[tab] ?? []), { ...page, key: `d${nextKey++}` }] } })),
-  replace: (tab, page) =>
-    set((st) => ({ pages: { ...st.pages, [tab]: [...(st.pages[tab] ?? []).slice(0, -1), { ...page, key: `d${nextKey++}` }] } })),
-  pop: (tab) => set((st) => ({ pages: { ...st.pages, [tab]: (st.pages[tab] ?? []).slice(0, -1) } })),
-  clear: () => set({ pages: {} }),
-}));
-
-// A friend or invitation page belongs to the account that opened it.
-useAccountStore.subscribe((state, previous) => {
-  if (state.session?.accountId !== previous.session?.accountId) useDetailStore.getState().clear();
-});
-
-const EMPTY: DetailPage[] = [];
-
-export function useDetailPages(tab: string): DetailPage[] {
-  return useDetailStore((st) => st.pages[tab] ?? EMPTY);
 }
 
 const PageContext = createContext<DetailPage | null>(null);
@@ -90,17 +51,20 @@ export function useInDetailPage(): boolean {
 type Router = ReturnType<typeof useRouter>;
 
 /**
- * The router for screens that open details. On the open book a pub, beer,
- * friend or invitation opened from a tab goes into that tab's right half, and
- * back inside such a page returns in the half. Everything else is the router.
+ * The router for screens that open details. On the iPhone Duo a pub, beer,
+ * friend, invitation, evening or your profile opened from a tab becomes a page
+ * of that tab (the right half on the book, the whole tab folded), and back
+ * inside such a page returns to what was under it. Everything else, and every
+ * phone, gets the router.
  */
 export function useNvRouter(): Router {
   const router = useRouter();
   const pane = usePane();
   const page = useContext(PageContext);
   const { book } = useBook();
-  // Every tab is split on the book, so anything inside a tab opens details into its right half.
-  const tab = book && pane?.tab ? pane.tab : null;
+  const rail = useRailSide();
+  // On the iPhone Duo, folded or open, a detail opened inside a tab is a page of that tab.
+  const tab = (book || rail) && pane?.tab ? pane.tab : null;
   return useMemo(() => {
     if (!tab) return router;
     const store = useDetailStore.getState;
