@@ -230,7 +230,8 @@ function MapMode({ k, name, onCompass }: { k: Kompas; name: NameReveal; onCompas
         onPub={onPub}
         onCity={setCityKey}
         onRegion={k.map.loadRegion}
-        bottomPadding={tabSpace + 140}
+        // Clears the tallest pub card, the one with last week's beers, so the Google logo stays whole.
+        bottomPadding={tabSpace + 160}
         coveredTop={insets.top + 104}
       />
       <View
@@ -390,7 +391,7 @@ function MapMode({ k, name, onCompass }: { k: Kompas; name: NameReveal; onCompas
                       <View style={[s.row, { gap: 5 }]}>
                         <Icon name="beer" size={13} color={C.onYellowMuted} />
                         <T s={13} c={C.onYellowMuted} numberOfLines={1} style={s.fill}>
-                          {L().lastWeekLine(beers)}
+                          {L().lastWeekBeers(beers)}
                         </T>
                       </View>
                     ) : null}

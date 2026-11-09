@@ -17,7 +17,6 @@ export const kompasCs = {
   summaryPubs: pubs,
   summaryMaxPrice: (price: number) => `do ${price} Kč`,
   summaryAll: 'Všechny hospody',
-  lastWeekLine: (n: number) => `Minulý týden tu padlo ${beers(n)}`,
   unknownTaps: 'co čepují, zatím nevím',
   beerPrice: (beer: string, price: string) => `${beer} · ${price}`,
   guideTitle: 'Vedu tě do Map',
@@ -101,7 +100,7 @@ export const kompasCs = {
   viewTraces: 'Moje stopy',
   viewParty: 'Parta teď',
   pinsGroup: 'Na pinech',
-  pinCount: 'Počty piv za týden',
+  pinCount: 'Počty piv za minulý týden',
   onlyDrunk: 'Jen kde se minulý týden pilo',
 
   // — Hledání —
@@ -172,7 +171,7 @@ export const kompasCs = {
     su: 'Ne',
   },
   about: 'O hospodě',
-  lastWeekBeers: (n: number) => `Minulý týden tu padlo ${beers(n)}`,
+  lastWeekBeers: (n: number) => `Minulý týden tu ${czechPlural(n, { one: 'padlo', few: 'padla', many: 'padlo' })} ${beers(n)}`,
   lastWeekBeersSub: 'od lidí z Na pivo',
   rating: (value: string, count: string) => `${value} z ${count} hodnocení`,
   visits: (count: number, date: string) => `Navštíveno ${count}× · naposledy ${date}`,

@@ -24,6 +24,12 @@ export function zoomOf(viewport: Viewport, widthPt: number): number {
   return Math.log2((360 * widthPt) / (256 * Math.max(viewport.longitudeDelta, 1e-9)));
 }
 
+/** Whether two bubbles this far apart would overlap on screen at this viewport. */
+export function bubblesOverlap(a: Point, b: Point, viewport: Viewport, widthPt: number): boolean {
+  const ptToDeg = 360 / (256 * 2 ** zoomOf(viewport, widthPt));
+  return Math.hypot(a.lng - b.lng, mercatorY(a.lat) - mercatorY(b.lat)) < BUBBLE_GAP_PT * ptToDeg;
+}
+
 /**
  * Groups pins that would overlap. The zoom snaps to quarter steps and the order does not depend
  * on the viewport, so a pan keeps the same groups and only a zoom step regroups them.

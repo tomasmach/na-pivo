@@ -16,7 +16,6 @@ export const kompasEn: Strings['nv']['kompas'] = {
   summaryPubs: pubs,
   summaryMaxPrice: (price) => `up to ${price} CZK`,
   summaryAll: 'All pubs',
-  lastWeekLine: (n) => `${beers(n)} here last week`,
   unknownTaps: "I don't know what's on tap yet",
   beerPrice: (beer, price) => `${beer} · ${price}`,
   guideTitle: 'Taking you to Maps',
@@ -96,7 +95,7 @@ export const kompasEn: Strings['nv']['kompas'] = {
   viewTraces: 'My traces',
   viewParty: 'Crowd now',
   pinsGroup: 'On the pins',
-  pinCount: 'Beers per week',
+  pinCount: 'Beers last week',
   onlyDrunk: 'Only where people drank last week',
 
   cancelSearch: 'Cancel',

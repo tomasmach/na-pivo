@@ -3,7 +3,7 @@ import { StyleSheet, View } from 'react-native';
 import { useIsFocused } from 'expo-router';
 import MapView, { Marker, Polyline, PROVIDER_GOOGLE, type MapStyleElement, type Region } from 'react-native-maps';
 
-import { clusterCamera, clusterPins, NO_CLUSTER_ZOOM, targetPin, type PinCluster } from '@/map/clusterPins';
+import { bubblesOverlap, clusterCamera, clusterPins, NO_CLUSTER_ZOOM, targetPin, type PinCluster } from '@/map/clusterPins';
 import { StaticMapMarker } from '@/map/StaticMapMarker';
 import { visiblePins } from '@/map/visiblePins';
 import { trackPinsSeen } from '@/data/pubReachClient';
@@ -122,12 +122,15 @@ export const NvMap = forwardRef<NvMapHandle, Props>(function NvMap(
   const targetKey = target?.key ?? null;
   const targetLat = target?.lat;
   const targetLng = target?.lng;
-  const { singles, clusters } = useMemo(() => {
-    if (view === 'stopy') return { singles: [], clusters: [] };
+  const { singles, clusters, clusterUnderTarget } = useMemo(() => {
+    if (view === 'stopy') return { singles: [], clusters: [], clusterUnderTarget: null };
     // The pub the compass points at stays its own pin, never inside a cluster.
     const own = targetKey && targetLat != null && targetLng != null ? targetPin(pins, { key: targetKey, lat: targetLat, lng: targetLng }) : undefined;
-    const grouped = clusterPins(own ? pins.filter((p) => p !== own) : pins, viewport, size.width || 390);
-    return { singles: own ? [...grouped.singles, own] : grouped.singles, clusters: grouped.clusters };
+    const width = size.width || 390;
+    const grouped = clusterPins(own ? pins.filter((p) => p !== own) : pins, viewport, width);
+    // A cluster peeking out from under the target pin would lend it the cluster's beers.
+    const under = own ? grouped.clusters.find((c) => bubblesOverlap(c, own, viewport, width)) : undefined;
+    return { singles: own ? [...grouped.singles, own] : grouped.singles, clusters: grouped.clusters, clusterUnderTarget: under?.key ?? null };
   }, [pins, targetKey, targetLat, targetLng, view, viewport, size.width]);
 
   // Counts a pub as seen once the map stops on it as its own pin; a pub inside a cluster bubble is not shown.
@@ -182,7 +185,7 @@ export const NvMap = forwardRef<NvMapHandle, Props>(function NvMap(
         </>
       ) : null}
       <PubMarkers pins={singles} targetKey={targetKey} onPress={pressPub} />
-      <ClusterMarkers clusters={clusters} onPress={pressCluster} />
+      <ClusterMarkers clusters={clusters} quietKey={clusterUnderTarget} onPress={pressCluster} />
       {view === 'parta' ? <FriendMarkers friends={friends} /> : null}
       {view === 'stopy' ? <CityMarkers cities={cities} selected={selectedCity ?? null} onPress={pressCity} /> : null}
     </MapView>
@@ -213,9 +216,18 @@ const PubMarkers = memo(function PubMarkers({
   ));
 });
 
-const ClusterMarkers = memo(function ClusterMarkers({ clusters, onPress }: { clusters: PinCluster<MapPin>[]; onPress: (cluster: PinCluster<MapPin>) => void }) {
+const ClusterMarkers = memo(function ClusterMarkers({
+  clusters,
+  quietKey,
+  onPress,
+}: {
+  clusters: PinCluster<MapPin>[];
+  /** The cluster whose beers stay unshown. */
+  quietKey: string | null;
+  onPress: (cluster: PinCluster<MapPin>) => void;
+}) {
   return clusters.map((c) => {
-    const beers = c.members.reduce((sum, pin) => sum + pin.beers, 0);
+    const beers = c.key === quietKey ? 0 : c.members.reduce((sum, pin) => sum + pin.beers, 0);
     return (
       <StaticMapMarker
         key={`${c.key}-${c.count}-${beers}`}
