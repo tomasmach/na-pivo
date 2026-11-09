@@ -14,7 +14,8 @@ export type ViewerPhoto = {
   takenAt: string;
   caption: string;
   visibility: BeerPhotoVisibility;
-  author: { initial: string; name: string; short: string };
+  /** `id` makes the author open their profile from the viewer. */
+  author: { initial: string; name: string; short: string; id?: string };
 };
 
 export function photoWhen(iso: string, now = new Date()): string {
