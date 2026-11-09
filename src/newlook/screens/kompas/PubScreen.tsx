@@ -5,6 +5,7 @@ import Animated from 'react-native-reanimated';
 import { useRouter } from 'expo-router';
 import { nvBack } from '@/newlook/navigation';
 import { useNvRouter } from '../../duo/details';
+import { usePaneWidth } from '../../duo/pane';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { haversineMeters } from '@/compass/distance';
@@ -162,6 +163,7 @@ function eventWhen(event: Parameters<typeof eventDay>[0], now: Date): string {
 
 export function PubScreen() {
   const router = useNvRouter();
+  const mapWidth = usePaneWidth();
   const insets = useSafeAreaInsets();
   const { key, pub: opened } = useParamPub();
   const details = usePubDetails(opened, key);
@@ -251,6 +253,8 @@ export function PubScreen() {
           </View>
           <Press onPress={() => showOnKompas(router, pub)} style={{ height: 112, borderRadius: 20, overflow: 'hidden', backgroundColor: C.card }}>
             <MapView
+              // Rebuilt when the iPhone Duo folds or opens: Google drops the pin and the centre on a resize.
+              key={mapWidth}
               provider={PROVIDER_GOOGLE}
               style={{ flex: 1 }}
               customMapStyle={GRAY_MAP}

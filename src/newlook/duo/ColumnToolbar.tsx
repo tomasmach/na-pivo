@@ -12,8 +12,8 @@ const ACTION = 44;
 const GAP = 8;
 // Where the status bar ends in the column, measured on the iPhone Duo simulator (iOS 27.1):
 // folded the camera sits above the clock, open as a book the clock starts at the top.
-const BELOW_STATUS_FOLDED = 160;
-const BELOW_STATUS_BOOK = 108;
+const BELOW_STATUS_FOLDED = 172;
+const BELOW_STATUS_BOOK = 116;
 // The standing tab bar: two pills of two 58 pt tabs with 5 pt padding, the 64 pt circle and two 8 pt gaps.
 const RAIL_HEIGHT = 2 * (2 * 58 + 10) + 64 + 2 * GAP;
 
