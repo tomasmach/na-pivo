@@ -33,7 +33,7 @@ export const GRAY_MAP: MapStyleElement[] = [
 
 type Point = { lat: number; lng: number };
 /** `key` is the pub's cell; `id` tells apart pubs that share one cell. */
-export type MapPin = Point & { key: string; id: string; label: string | null };
+export type MapPin = Point & { key: string; id: string; label: string | null; beers: number };
 export type MapFriend = Point & { key: string; initial: string };
 export type MapCity = Point & { key: string; name: string; count: number };
 export type NvMapHandle = { centerOn: (at: Point) => void };
@@ -56,7 +56,6 @@ type Props = {
   friends: MapFriend[];
   cities: MapCity[];
   view: 'okoli' | 'stopy' | 'parta';
-  pinMode: 'price' | 'count';
   selectedCity?: string | null;
   onPub?: (id: string) => void;
   onCity?: (key: string) => void;
@@ -68,7 +67,7 @@ type Props = {
 };
 
 export const NvMap = forwardRef<NvMapHandle, Props>(function NvMap(
-  { pins, me, target, friends, cities, view, pinMode, selectedCity, onPub, onCity, onRegion, showRoute = true, bottomPadding = 0, coveredTop = 0 },
+  { pins, me, target, friends, cities, view, selectedCity, onPub, onCity, onRegion, showRoute = true, bottomPadding = 0, coveredTop = 0 },
   handle,
 ) {
   const ref = useRef<MapView>(null);
@@ -182,7 +181,7 @@ export const NvMap = forwardRef<NvMapHandle, Props>(function NvMap(
           ) : null}
         </>
       ) : null}
-      <PubMarkers pins={singles} targetKey={targetKey} pinMode={pinMode} onPress={pressPub} />
+      <PubMarkers pins={singles} targetKey={targetKey} onPress={pressPub} />
       <ClusterMarkers clusters={clusters} onPress={pressCluster} />
       {view === 'parta' ? <FriendMarkers friends={friends} /> : null}
       {view === 'stopy' ? <CityMarkers cities={cities} selected={selectedCity ?? null} onPress={pressCity} /> : null}
@@ -193,38 +192,43 @@ export const NvMap = forwardRef<NvMapHandle, Props>(function NvMap(
 const PubMarkers = memo(function PubMarkers({
   pins,
   targetKey,
-  pinMode,
   onPress,
 }: {
   pins: MapPin[];
   targetKey: string | null;
-  pinMode: 'price' | 'count';
   onPress: (id: string) => void;
 }) {
   return pins.map((p) => (
     <StaticMapMarker
-      key={`${p.id}-${p.key === targetKey}-${pinMode}-${p.label ?? ''}`}
+      key={`${p.id}-${p.key === targetKey}-${p.label ?? ''}-${p.beers}`}
       coordinate={{ latitude: p.lat, longitude: p.lng }}
       anchor={{ x: 0.5, y: 0.5 }}
       onPress={() => onPress(p.id)}
       zIndex={p.key === targetKey ? 2 : 0}
     >
-      <PubPin label={p.label} target={p.key === targetKey} mode={pinMode} />
+      <WithBeers beers={p.beers}>
+        <PubPin label={p.label} target={p.key === targetKey} />
+      </WithBeers>
     </StaticMapMarker>
   ));
 });
 
-const ClusterMarkers = memo(function ClusterMarkers({ clusters, onPress }: { clusters: PinCluster[]; onPress: (cluster: PinCluster) => void }) {
-  return clusters.map((c) => (
-    <StaticMapMarker
-      key={`${c.key}-${c.count}`}
-      coordinate={{ latitude: c.lat, longitude: c.lng }}
-      anchor={{ x: 0.5, y: 0.5 }}
-      onPress={() => onPress(c)}
-    >
-      <ClusterPin count={c.count} />
-    </StaticMapMarker>
-  ));
+const ClusterMarkers = memo(function ClusterMarkers({ clusters, onPress }: { clusters: PinCluster<MapPin>[]; onPress: (cluster: PinCluster<MapPin>) => void }) {
+  return clusters.map((c) => {
+    const beers = c.members.reduce((sum, pin) => sum + pin.beers, 0);
+    return (
+      <StaticMapMarker
+        key={`${c.key}-${c.count}-${beers}`}
+        coordinate={{ latitude: c.lat, longitude: c.lng }}
+        anchor={{ x: 0.5, y: 0.5 }}
+        onPress={() => onPress(c)}
+      >
+        <WithBeers beers={beers}>
+          <ClusterPin count={c.count} />
+        </WithBeers>
+      </StaticMapMarker>
+    );
+  });
 });
 
 const FriendMarkers = memo(function FriendMarkers({ friends }: { friends: MapFriend[] }) {
@@ -249,8 +253,8 @@ const CityMarkers = memo(function CityMarkers({ cities, selected, onPress }: { c
   ));
 });
 
-export function PubPin({ label, target, mode }: { label: string | null; target: boolean; mode: 'price' | 'count' }) {
-  const showIcon = mode === 'count' || !label || target;
+export function PubPin({ label, target }: { label: string | null; target: boolean }) {
+  const showIcon = !label || target;
   if (target && !label) {
     return (
       <View style={[{ width: 38, height: 38, borderRadius: 19, backgroundColor: C.yellow, borderWidth: 2, borderColor: C.black }, s.center]}>
@@ -275,10 +279,34 @@ export function PubPin({ label, target, mode }: { label: string | null; target: 
     >
       {showIcon ? <Icon name="beer" size={target ? 16 : 14} color={C.black} /> : null}
       {label ? (
-        <T s={target ? 15 : 13} w={target ? 800 : mode === 'count' ? 800 : 700} c={C.black}>
+        <T s={target ? 15 : 13} w={target ? 800 : 700} c={C.black}>
           {label}
         </T>
       ) : null}
+    </View>
+  );
+}
+
+const BADGE_ROOM = 14;
+
+/** Last week's beers in the pin's top right corner, as the 2.x map had them. */
+function WithBeers({ beers, children }: { beers: number; children: React.ReactNode }) {
+  if (!beers) return <>{children}</>;
+  // Even padding keeps the pin itself in the middle, where the marker is anchored.
+  return (
+    <View style={{ padding: BADGE_ROOM }}>
+      {children}
+      <View
+        style={[
+          s.row,
+          { position: 'absolute', top: 0, right: 0, height: 20, borderRadius: 10, paddingHorizontal: 5, gap: 2, backgroundColor: C.yellow, borderWidth: 1.5, borderColor: C.black },
+        ]}
+      >
+        <Icon name="beer" size={11} color={C.black} />
+        <T s={11} w={800} c={C.black}>
+          {beers > 99 ? '99+' : beers}
+        </T>
+      </View>
     </View>
   );
 }

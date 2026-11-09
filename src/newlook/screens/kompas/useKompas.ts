@@ -43,9 +43,9 @@ export function useKompas() {
   const filters = useKompasState((s) => s.filters);
   const mapView = useKompasState((s) => s.mapView);
   const onlyDrunk = useKompasState((s) => s.onlyDrunk);
-  const pinMode = useKompasState((s) => s.pinMode);
   const picked = useKompasState((s) => s.picked);
   const hideClosed = useSettingsStore((s) => s.hideClosedPubs);
+  const showPubBeers = useSettingsStore((s) => s.showPubBeers);
   const surprise = useSettingsStore((s) => s.mode === 'surprise');
   const maxDistanceKm = useSettingsStore((s) => s.maxDistanceKm);
   const hapticEnabled = useSettingsStore((s) => s.hapticEnabled);
@@ -171,13 +171,26 @@ export function useKompas() {
     [beersLastWeek, hideClosed, map.pubs, onlyDrunk],
   );
 
-  const pins = useMemo(() => {
-    const list = mapPubs.map((pub) => ({ key: geohash8(pub.lat, pub.lng), id: pinId(pub), lat: pub.lat, lng: pub.lng, label: pinLabel(pub, pinMode, beersLastWeek) }));
-    if (picked && !list.some((p) => p.key === geohash8(picked.lat, picked.lng))) {
-      list.push({ key: geohash8(picked.lat, picked.lng), id: pinId(picked), lat: picked.lat, lng: picked.lng, label: pinLabel(picked, pinMode, beersLastWeek) });
+  // The server counts beers per geohash cell, so a cell with two pubs cannot say whose they were.
+  const beersByPub = useMemo(() => {
+    if (!showPubBeers || !beersLastWeek) return null;
+    const pubsInCell = new Map<string, number>();
+    for (const pub of map.pubs) {
+      const key = geohash8(pub.lat, pub.lng);
+      pubsInCell.set(key, (pubsInCell.get(key) ?? 0) + 1);
     }
+    return new Map([...beersLastWeek].filter(([key]) => (pubsInCell.get(key) ?? 0) < 2));
+  }, [beersLastWeek, map.pubs, showPubBeers]);
+
+  const pins = useMemo(() => {
+    const pin = (pub: Pub) => {
+      const key = geohash8(pub.lat, pub.lng);
+      return { key, id: pinId(pub), lat: pub.lat, lng: pub.lng, label: pinLabel(pub), beers: beersByPub?.get(key) ?? 0 };
+    };
+    const list = mapPubs.map(pin);
+    if (picked && !list.some((p) => p.key === geohash8(picked.lat, picked.lng))) list.push(pin(picked));
     return list;
-  }, [beersLastWeek, mapPubs, picked, pinMode]);
+  }, [beersByPub, mapPubs, picked]);
 
   const filterCount = activePubSearchFilterCount(filters) + (hideClosed ? 1 : 0) + (onlyDrunk ? 1 : 0);
 
@@ -217,7 +230,7 @@ export function useKompas() {
     others,
     pins,
     mapPubs,
-    beersLastWeek,
+    beersByPub,
     filterCount,
     hideClosed,
     state,
@@ -230,11 +243,7 @@ export function useKompas() {
 
 export type Kompas = ReturnType<typeof useKompas>;
 
-export function pinLabel(pub: Pub, mode: 'price' | 'count', beers: PubBeersByKey | null): string | null {
-  if (mode === 'count') {
-    const n = beers?.get(geohash8(pub.lat, pub.lng));
-    return n ? String(n) : null;
-  }
+export function pinLabel(pub: Pub): string | null {
   return pub.price && isPriceFresh(pub.price.observedAt) ? formatPrice(pub.price.czk, useSettingsStore.getState().priceCurrency) : null;
 }
 

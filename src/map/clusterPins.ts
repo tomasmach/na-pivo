@@ -1,7 +1,7 @@
 type Point = { lat: number; lng: number };
 type Viewport = { longitudeDelta: number };
 
-export type PinCluster = Point & { key: string; count: number; members: Point[] };
+export type PinCluster<P extends Point = Point> = Point & { key: string; count: number; members: P[] };
 
 /** A pub joins a cluster this close to its first pub, in points. Keeps bubbles apart on screen. */
 const RADIUS_PT = 64;
@@ -32,7 +32,7 @@ export function clusterPins<P extends Point>(
   pins: readonly P[],
   viewport: Viewport,
   widthPt: number,
-): { singles: P[]; clusters: PinCluster[] } {
+): { singles: P[]; clusters: PinCluster<P>[] } {
   if (pins.length < 2 || zoomOf(viewport, widthPt) >= NO_CLUSTER_ZOOM) return { singles: [...pins], clusters: [] };
   const zoom = Math.floor(zoomOf(viewport, widthPt) * 4) / 4;
   const ptToDeg = 360 / (256 * 2 ** zoom);
@@ -81,7 +81,7 @@ export function clusterPins<P extends Point>(
     }
   }
   const singles: P[] = [];
-  const clusters: PinCluster[] = [];
+  const clusters: PinCluster<P>[] = [];
   for (const g of groups) {
     if (g.members.length === 1) singles.push(g.members[0]);
     else clusters.push({ key: g.key, lat: latOf(g.y), lng: g.x, count: g.members.length, members: g.members });

@@ -96,7 +96,6 @@ export const kompasEn: Strings['nv']['kompas'] = {
   viewTraces: 'My traces',
   viewParty: 'Crowd now',
   pinsGroup: 'On the pins',
-  pinPrice: 'Beer price',
   pinCount: 'Beers per week',
   onlyDrunk: 'Only where people drank last week',
 

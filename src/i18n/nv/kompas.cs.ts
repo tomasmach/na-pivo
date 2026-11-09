@@ -17,7 +17,7 @@ export const kompasCs = {
   summaryPubs: pubs,
   summaryMaxPrice: (price: number) => `do ${price} Kč`,
   summaryAll: 'Všechny hospody',
-  lastWeekLine: (n: number) => `minulý týden tu padlo ${beers(n)}`,
+  lastWeekLine: (n: number) => `Minulý týden tu padlo ${beers(n)}`,
   unknownTaps: 'co čepují, zatím nevím',
   beerPrice: (beer: string, price: string) => `${beer} · ${price}`,
   guideTitle: 'Vedu tě do Map',
@@ -101,7 +101,6 @@ export const kompasCs = {
   viewTraces: 'Moje stopy',
   viewParty: 'Parta teď',
   pinsGroup: 'Na pinech',
-  pinPrice: 'Cena piva',
   pinCount: 'Počty piv za týden',
   onlyDrunk: 'Jen kde se minulý týden pilo',
 
