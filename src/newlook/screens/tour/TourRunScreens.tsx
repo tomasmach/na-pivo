@@ -158,7 +158,7 @@ function PlanDetail({ plan }: { plan: TourPlan }) {
       : null;
   return (
     <Screen
-      header={<BackHeader right={<IconButton icon="ellipsis" size={40} iconSize={18} label={t.tours.more} onPress={() => router.push({ pathname: '/nv/tour-akce', params: { plan: plan.id } } as unknown as Href)} />} />}
+      header={<BackHeader actions={[{ icon: 'ellipsis', label: t.tours.more, onPress: () => router.push({ pathname: '/nv/tour-akce', params: { plan: plan.id } } as unknown as Href) }]} />}
       footer={
         <View style={{ gap: 10 }}>
           <Button label={t.tours.start} icon="footprints" height={56} disabled={starting || busy} onPress={start} />
@@ -904,7 +904,7 @@ export function TourHistoryScreen() {
   }
   return (
     <Screen
-      header={<BackHeader right={planExists ? <IconButton icon="ellipsis" size={40} iconSize={18} label={t.tours.more} onPress={() => router.push({ pathname: '/nv/tour-akce', params: { plan: current.planId } } as unknown as Href)} /> : null} />}
+      header={<BackHeader actions={planExists ? [{ icon: 'ellipsis', label: t.tours.more, onPress: () => router.push({ pathname: '/nv/tour-akce', params: { plan: current.planId } } as unknown as Href) }] : undefined} />}
       footer={planExists ? <Button label={t.tours.repeat} icon="copy" disabled={copying} onPress={() => void copy()} /> : undefined}
       gap={12}
     >
