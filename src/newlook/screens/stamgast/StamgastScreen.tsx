@@ -517,7 +517,7 @@ function CounterView() {
           {session && drinks.length ? (
             drinks.map((d, i) => (
               <Animated.View key={d.id} entering={i === 0 ? fadeIn : undefined}>
-                <Press onPress={() => drinkActions(router, nightsOf([session])[0].day, session.startedAt, d)} style={[s.row, { height: 62, gap: 12 }]}>
+                <Press onPress={() => drinkActions(router, nightsOf([session])[0].day, session.startedAt, d, { removeDrink: removeCountedDrink })} style={[s.row, { height: 62, gap: 12 }]}>
                   <Tile icon={normalizeDrinkType(d.drinkType) === 'beer' ? 'beer' : 'circle-dot'} />
                   <View style={[s.fill, { gap: 2 }]}>
                     <T s={15} w={600} numberOfLines={1}>
