@@ -28,22 +28,26 @@ se nemění.
   a hodinami. Obsah končí před ním a lišta tabů v něm stojí svisle u spodního okraje:
   dvě skleněné pilulky po dvou tabech a mezi nimi kruh Štamgasta, šířka 64 bodů.
   Mapa Kompasu vede pod sloupcem dál, její ovládání ne.
-- **Zpět patří do sloupce.** Na stránce, panelu nebo obrazovce přes taby stojí Zpět
-  nahoře ve sloupci pod hodinami. Vlastní šipka zpět v obsahu se tam nekreslí.
-  Ostatní akce stránky (sdílet, oblíbit, …) zůstávají v jejím pravém horním rohu.
+- **Lišta nástrojů ve sloupci.** Na stránce, panelu nebo obrazovce přes taby stojí
+  Zpět (u přihlášení Zavřít) nahoře ve sloupci pod hodinami a pod ním ikonové akce
+  stránky: srdcovka, sdílet, úprava profilu, nastavení. Co se nad lištu tabů nevejde,
+  schová „…“, které otevře systémovou nabídku akcí. Vlastní šipka zpět a ikony
+  v hlavičce stránky se na Duu nekreslí.
 - **Kniha.** Každý tab se dělí přesně v ohybu na obrazovku z telefonu a její dvojče:
   Kompas a mapa, svět a parta Výčepu, počítadlo a deník, žebříčky a sbírka piv,
   lidé a pozvánky v Partě. Přepínače mezi nimi na knize mizí. Řádky, které se
   posouvají do stran, končí 20 bodů před ohybem.
-- **Stránka tabu.** Hospoda, pivo, kámoš, pozvánka, večer a tvůj profil se na Duu
+- **Stránka tabu.** Hospoda, pivo, kámoš, pozvánka, večer, tvůj profil a seznamy
+  z profilu (nastavení, odznaky, pivní fotky, moje hospody, hlídaná piva) se na Duu
   otevřou jako stránka tabu: na knize v pravé půlce, zavřené přes celý tab vedle
   lišty. Po zavření i otevření zůstanou, kde byly. Na knize je pravá půlka tichá:
   jantarové tlačítko v ní je šedé a otevřený řádek v seznamu vlevo se zvýrazní.
-- **Panel.** Ostatní obrazovky otevřené na knize se ukážou v pravé půlce přes
-  ztmavené taby. Klepnutí do ztmavené části vrací zpět, kromě jednosměrných
-  obrazovek (příchod, vyvěšování nocí). Onboarding se na knize rozloží do dvou půlek:
-  obrázek vlevo, text a tlačítko vpravo. Mapy přes celé okno, foťák a systémové
-  karty (nová pozvánka, editor tour) si velikost řídí samy.
+- **Panel.** Ostatní obrazovky otevřené na Duu jsou panel: zavřené přes celé okno
+  vedle sloupce, na knize v pravé půlce přes ztmavené taby. Klepnutí do ztmavené
+  části vrací zpět, kromě jednosměrných obrazovek (příchod, vyvěšování nocí).
+  Onboarding se na knize rozloží do dvou půlek: obrázek vlevo, text a tlačítko
+  vpravo. Mapy přes celé okno, foťák a systémové karty (nová pozvánka, editor tour)
+  si velikost řídí samy.
 - **Sheet, dialog, toast.** Leží vedle sloupce. Na knize se otevřou v půlce, kam
   ses naposledy dotkl, a ztmavení pokryje celé okno. Karta sheetu má zaoblený i ten
   spodní roh, který nesedí na rohu displeje.
