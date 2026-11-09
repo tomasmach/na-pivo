@@ -5,7 +5,7 @@ import Animated from 'react-native-reanimated';
 import { fadeIn } from '../motion';
 import { C } from '../theme';
 import { DetailPageView, useDetailPages } from './details';
-import { useBook, useLastHalf, useWindowInsets } from './layout';
+import { useBook, useLastHalf, useRailSide, useWindowInsets } from './layout';
 import { PaneProvider, usePaneWidth, type Pane } from './pane';
 
 /**
@@ -27,6 +27,8 @@ export function BookTab({ tab, left, right }: { tab: string; left: React.ReactNo
   const leftPane = useMemo<Pane>(() => ({ tab, side: split ? 'left' : 'single', width: leftWidth }), [leftWidth, split, tab]);
   const rightPane = useMemo<Pane>(() => ({ tab, side: 'right', width: rightWidth }), [rightWidth, tab]);
   const page = pages[pages.length - 1];
+  // A page covers the column beside it too, where the map under the side column would show through.
+  const bleed = useRailSide() === 'right' ? insets.right : 0;
   return (
     <View style={{ flex: 1, flexDirection: 'row', backgroundColor: C.bg }}>
       <View style={{ width: leftWidth }} onTouchStart={split ? () => setHalf('left') : undefined}>
@@ -40,8 +42,10 @@ export function BookTab({ tab, left, right }: { tab: string; left: React.ReactNo
               {right}
             </View>
             {page ? (
-              <Animated.View key={page.key} entering={fadeIn} style={[StyleSheet.absoluteFill, { backgroundColor: C.bg }]}>
-                <DetailPageView page={page} />
+              <Animated.View key={page.key} entering={fadeIn} style={{ position: 'absolute', top: 0, bottom: 0, left: 0, right: -bleed, backgroundColor: C.bg }}>
+                <View style={{ flex: 1, marginRight: bleed }}>
+                  <DetailPageView page={page} />
+                </View>
               </Animated.View>
             ) : null}
           </PaneProvider>

@@ -54,7 +54,8 @@ export function ToastHost() {
       exiting={t.at === 'bottom' ? sinkOut : TOAST_OUT}
       style={[
         { position: 'absolute', left: frame.left + SCREEN_X, width: frame.width - SCREEN_X * 2, zIndex: 100 },
-        t.at === 'bottom' ? { bottom: tabSpace + 156 } : { top: insets.top - 6 },
+        // The iPhone Duo has no top inset; its clock sits in the side column.
+        t.at === 'bottom' ? { bottom: tabSpace + 156 } : { top: Math.max(insets.top - 6, 12) },
       ]}
     >
       <Pressable

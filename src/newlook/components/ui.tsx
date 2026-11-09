@@ -22,6 +22,7 @@ import { fireSelectionHaptic } from '@/utils/haptics';
 import { DURATION, enterTiming, fadeInTiming } from '../motion';
 import { C, display, font, s, shadow, type Weight } from '../theme';
 import { Icon, type IconName } from './Icon';
+import { usePane } from '../duo/pane';
 
 type TProps = TextProps & { s?: number; w?: Weight; c?: string; lh?: number; style?: StyleProp<TextStyle> };
 
@@ -130,7 +131,9 @@ export function Button({
 }) {
   // A dimmed yellow turns brown on the dark ground, so a disabled primary sits back as a plain control.
   const dimmedPrimary = !!disabled && kind === 'primary';
-  const k = dimmedPrimary ? DISABLED_PRIMARY : BUTTON[kind];
+  // The open iPhone Duo keeps one yellow call to action per window: the right half speaks quietly.
+  const quiet = kind === 'primary' && usePane()?.side === 'right';
+  const k = dimmedPrimary ? DISABLED_PRIMARY : BUTTON[quiet ? 'raised' : kind];
   const labelSize = height >= 56 ? 17 : height >= 50 ? 16 : 15;
   return (
     <Press

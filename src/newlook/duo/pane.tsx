@@ -1,8 +1,8 @@
 import React, { createContext, useContext, useMemo } from 'react';
-import { View, useWindowDimensions } from 'react-native';
+import { View, useWindowDimensions, type GestureResponderEvent } from 'react-native';
 import { SafeAreaInsetsContext, useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { WindowInsetsProvider, isBook, useWindowInsets } from './layout';
+import { WindowInsetsProvider, isBook, useLastHalf, useWindowInsets } from './layout';
 
 /**
  * Where a piece of UI is laid out. `single` is a whole screen (a phone, the
@@ -65,11 +65,16 @@ export function BookColumn({ children }: { children: React.ReactNode }) {
   const width = usePaneWidth();
   const { width: windowWidth, height } = useWindowDimensions();
   // The same tree either way, so folding never remounts a half-filled screen.
-  const column = isBook(windowWidth, height) ? Math.min(BOOK_COLUMN, width) : width;
+  const book = isBook(windowWidth, height);
+  const column = book ? Math.min(BOOK_COLUMN, width) : width;
   const value = useMemo<Pane>(() => ({ tab: pane?.tab ?? null, side: 'single', width: column }), [column, pane?.tab]);
+  // The column crosses the fold, so a sheet from it opens in the half under the finger.
+  const touch = book ? (e: GestureResponderEvent) => useLastHalf.getState().setHalf(e.nativeEvent.pageX < windowWidth / 2 ? 'left' : 'right') : undefined;
   return (
     <PaneProvider value={value}>
-      <View style={{ flex: 1, width: column, alignSelf: 'center' }}>{children}</View>
+      <View style={{ flex: 1, width: column, alignSelf: 'center' }} onTouchStart={touch}>
+        {children}
+      </View>
     </PaneProvider>
   );
 }
