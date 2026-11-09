@@ -279,7 +279,7 @@ export function Sheet({
         ]}
       >
         <View style={{ position: 'absolute', top: 8, alignSelf: 'center', width: 36, height: 5, borderRadius: 3, backgroundColor: '#FFFFFF40' }} />
-        {title || closeIcon ? (
+        {title || closeIcon || onBack ? (
           <View style={[s.row, { justifyContent: 'space-between', paddingHorizontal: SCREEN_X, marginBottom: 6, minHeight: 40 }]}>
             {onBack ? <IconButton icon="chevron-left" size={40} iconSize={18} onPress={onBack} label={t.nv.profil.chrome.back} style={{ marginRight: 12 }} /> : null}
             <View style={[s.fill, { gap: 4 }]}>
