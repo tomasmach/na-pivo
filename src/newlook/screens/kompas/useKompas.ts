@@ -171,16 +171,17 @@ export function useKompas() {
     [beersLastWeek, hideClosed, map.pubs, onlyDrunk],
   );
 
-  // The server counts beers per geohash cell, so a cell with two pubs cannot say whose they were.
+  // The server counts beers per geohash cell, so a cell with two pubs cannot say whose they were,
+  // even when the price filter hides one of them.
   const beersByPub = useMemo(() => {
     if (!showPubBeers || !beersLastWeek) return null;
     const pubsInCell = new Map<string, number>();
-    for (const pub of map.pubs) {
+    for (const pub of map.loadedPubs) {
       const key = geohash8(pub.lat, pub.lng);
       pubsInCell.set(key, (pubsInCell.get(key) ?? 0) + 1);
     }
     return new Map([...beersLastWeek].filter(([key]) => (pubsInCell.get(key) ?? 0) < 2));
-  }, [beersLastWeek, map.pubs, showPubBeers]);
+  }, [beersLastWeek, map.loadedPubs, showPubBeers]);
 
   const pins = useMemo(() => {
     const pin = (pub: Pub) => {
