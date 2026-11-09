@@ -370,8 +370,8 @@ function Feed({ scope, onScope }: { scope: Scope; onScope?: (scope: Scope) => vo
   const onScroll = useTabHeaderScroll(crewHalf ? 'vycep-parta' : 'vycep');
 
   useEffect(() => {
-    void syncSharingPrefs();
-  }, []);
+    if (!crewHalf) void syncSharingPrefs();
+  }, [crewHalf]);
 
   const publish = () => router.push(autopublish === null ? '/nv/prvni-vyveseni' : '/nv/vyvesit');
 
