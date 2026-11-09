@@ -7,7 +7,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { BottomFade, TabHeader, TopFade, useTabBarSpace, useTabHeaderScroll } from '../../components/chrome';
 import { BookTab } from '../../duo/BookTab';
-import { useNvRouter } from '../../duo/details';
+import { useDetailPages, useNvRouter } from '../../duo/details';
 import { useBook, useIsDuo } from '../../duo/layout';
 import { Ghost, StatusCard } from '../../components/StatusCard';
 import { Icon } from '../../components/Icon';
@@ -63,7 +63,22 @@ export function openBeer(router: ReturnType<typeof useRouter>, productKey: strin
   else router.push(href);
 }
 
-function RankRow({ b, bottom, onPress, early, inRegion }: { b: RankedBeer; bottom?: boolean; onPress: () => void; early?: boolean; inRegion?: boolean }) {
+function RankRow({
+  b,
+  bottom,
+  onPress,
+  early,
+  inRegion,
+  selected,
+}: {
+  b: RankedBeer;
+  bottom?: boolean;
+  onPress: () => void;
+  early?: boolean;
+  inRegion?: boolean;
+  /** Open beside the list on the iPhone Duo, like a selected row in a split view. */
+  selected?: boolean;
+}) {
   const p = t.nv.piva;
   const sub = inRegion
     ? [b.brandName, b.drunkTotal ? p.drunkInRegion(b.drunkTotal) : ''].filter(Boolean).join(' · ')
@@ -71,7 +86,15 @@ function RankRow({ b, bottom, onPress, early, inRegion }: { b: RankedBeer; botto
       ? p.mostOften(p.rating.tags[b.topTag])
       : [b.brandName, kindLine(b.styles, b.degree)].filter(Boolean).join(' · ');
   return (
-    <Press onPress={onPress} style={[s.row, { paddingVertical: 12, gap: 12, borderBottomWidth: 1, borderBottomColor: C.hairline }]}>
+    <Press
+      onPress={onPress}
+      accessibilityState={selected ? { selected: true } : undefined}
+      style={[
+        s.row,
+        { paddingVertical: 12, gap: 12, borderBottomWidth: 1, borderBottomColor: C.hairline },
+        selected && { backgroundColor: C.ring, marginHorizontal: -12, paddingHorizontal: 12, borderRadius: 16, borderBottomColor: 'transparent' },
+      ]}
+    >
       <View style={{ width: 34, alignItems: 'center', gap: 2 }}>
         <D s={34} c={b.position === 1 && !bottom ? C.yellow : C.muted} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.6}>
           {String(b.position)}
@@ -163,6 +186,7 @@ function PivaList({ tab, onTab }: { tab: PivaTab; onTab?: (tab: PivaTab) => void
   const p = t.nv.piva;
   const { book } = useBook();
   const collectionHalf = !onTab;
+  const openPage = useDetailPages('piva')[0];
   const bleed = useEdgeBleed(SCREEN_X);
   const [style, setStyle] = useState<BeerStyle | null>(null);
   const region = useRankingRegion((st) => st.region);
@@ -245,7 +269,15 @@ function PivaList({ tab, onTab }: { tab: PivaTab; onTab?: (tab: PivaTab) => void
             ) : page && page.items.length ? (
               <Animated.View entering={fadeIn}>
                 {page.items.map((b) => (
-                  <RankRow key={b.productKey} b={b} bottom={tab === 'bottom'} early={early && !region} inRegion={!!region} onPress={() => openBeer(router, b.productKey)} />
+                  <RankRow
+                    key={b.productKey}
+                    b={b}
+                    bottom={tab === 'bottom'}
+                    early={early && !region}
+                    inRegion={!!region}
+                    selected={openPage?.route === 'pivo' && openPage.params.id === b.productKey}
+                    onPress={() => openBeer(router, b.productKey)}
+                  />
                 ))}
               </Animated.View>
             ) : (

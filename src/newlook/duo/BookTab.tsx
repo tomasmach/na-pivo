@@ -3,7 +3,7 @@ import { StyleSheet, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, { runOnJS, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 
-import { enterTiming, exitTiming, fadeIn } from '../motion';
+import { enterTiming, exitTiming, fadeIn, fadeOutTiming } from '../motion';
 import { C } from '../theme';
 import { DetailPageView, useDetailPages, useDetailStore, useLeavingPages, type DetailPage } from './details';
 import { useBook, useLastHalf, useRailSide, useWindowInsets } from './layout';
@@ -68,9 +68,9 @@ export function BookTab({ tab, left, right }: { tab: string; left: React.ReactNo
                 page={page}
                 top={i === pages.length - 1}
                 leaving={i >= pages.length}
-                // Folded, or pushed from another page, a page comes in from the side like a navigation push;
-                // a selection on the book replaces the right half in place, like a split view.
-                slideIn={!split || i > 0}
+                // A selection in the book's left half replaces the right half in place, like a split view;
+                // anything else comes in from the side like a navigation push, and leaves the way it came.
+                slideIn={!page.shown}
                 bleed={bleed}
                 width={split ? rightWidth : leftWidth}
               />
@@ -97,6 +97,7 @@ const EDGE = 16;
 // Built once on the JS thread; the gesture's worklets only read them.
 const SWIPE_OUT = exitTiming();
 const SWIPE_BACK = enterTiming();
+const FADE_OUT = fadeOutTiming();
 
 /**
  * One page. Pages under the top one stay mounted, so going back finds them as
@@ -129,13 +130,15 @@ function PageLayer({
     if (from) x.set(withTiming(0, SWIPE_BACK));
   }, [from, x]);
   // Back from the column or the page slides the page out the way it came, then lets it go.
+  const fade = useSharedValue(1);
   useEffect(() => {
     if (!leaving) return;
-    x.set(
-      withTiming(width + bleed, SWIPE_OUT, (done) => {
-        if (done) runOnJS(forget)();
-      }),
-    );
+    const gone = (done?: boolean) => {
+      'worklet';
+      if (done) runOnJS(forget)();
+    };
+    if (slideIn) x.set(withTiming(width + bleed, SWIPE_OUT, gone));
+    else fade.set(withTiming(0, FADE_OUT, gone));
     // Runs once, when the page starts leaving.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [leaving]);
@@ -158,7 +161,7 @@ function PageLayer({
         x.set(withTiming(0, SWIPE_BACK));
       }
     });
-  const follow = useAnimatedStyle(() => ({ transform: [{ translateX: x.get() }] }));
+  const follow = useAnimatedStyle(() => ({ opacity: fade.get(), transform: [{ translateX: x.get() }] }));
   return (
     <GestureDetector gesture={swipe}>
       <Animated.View

@@ -360,7 +360,7 @@ function Feed({ scope, onScope }: { scope: Scope; onScope?: (scope: Scope) => vo
   const insets = useSafeAreaInsets();
   const tabSpace = useTabBarSpace();
   const crewHalf = !onScope && scope === 'parta';
-  const openRoute = useDetailPages('vycep').at(-1)?.route;
+  const openRoute = useDetailPages('vycep')[0]?.route;
   const bleed = useEdgeBleed(SCREEN_X);
   const feedScope: NightsFeedScope = scope === 'svet' ? 'global' : 'friends';
   const autopublish = useVycepStore((st) => st.nightAutopublish);

@@ -177,7 +177,18 @@ export function TabAvatar({ tab }: { tab: string }) {
   const right = SCREEN_X + (book ? width - foldX : insets.right);
   return (
     <Animated.View style={[{ position: 'absolute', top: insets.top + 8, right }, follow]}>
-      <LevelAvatar onPress={duo ? () => useDetailStore.getState().push(tab, { route: 'profil', params: {} }) : undefined} />
+      <LevelAvatar
+        onPress={
+          duo
+            ? () => {
+                // On the book the avatar sits in the left half, so your profile replaces the right half.
+                const store = useDetailStore.getState();
+                if (book) store.show(tab, { route: 'profil', params: {} });
+                else store.push(tab, { route: 'profil', params: {} });
+              }
+            : undefined
+        }
+      />
     </Animated.View>
   );
 }

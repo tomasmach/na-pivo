@@ -2,7 +2,7 @@ import React, { createContext, useContext, useMemo } from 'react';
 import { useLocalSearchParams, useRouter, type Href } from 'expo-router';
 
 import { useDetailStore, type DetailPage, type DetailRoute } from './detailStore';
-import { useBook, useRailSide } from './layout';
+import { useBook, useLastHalf, useRailSide } from './layout';
 import { usePane } from './paneContext';
 
 /**
@@ -88,9 +88,11 @@ export function useNvRouter(): Router {
     const store = useDetailStore.getState;
     const open = (href: Href, fallback: () => void) => {
       const detail = detailOf(href);
-      // Like a split view: a selection in the tab replaces the right half on the book; inside a page,
-      // or folded, it goes on top of the stack.
-      if (detail && book && !page) store().show(tab, detail);
+      // Like a split view: a selection in the left half replaces the right half on the book; anything
+      // opened in the right half, or folded, goes on top of the stack.
+      // Code that renders both halves (Parta) opens from the half that was touched.
+      const side = pane?.side === 'single' ? useLastHalf.getState().half : pane?.side;
+      if (detail && book && !page && side === 'left') store().show(tab, detail);
       else if (detail) store().push(tab, detail);
       else fallback();
     };
@@ -111,7 +113,7 @@ export function useNvRouter(): Router {
       back: () => (page ? store().pop(tab) : router.back()),
       canGoBack: () => (page ? true : router.canGoBack()),
     };
-  }, [book, page, router, tab]);
+  }, [book, page, pane?.side, router, tab]);
 }
 
 const screens: Partial<Record<DetailRoute, React.ComponentType>> = {};

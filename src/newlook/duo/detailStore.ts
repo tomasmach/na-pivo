@@ -28,6 +28,8 @@ export interface DetailPage {
   key: string;
   route: DetailRoute;
   params: Record<string, string>;
+  /** Shown by a selection in the book's left half: it fades in and out instead of sliding. */
+  shown?: boolean;
 }
 
 let nextKey = 0;
@@ -52,11 +54,22 @@ interface DetailState {
 
 const page = (p: Omit<DetailPage, 'key'>): DetailPage => ({ ...p, key: `d${nextKey++}` });
 
+function samePage(a: Record<string, string>, b: Record<string, string>): boolean {
+  const keys = Object.keys(a);
+  return keys.length === Object.keys(b).length && keys.every((k) => a[k] === b[k]);
+}
+
 export const useDetailStore = create<DetailState>((set) => ({
   pages: {},
   leaving: {},
   push: (tab, p) => set((st) => ({ pages: { ...st.pages, [tab]: [...(st.pages[tab] ?? []), page(p)] } })),
-  show: (tab, p) => set((st) => ({ pages: { ...st.pages, [tab]: [page(p)] } })),
+  show: (tab, p) =>
+    set((st) => {
+      const stack = st.pages[tab] ?? [];
+      // Selecting what is already open beside the list leaves it as it is, scroll and all.
+      if (stack.length === 1 && stack[0].route === p.route && samePage(stack[0].params, p.params)) return st;
+      return { pages: { ...st.pages, [tab]: [{ ...page(p), shown: true }] } };
+    }),
   replace: (tab, p) => set((st) => ({ pages: { ...st.pages, [tab]: [...(st.pages[tab] ?? []).slice(0, -1), page(p)] } })),
   pop: (tab, animated = true) =>
     set((st) => {
@@ -69,7 +82,13 @@ export const useDetailStore = create<DetailState>((set) => ({
       };
     }),
   forget: (tab, key) => set((st) => ({ leaving: { ...st.leaving, [tab]: (st.leaving[tab] ?? []).filter((p) => p.key !== key) } })),
-  popToRoot: (tab) => set((st) => ({ pages: { ...st.pages, [tab]: [] }, leaving: { ...st.leaving, [tab]: [] } })),
+  popToRoot: (tab) =>
+    set((st) => {
+      const stack = st.pages[tab] ?? [];
+      const top = stack[stack.length - 1];
+      // Only the page on screen leaves visibly; the ones under it go with it.
+      return { pages: { ...st.pages, [tab]: [] }, leaving: { ...st.leaving, [tab]: top ? [top] : [] } };
+    }),
   clear: () => set({ pages: {}, leaving: {} }),
 }));
 

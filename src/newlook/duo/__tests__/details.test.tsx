@@ -91,6 +91,24 @@ describe('useNvRouter', () => {
     expect(useDetailStore.getState().pages.kompas?.map((p) => p.route)).toEqual(['pivo']);
   });
 
+  it('pushes what the right half opens on top, like a navigation stack inside the second column', async () => {
+    openBook();
+    const { result } = await renderHook(() => useNvRouter(), { wrapper: wrapper({ tab: 'stamgast', side: 'right', width: 392 }) });
+    result.current.push({ pathname: '/nv/vecer/[id]', params: { id: '2026-11-01' } });
+    const [evening] = useDetailStore.getState().pages.stamgast ?? [];
+    expect(evening?.route).toBe('vecer');
+    expect(evening?.shown).toBeUndefined();
+  });
+
+  it('leaves the open page as it is when the same place is selected again', async () => {
+    openBook();
+    const { result } = await renderHook(() => useNvRouter(), { wrapper: wrapper(tabPane) });
+    result.current.push(PUB);
+    const first = useDetailStore.getState().pages.kompas![0];
+    result.current.push(PUB);
+    expect(useDetailStore.getState().pages.kompas).toEqual([first]);
+  });
+
   it('slides a page out after going back and forgets it when it has left', async () => {
     useDetailStore.getState().push('parta', { route: 'kamos', params: { id: 'f1' } });
     useDetailStore.getState().pop('parta');

@@ -286,7 +286,8 @@ export function PartaScreen() {
   };
   const plansList = plans ?? [];
   const incoming = dashboard?.incomingRequests ?? [];
-  const openPage = useDetailPages('parta').at(-1);
+  // The page a selection opened stays the selection while pages pile on top of it.
+  const openPage = useDetailPages('parta')[0];
 
   const invitationsTitle = (
     <SectionTitle title={t.nv.parta.invitations} action={plansList.length ? t.nv.parta.plan : undefined} onAction={() => router.push('/nv/nova-pozvanka')} />
