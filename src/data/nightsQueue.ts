@@ -125,8 +125,15 @@ export async function enqueueNightOp(item: NightQueueItem): Promise<void> {
   const key = dedupKey(item);
   await runMutation(async () => {
     const queue = await loadQueue();
+    const previous = queue.find((existing) => dedupKey(existing) === key);
     const deduped = queue.filter((existing) => dedupKey(existing) !== key);
-    deduped.push(item);
+    // The server keeps the photo choice when photo_ids is omitted; the queue
+    // must not drop it when Dopito re-queues the same night while offline.
+    if (item.op === 'publish' && item.payload.photoIds === undefined && previous?.op === 'publish' && previous.payload.photoIds) {
+      deduped.push({ ...item, payload: { ...item.payload, photoIds: previous.payload.photoIds } });
+    } else {
+      deduped.push(item);
+    }
     await saveQueue(deduped);
   });
   await flushNightsQueue();

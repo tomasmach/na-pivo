@@ -12604,6 +12604,7 @@ def _export_account_data(account: Account) -> dict:
                 "roast_basis": night.roast_basis,
                 "participant_ids": list(night.participant_ids or []),
                 "photo_ids": list(night.photo_ids or []),
+                "hide_photos": night.hide_photos,
                 "game_ids": list(night.game_ids or []),
                 "visibility": night.visibility,
                 "is_removed": night.is_removed,
