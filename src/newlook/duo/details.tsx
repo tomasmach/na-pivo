@@ -7,24 +7,34 @@ import { usePane } from './paneContext';
 
 /**
  * Pages that open as a page of the tab on the iPhone Duo instead of covering
- * the window: a pub, a beer, a friend, an invitation, an evening and your profile.
+ * the window: a pub, a beer, a friend, an invitation, an evening, your profile
+ * and the lists it leads to, so the level under it stays usable beside them,
+ * like a split view's second column.
  */
-const DETAIL_PATHS = {
+const DETAIL_PATHS: Record<string, DetailRoute> = {
   '/nv/hospoda/[id]': 'hospoda',
   '/nv/pivo/[id]': 'pivo',
   '/nv/kamos/[id]': 'kamos',
   '/nv/plan/[id]': 'plan',
   '/nv/vecer/[id]': 'vecer',
   '/nv/profil': 'profil',
-} as const;
+  '/nv/nastaveni': 'nastaveni',
+  '/nv/odznaky': 'odznaky',
+  '/nv/pivni-fotky': 'pivni-fotky',
+  '/nv/moje-hospody': 'moje-hospody',
+  '/nv/hlidana-piva': 'hlidana-piva',
+};
 
 export { detailPathname, useDetailPages, useDetailStore, type DetailPage, type DetailRoute } from './detailStore';
 
 /** The detail a href opens, or null for any other screen. */
 export function detailOf(href: Href): Omit<DetailPage, 'key'> | null {
-  if (href === '/nv/profil') return { route: 'profil', params: {} };
-  if (typeof href !== 'object' || !href || !('pathname' in href)) return null;
-  const route = DETAIL_PATHS[href.pathname as keyof typeof DETAIL_PATHS];
+  if (typeof href === 'string') {
+    const route = DETAIL_PATHS[href];
+    return route ? { route, params: {} } : null;
+  }
+  if (!href || !('pathname' in href)) return null;
+  const route = DETAIL_PATHS[href.pathname];
   if (!route) return null;
   const params: Record<string, string> = {};
   for (const [name, value] of Object.entries((href as { params?: Record<string, unknown> }).params ?? {})) {
@@ -63,8 +73,9 @@ export function useNvRouter(): Router {
   const page = useContext(PageContext);
   const { book } = useBook();
   const rail = useRailSide();
-  // On the iPhone Duo, folded or open, a detail opened inside a tab is a page of that tab.
-  const tab = (book || rail) && pane?.tab ? pane.tab : null;
+  // On the iPhone Duo, folded or open, a detail opened inside a tab is a page of that tab;
+  // a page already open keeps working the same way in any pose.
+  const tab = (book || rail || page) && pane?.tab ? pane.tab : null;
   return useMemo(() => {
     if (!tab) return router;
     const store = useDetailStore.getState;

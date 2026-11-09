@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { Pressable, View, useWindowDimensions } from 'react-native';
 import { useRouter } from 'expo-router';
 import { SafeAreaInsetsContext, useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -7,9 +7,9 @@ import { t } from '@/i18n';
 
 import { nvBack } from '../navigation';
 import { C } from '../theme';
-import { ColumnBack } from './ColumnBack';
+import { ColumnToolbar } from './ColumnToolbar';
 import { WindowInsetsProvider, isBook, railSideFor, useLastHalf, useWindowInsets } from './layout';
-import { ColumnSlotProvider, PaneProvider, usePane, type Pane } from './paneContext';
+import { ColumnSlotProvider, PaneProvider, usePane, type ColumnAction, type ColumnBackItem, type ColumnSlot, type Pane } from './paneContext';
 
 export { PaneProvider, usePane, type Pane };
 
@@ -35,16 +35,17 @@ export function BesideColumn({ tab = null, children }: { tab?: string | null; ch
   const rail = railSideFor(insets);
   const inner = useMemo(() => ({ top, bottom, left: 0, right: 0 }), [top, bottom]);
   const pane = useMemo<Pane>(() => ({ tab, side: 'single', width: width - left - right }), [tab, width, left, right]);
-  const [back, setBack] = useState<(() => void) | null>(null);
-  const register = useCallback((fn: (() => void) | null) => setBack(() => fn), []);
+  const [back, setBack] = useState<ColumnBackItem | null>(null);
+  const [actions, setActions] = useState<ColumnAction[] | null>(null);
+  const slot = useMemo<ColumnSlot>(() => ({ setBack, setActions }), []);
   return (
     <WindowInsetsProvider value={windowInsets}>
       <SafeAreaInsetsContext.Provider value={inner}>
         <PaneProvider value={pane}>
-          <ColumnSlotProvider value={rail ? register : null}>
+          <ColumnSlotProvider value={rail ? slot : null}>
             <View style={{ flex: 1 }}>
               <View style={{ flex: 1, marginLeft: left, marginRight: right }}>{children}</View>
-              {rail && back ? <ColumnBack side={rail} onPress={back} /> : null}
+              {rail && (back || actions?.length) ? <ColumnToolbar side={rail} back={back} actions={actions ?? []} besideTabs={tab !== null} /> : null}
             </View>
           </ColumnSlotProvider>
         </PaneProvider>
@@ -66,6 +67,7 @@ export function BookPanel({ dismissable = true, children }: { dismissable?: bool
   const insets = useWindowInsets();
   const { width: windowWidth, height } = useWindowDimensions();
   const book = isBook(windowWidth, height);
+  const rail = railSideFor(insets);
   const leftWidth = book ? Math.round(windowWidth / 2 - insets.left) : 0;
   const panelWidth = width - leftWidth;
   // The only screen in the window keeps its yellow button, so it is not a quiet right half.
@@ -87,9 +89,13 @@ export function BookPanel({ dismissable = true, children }: { dismissable?: bool
       <View style={{ width: panelWidth, backgroundColor: C.bg }} onTouchStart={book ? () => useLastHalf.getState().setHalf('right') : undefined}>
         <PaneProvider value={value}>{children}</PaneProvider>
       </View>
-      {/* The tab bar under the panel cannot be reached, so it dims with the tabs; Back stays bright above it. */}
-      {book ? (
-        <View pointerEvents="none" style={{ position: 'absolute', top: 0, bottom: 0, right: -insets.right, width: insets.right, backgroundColor: C.scrim }} />
+      {/* The tab bar under the panel cannot be reached: on the book it dims with the tabs, folded the
+          panel covers it like any pushed screen. Back stays above either. */}
+      {rail === 'right' ? (
+        <View
+          pointerEvents="none"
+          style={{ position: 'absolute', top: 0, bottom: 0, right: -insets.right, width: insets.right, backgroundColor: book ? C.scrim : C.bg }}
+        />
       ) : null}
     </View>
   );

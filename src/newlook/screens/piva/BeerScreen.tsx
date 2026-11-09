@@ -7,7 +7,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Icon } from '../../components/Icon';
 import { StatusCard } from '../../components/StatusCard';
 import { Chip, ChipWrap, D, IconButton, Kicker, Press, Stack, T } from '../../components/ui';
-import { BackButton, TopFade } from '../../components/chrome';
+import { BackButton, PageActions, TopFade } from '../../components/chrome';
 import { dialog, toast } from '../../ui/store';
 import { C, SCREEN_X, s } from '../../theme';
 import { RundaButton } from '../vycep/VycepScreen';
@@ -187,22 +187,21 @@ function BeerBody({ beer, beerRef, reload }: { beer: BeerPage; beerRef: BeerRef;
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingTop: insets.top + 8, paddingHorizontal: SCREEN_X, gap: 22, paddingBottom: insets.bottom + 40 }}>
         <View style={[s.row, { justifyContent: 'space-between' }]}>
           <BackButton onPress={() => nvBack(router)} label={p.back} />
-          {/* Stays on the right when Back moves to the iPhone Duo's side column. */}
-          <View style={[s.row, { gap: 10, marginLeft: 'auto' }]}>
-            <IconButton
-              icon={watched ? 'bell-ring' : 'bell'}
-              size={40}
-              iconSize={18}
-              color={C.yellow}
-              label={watched ? b.unwatch : b.watch}
-              onPress={() => {
-                if (watchBusy) return;
-                setWatchBusy(true);
-                void toggleWatch(beer.beerName, beer.breweryName).finally(() => setWatchBusy(false));
-              }}
-            />
-            <IconButton icon="share" size={40} iconSize={18} label={b.share} onPress={() => router.push('/nv/nalepky')} />
-          </View>
+          <PageActions
+            actions={[
+              {
+                icon: watched ? 'bell-ring' : 'bell',
+                label: watched ? b.unwatch : b.watch,
+                color: C.yellow,
+                onPress: () => {
+                  if (watchBusy) return;
+                  setWatchBusy(true);
+                  void toggleWatch(beer.beerName, beer.breweryName).finally(() => setWatchBusy(false));
+                },
+              },
+              { icon: 'share', label: b.share, onPress: () => router.push('/nv/nalepky') },
+            ]}
+          />
         </View>
         <View style={{ gap: 6 }}>
           <D s={44}>{beer.beerName}</D>

@@ -4,14 +4,16 @@ import { Stack } from 'expo-router';
 import { useFonts } from 'expo-font';
 import { StatusBar } from 'expo-status-bar';
 import { FullWindowOverlay } from 'react-native-screens';
+import { useSafeAreaInsets, type EdgeInsets } from 'react-native-safe-area-context';
 
 import { DialogHost, ToastHost } from '@/newlook/components/overlays';
-import { isBook } from '@/newlook/duo/layout';
+import { isBook, railSideFor } from '@/newlook/duo/layout';
 import { BesideColumn, BookPanel } from '@/newlook/duo/pane';
 import { C, FontFiles } from '@/newlook/theme';
 import { bridgeAppToasts } from '@/newlook/ui/store';
 
-const SHEET = { presentation: 'transparentModal', animation: 'none', contentStyle: { backgroundColor: 'transparent' } } as const;
+// The clock stays light over a sheet's dark scrim; on the iPhone Duo it is the whole side column.
+const SHEET = { presentation: 'transparentModal', animation: 'none', statusBarStyle: 'light', contentStyle: { backgroundColor: 'transparent' } } as const;
 
 // Routes that open as a bottom sheet over the current screen.
 const SHEETS = [
@@ -60,27 +62,37 @@ const WIDE_ROUTES = new Set(['tour-mapa', 'vyfot', 'onboarding', 'tour-editor', 
 // One-way screens: a tap beside their panel does not leave them.
 const ONE_WAY_ROUTES = new Set(['prichod', 'verejne-noci']);
 
-// A screen pushed on the open iPhone Duo comes up as a panel over the right half with the tabs
-// still visible beside it, like a split view's second column. Decided once per route when it is
-// pushed: changing a presented screen's presentation later is not supported.
-const bookPushes = new Map<string, boolean>();
-function pushedOnBook(key: string | undefined, name: string): boolean {
-  if (!key) return false;
-  let book = bookPushes.get(key);
-  if (book === undefined) {
+// On the iPhone Duo a screen pushed over the tabs is a panel: the whole window beside the side
+// column when folded, the right half over the still visible tabs on the open book, like a split
+// view's second column. It is a transparent modal in either pose, so folding or unfolding with it
+// open only changes its frame. Decided once per route when it is pushed: changing a presented
+// screen's presentation later is not supported.
+const duoPushes = new Map<string, { panel: boolean; book: boolean }>();
+function duoPush(key: string | undefined, name: string, insets: EdgeInsets) {
+  if (!key) return { panel: false, book: false };
+  let push = duoPushes.get(key);
+  if (!push) {
     const { width, height } = Dimensions.get('window');
-    book = !SHEET_ROUTES.has(name) && !WIDE_ROUTES.has(name) && name !== '(tabs)' && isBook(width, height);
-    bookPushes.set(key, book);
+    const book = isBook(width, height);
+    const duo = book || railSideFor(insets) !== null;
+    push = { panel: duo && !SHEET_ROUTES.has(name) && !WIDE_ROUTES.has(name) && name !== '(tabs)', book };
+    duoPushes.set(key, push);
   }
-  return book;
+  return push;
 }
-const PANEL = { presentation: 'transparentModal', animation: 'fade', statusBarStyle: 'light', contentStyle: { backgroundColor: 'transparent' } } as const;
+const PANEL = { presentation: 'transparentModal', statusBarStyle: 'light', contentStyle: { backgroundColor: 'transparent' } } as const;
+const panelOptions = (book: boolean) => ({ ...PANEL, animation: book ? 'fade' : 'slide_from_right' }) as const;
 
 // Sheets are native modals on iOS; only a window-level overlay keeps dialogs and toasts above them.
 const Overlay = Platform.OS === 'ios' ? FullWindowOverlay : React.Fragment;
 
 export default function NewLookLayout() {
   const [loaded, error] = useFonts(FontFiles);
+  const insets = useSafeAreaInsets();
+  const panel = (key: string | undefined, name: string) => {
+    const push = duoPush(key, name, insets);
+    return push.panel ? panelOptions(push.book) : null;
+  };
   useEffect(() => bridgeAppToasts(), []);
   if (!loaded && !error) return <View style={{ flex: 1, backgroundColor: C.bg }} />;
   return (
@@ -97,19 +109,16 @@ export default function NewLookLayout() {
             </BesideColumn>
           )
         }
-        screenOptions={({ route }) =>
-          pushedOnBook(route.key, route.name)
-            ? { headerShown: false, ...PANEL }
-            : { headerShown: false, contentStyle: { backgroundColor: C.bg }, animation: 'slide_from_right' }
-        }
+        screenOptions={({ route }) => ({
+          headerShown: false,
+          ...(panel(route.key, route.name) ?? { contentStyle: { backgroundColor: C.bg }, animation: 'slide_from_right' }),
+        })}
       >
         <Stack.Screen name="(tabs)" options={{ animation: 'none' }} />
         <Stack.Screen
           name="hospoda/[id]"
           options={({ route }) =>
-            pushedOnBook(route.key, route.name)
-              ? PANEL
-              : { animation: (route.params as { via?: string } | undefined)?.via === 'card' ? 'slide_from_bottom' : 'slide_from_right' }
+            panel(route.key, route.name) ?? { animation: (route.params as { via?: string } | undefined)?.via === 'card' ? 'slide_from_bottom' : 'slide_from_right' }
           }
         />
         <Stack.Screen name="prichod" options={{ animation: 'fade' }} />
@@ -121,14 +130,14 @@ export default function NewLookLayout() {
         <Stack.Screen name="verejne-noci" options={{ animation: 'fade', gestureEnabled: false }} />
         <Stack.Screen
           name="prihlaseni"
-          options={({ route }) => (pushedOnBook(route.key, route.name) ? PANEL : { presentation: 'fullScreenModal', animation: 'slide_from_bottom' })}
+          options={({ route }) => panel(route.key, route.name) ?? { presentation: 'fullScreenModal', animation: 'slide_from_bottom' }}
         />
         <Stack.Screen name="tour-editor" options={{ presentation: 'modal', animation: 'slide_from_bottom' }} />
         <Stack.Screen name="tour-mapa" options={{ presentation: 'fullScreenModal', animation: 'fade', statusBarStyle: 'light' }} />
         <Stack.Screen name="nova-pozvanka" options={{ presentation: 'modal', animation: 'slide_from_bottom' }} />
         <Stack.Screen
           name="uctenka"
-          options={({ route }) => (pushedOnBook(route.key, route.name) ? PANEL : { presentation: 'fullScreenModal', animation: 'slide_from_bottom' })}
+          options={({ route }) => panel(route.key, route.name) ?? { presentation: 'fullScreenModal', animation: 'slide_from_bottom' }}
         />
         {SHEETS.map((name) => (
           <Stack.Screen key={name} name={name} options={SHEET} />

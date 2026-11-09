@@ -3,6 +3,7 @@ import { Share, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { nvBack } from '@/newlook/navigation';
 import { useNvParams, useNvRouter } from '../../duo/details';
+import type { ColumnAction } from '../../duo/paneContext';
 
 import { generateUuidV4 } from '@/data/account';
 import {
@@ -101,9 +102,7 @@ export function KamosScreen() {
   return (
     <Screen
       header={
-        <BackHeader
-          right={shareUrl ? <IconButton icon="share" size={40} iconSize={18} label={t.nv.parta.share} onPress={() => void Share.share({ message: shareUrl })} /> : undefined}
-        />
+        <BackHeader actions={shareUrl ? [{ icon: 'share', label: t.nv.parta.share, onPress: () => void Share.share({ message: shareUrl }) }] : undefined} />
       }
       footer={detail.isFriend ? <Button label={t.nv.parta.ping} icon="bell-ring" onPress={() => router.push({ pathname: '/nv/cinknout', params: { friend: profile.id } })} /> : undefined}
     >
@@ -445,11 +444,9 @@ export function PlanScreen() {
   // RSVPs and edits land in the store first; every detail fetch writes there too.
   const plan = cached ?? detail?.plan ?? null;
   const inviteUrl = plan?.isMine ? plan.inviteUrl : null;
-  const share = inviteUrl ? (
-    <IconButton icon="share" size={40} iconSize={18} label={t.nv.parta.shareInvite} onPress={() => void Share.share({ message: t.nv.parta.inviteMessage(plan?.name ?? '', inviteUrl) })} />
-  ) : (
-    <IconButton icon="share" size={40} iconSize={18} label={t.nv.parta.share} onPress={() => router.push('/nv/nalepky')} />
-  );
+  const share: ColumnAction = inviteUrl
+    ? { icon: 'share', label: t.nv.parta.shareInvite, onPress: () => void Share.share({ message: t.nv.parta.inviteMessage(plan?.name ?? '', inviteUrl) }) }
+    : { icon: 'share', label: t.nv.parta.share, onPress: () => router.push('/nv/nalepky') };
 
   if (gone) {
     return (
@@ -490,7 +487,7 @@ export function PlanScreen() {
       });
     };
     return (
-      <Screen header={<BackHeader right={share} />} gap={18}>
+      <Screen header={<BackHeader actions={[share]} />} gap={18}>
         <PlanTicket plan={plan} big onEnded={() => nvBack(router)} />
         <Card>
           <PeopleRow label={t.nv.parta.goingLabel} people={going} />
@@ -561,7 +558,7 @@ export function PlanScreen() {
   };
 
   return (
-    <Screen header={<BackHeader right={share} />} gap={18}>
+    <Screen header={<BackHeader actions={[share]} />} gap={18}>
       <PlanTicket plan={plan} big />
       <View style={{ backgroundColor: C.card, borderRadius: 24, padding: 16, gap: 14 }}>
         <View style={[s.row, { gap: 12, alignItems: 'flex-start' }]}>

@@ -462,7 +462,7 @@ export function EveningDetailScreen() {
   const share = () => router.push({ pathname: '/nv/vyvesit', params: { day: night.day } });
   return (
     <Screen
-      header={<BackHeader right={hangs ? undefined : <IconButton icon="share" size={40} iconSize={18} label={copy.share} onPress={share} />} />}
+      header={<BackHeader actions={hangs ? undefined : [{ icon: 'share', label: copy.share, onPress: share }]} />}
       footer={
         <View style={[s.row, { gap: 10 }]}>
           {hangs ? null : <Button label={copy.postToVycep} icon="megaphone" flex onPress={share} />}

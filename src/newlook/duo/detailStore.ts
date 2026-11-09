@@ -2,7 +2,21 @@ import { create } from 'zustand';
 
 import { useAccountStore } from '@/stores/accountStore';
 
-export type DetailRoute = 'hospoda' | 'pivo' | 'kamos' | 'plan' | 'vecer' | 'profil';
+export type DetailRoute =
+  | 'hospoda'
+  | 'pivo'
+  | 'kamos'
+  | 'plan'
+  | 'vecer'
+  | 'profil'
+  | 'nastaveni'
+  | 'odznaky'
+  | 'pivni-fotky'
+  | 'moje-hospody'
+  | 'hlidana-piva';
+
+/** Pages that stand for a route with an id in its path. */
+const WITH_ID: ReadonlySet<DetailRoute> = new Set(['hospoda', 'pivo', 'kamos', 'plan', 'vecer']);
 
 export interface DetailPage {
   key: string;
@@ -39,7 +53,7 @@ const EMPTY: DetailPage[] = [];
 
 /** The route a page stands for, so screen telemetry counts it like the pushed screen. */
 export function detailPathname(page: DetailPage): string {
-  return page.route === 'profil' ? '/nv/profil' : `/nv/${page.route}/${page.params.id ?? '-'}`;
+  return WITH_ID.has(page.route) ? `/nv/${page.route}/${page.params.id ?? '-'}` : `/nv/${page.route}`;
 }
 
 export function useDetailPages(tab: string): DetailPage[] {

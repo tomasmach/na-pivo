@@ -38,14 +38,15 @@ function wrapper(pane: Pane | null, page: DetailPage | null = null) {
 const openBook = () => jest.mocked(useWindowDimensions).mockReturnValue({ width: 951, height: 669, scale: 3, fontScale: 1 });
 
 describe('detailOf', () => {
-  it('opens pubs, beers, friends, invitations and the profile in a half', () => {
+  it('opens pubs, beers, friends, invitations, the profile and its lists as pages', () => {
     expect(detailOf(PUB)).toEqual({ route: 'hospoda', params: { id: 'u2fkbkdb', name: 'U Zlatého tygra' } });
     expect(detailOf({ pathname: '/nv/kamos/[id]', params: { id: 'f1' } })?.route).toBe('kamos');
     expect(detailOf('/nv/profil')).toEqual({ route: 'profil', params: {} });
+    expect(detailOf('/nv/nastaveni')).toEqual({ route: 'nastaveni', params: {} });
   });
 
   it('leaves every other screen to the router', () => {
-    expect(detailOf('/nv/nastaveni')).toBeNull();
+    expect(detailOf('/nv/zebricky')).toBeNull();
     expect(detailOf({ pathname: '/nv/zapis' })).toBeNull();
   });
 });
@@ -85,8 +86,8 @@ describe('useNvRouter', () => {
   it('still covers the window with screens that are not details', async () => {
     openBook();
     const { result } = await renderHook(() => useNvRouter(), { wrapper: wrapper(tabPane) });
-    result.current.push('/nv/nastaveni');
-    expect(router.push.mock.calls[0]?.[0]).toBe('/nv/nastaveni');
+    result.current.push('/nv/zebricky');
+    expect(router.push.mock.calls[0]?.[0]).toBe('/nv/zebricky');
   });
 
   it('pushes over the window from a screen that is not a tab', async () => {

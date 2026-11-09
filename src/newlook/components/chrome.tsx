@@ -12,7 +12,7 @@ import { useKeyboardHeight } from '@/utils/useKeyboardHeight';
 
 import { useDetailStore, useNvRouter } from '../duo/details';
 import { useBook, useRailSide, useWindowInsets } from '../duo/layout';
-import { useColumnBack, usePane } from '../duo/paneContext';
+import { useColumnActions, useColumnBack, usePane, type ColumnAction } from '../duo/paneContext';
 import { useKeyboardLift } from '../motion';
 import { useMe, useUnopenedBadges } from '../screens/profil/profilModel';
 import { useProfilWatchers } from '../screens/profil/useProfilWatchers';
@@ -52,11 +52,23 @@ export function Glass({
   );
 }
 
-export function GlassButton({ icon, onPress, size = 46, label }: { icon: IconName; onPress?: () => void; size?: number; label?: string }) {
+export function GlassButton({
+  icon,
+  onPress,
+  size = 46,
+  label,
+  color = C.white,
+}: {
+  icon: IconName;
+  onPress?: () => void;
+  size?: number;
+  label?: string;
+  color?: string;
+}) {
   return (
     <Press haptic onPress={onPress} accessibilityRole="button" accessibilityLabel={label ?? icon}>
       <Glass style={[{ width: size, height: size, borderRadius: size / 2 }, s.center]}>
-        <Icon name={icon} size={20} color={C.white} />
+        <Icon name={icon} size={20} color={color} />
       </Glass>
     </Press>
   );
@@ -197,6 +209,7 @@ export function BackHeader({
   onBack,
   icon = 'chevron-left',
   style,
+  actions,
 }: {
   title?: string;
   /** Big page title right next to the back button. */
@@ -205,12 +218,16 @@ export function BackHeader({
   onBack?: () => void;
   icon?: IconName;
   style?: StyleProp<ViewStyle>;
+  /** Icon actions of the page; on the iPhone Duo they stand in the side column under Back. */
+  actions?: ColumnAction[];
 }) {
   const router = useNvRouter();
   const back = onBack ?? (() => nvBack(router));
   // On the iPhone Duo Back stands at the top of the side column instead.
   const inColumn = useColumnBack(back, icon === 'chevron-left');
-  if (inColumn && !title && !heading && !right) return null;
+  const actionsInColumn = useColumnActions(actions ?? []);
+  const shownActions = actionsInColumn ? [] : (actions ?? []);
+  if (inColumn && !title && !heading && !right && !shownActions.length) return null;
   return (
     <View style={[s.row, { justifyContent: 'space-between', height: 44 }, style]}>
       <View style={[s.row, s.fill, { gap: 14 }]}>
@@ -228,7 +245,25 @@ export function BackHeader({
           </T>
         </View>
       ) : null}
-      <View style={[s.row, { gap: 10 }]}>{right}</View>
+      <View style={[s.row, { gap: 10 }]}>
+        {right}
+        {shownActions.map((a) => (
+          <IconButton key={`${a.icon}-${a.label}`} icon={a.icon} size={40} iconSize={18} color={a.color} label={a.label} onPress={a.onPress} />
+        ))}
+      </View>
+    </View>
+  );
+}
+
+/** A page's icon actions in its own header row; on the iPhone Duo they stand in the side column under Back. */
+export function PageActions({ actions }: { actions: ColumnAction[] }) {
+  const inColumn = useColumnActions(actions);
+  if (inColumn) return null;
+  return (
+    <View style={[s.row, { gap: 10, marginLeft: 'auto' }]}>
+      {actions.map((a) => (
+        <IconButton key={`${a.icon}-${a.label}`} icon={a.icon} size={40} iconSize={18} color={a.color} label={a.label} onPress={a.onPress} />
+      ))}
     </View>
   );
 }

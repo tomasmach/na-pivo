@@ -11,7 +11,10 @@ import { DURATION } from '@/newlook/motion';
 import { PubScreen } from '@/newlook/screens/kompas/PubScreen';
 import { KamosScreen, PlanScreen } from '@/newlook/screens/parta/PartaFlows';
 import { BeerScreen } from '@/newlook/screens/piva/BeerScreen';
-import { ProfilScreen } from '@/newlook/screens/profil/ProfilScreens';
+import { MojeHospodyScreen } from '@/newlook/screens/kompas/AddPubScreens';
+import { HlidanaPivaScreen } from '@/newlook/screens/piva/HlidanaPivaScreen';
+import { NastaveniScreen, OdznakyScreen, ProfilScreen } from '@/newlook/screens/profil/ProfilScreens';
+import { PivniFotkyScreen } from '@/newlook/screens/vycep/PhotoScreens';
 import { EveningDetailScreen } from '@/newlook/screens/stamgast/EveningSheets';
 import { C } from '@/newlook/theme';
 
@@ -24,6 +27,11 @@ registerDetailScreens({
   plan: PlanScreen,
   vecer: EveningDetailScreen,
   profil: ProfilScreen,
+  nastaveni: NastaveniScreen,
+  odznaky: OdznakyScreen,
+  'pivni-fotky': PivniFotkyScreen,
+  'moje-hospody': MojeHospodyScreen,
+  'hlidana-piva': HlidanaPivaScreen,
 });
 
 // The navigator animates scenes with React Native's Animated, so the new look's tokens are restated here.

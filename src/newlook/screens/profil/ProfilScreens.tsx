@@ -83,6 +83,8 @@ import { Sheet } from '../../components/overlays';
 import { Button, Card, Chip, ChipWrap, D, IconButton, Kicker, Person, Press, ProgressRing, Row, Segmented, Spinner, T, Tile, Toggle } from '../../components/ui';
 import { dialog, toast } from '../../ui/store';
 import { C, SCREEN_X, s } from '../../theme';
+import { useNvRouter } from '../../duo/details';
+import { useColumnActions, useColumnBack, type ColumnAction } from '../../duo/paneContext';
 import { useBook, useWindowInsets } from '../../duo/layout';
 import { Dial } from '../kompas/Dial';
 import { setKompasView } from '../kompas/state';
@@ -170,7 +172,7 @@ function notificationsDenied(body?: string) {
 // ---------------------------------------------------------------------------
 
 export function ProfilScreen() {
-  const router = useRouter();
+  const router = useNvRouter();
   const me = useMe();
   const summary = useLifetimeSummary(true);
   const priceCurrency = useSettingsStore((st) => st.priceCurrency);
@@ -239,6 +241,26 @@ export function ProfilScreen() {
   const visibility = me.isSignedIn && !missingNick ? (me.isPublic ? t.profile.visibilityPublic : t.profile.visibilityPrivate) : null;
   const levelCaption = me.isSignedIn && !missingNick;
   const nights = useMemo(() => profileNights(summary.sessions, summary.remoteStats), [summary.sessions, summary.remoteStats]);
+  const actions: ColumnAction[] = [
+    {
+      icon: 'pencil',
+      label: me.isSignedIn ? P().profile.edit : P().profile.signIn,
+      onPress: () => {
+        trackUiInteraction(me.isSignedIn ? 'profile_edit_open' : 'profile_signup_open');
+        router.push(me.isSignedIn ? '/nv/upravit-profil' : '/nv/prihlaseni');
+      },
+    },
+    {
+      icon: 'settings',
+      label: P().profile.settings,
+      onPress: () => {
+        trackUiInteraction('profile_settings_open');
+        router.push('/nv/nastaveni');
+      },
+    },
+  ];
+  // On the iPhone Duo they stand in the side column under Back.
+  const actionsInColumn = useColumnActions(actions);
   const since = summary.firstBeerAt
     ? dateTimeFormat({ day: 'numeric', month: 'numeric', year: 'numeric' }).format(new Date(summary.firstBeerAt))
     : null;
@@ -277,26 +299,9 @@ export function ProfilScreen() {
             ) : null}
           </Press>
         </View>
-        <IconButton
-          icon="pencil"
-          size={40}
-          iconSize={18}
-          onPress={() => {
-            trackUiInteraction(me.isSignedIn ? 'profile_edit_open' : 'profile_signup_open');
-            router.push(me.isSignedIn ? '/nv/upravit-profil' : '/nv/prihlaseni');
-          }}
-          label={me.isSignedIn ? P().profile.edit : P().profile.signIn}
-        />
-        <IconButton
-          icon="settings"
-          size={40}
-          iconSize={18}
-          onPress={() => {
-            trackUiInteraction('profile_settings_open');
-            router.push('/nv/nastaveni');
-          }}
-          label={P().profile.settings}
-        />
+        {actionsInColumn
+          ? null
+          : actions.map((a) => <IconButton key={a.icon} icon={a.icon} size={40} iconSize={18} onPress={a.onPress} label={a.label} />)}
       </View>
       <View style={[s.row, { gap: 14 }]}>
         <D s={96} lh={0.9} c={C.yellow}>
@@ -419,7 +424,7 @@ function useBadgesOrLocked(): NvBadge[] {
 }
 
 export function OdznakyScreen() {
-  const router = useRouter();
+  const router = useNvRouter();
   const badges = useBadgesOrLocked();
   useRefreshBadgesOnFocus();
   const earned = badges.filter((badge) => badge.state.tier > 0).length;
@@ -793,7 +798,7 @@ function providerName(provider: AuthProvider): string {
 }
 
 export function NastaveniScreen() {
-  const router = useRouter();
+  const router = useNvRouter();
   const me = useMe();
   const st = useSettingsStore();
   const [picker, setPicker] = useState<'distance' | 'interval' | null>(null);
@@ -1653,6 +1658,8 @@ export function PrihlasovaniSheet() {
 
 export function PrihlaseniScreen() {
   const router = useRouter();
+  // On the iPhone Duo the way out is the standard Close at the top of the side column.
+  useColumnBack(() => close(router), true, 'x');
   const passwordRef = useRef<TextInputInstance>(null);
   const login = useAccountStore((st) => st.login);
   const register = useAccountStore((st) => st.register);

@@ -23,6 +23,7 @@ import { Button, D, IconButton, Press, Row, T, Tile } from '../../components/ui'
 import { C, SCREEN_X, font, s } from '../../theme';
 import { dialog, toast } from '../../ui/store';
 import { daysUntil } from './nightData';
+import { useNvParams, useNvRouter } from '../../duo/details';
 
 /** What the album, the beer gallery and the detail have in common. */
 type PhotoItem = {
@@ -108,9 +109,9 @@ function useContestTeaser() {
 }
 
 export function PivniFotkyScreen() {
-  const router = useRouter();
+  const router = useNvRouter();
   const { width } = useWindowDimensions();
-  const { beer, name } = useLocalSearchParams<{ beer?: string; name?: string }>();
+  const { beer, name } = useNvParams<{ beer?: string; name?: string }>();
   const beerMode = !!(beer || name);
   const mine = useBeerPhotosStore((st) => st.photos);
   const [gallery, setGallery] = useState<{ items: PhotoItem[]; total: number } | null>(null);

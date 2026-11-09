@@ -22,7 +22,7 @@ import { formatPrice } from '@/utils/currency';
 import { dateTimeFormat, numberFormat } from '@/utils/intlFormat';
 import { openPubInMaps } from '@/utils/maps';
 
-import { BackButton, BackHeader, BottomFade, Screen, TopFade } from '../../components/chrome';
+import { BackButton, BackHeader, BottomFade, PageActions, Screen, TopFade } from '../../components/chrome';
 import { Ghost } from '../../components/StatusCard';
 import { Icon } from '../../components/Icon';
 import { Button, D, Dot, IconButton, Press, ProgressRing, T } from '../../components/ui';
@@ -216,27 +216,22 @@ export function PubScreen() {
         <View style={{ paddingHorizontal: SCREEN_X, gap: 18, paddingBottom: 24 }}>
           <View style={[s.row, { justifyContent: 'space-between' }]}>
             <BackButton onPress={() => nvBack(router)} label={L().back} />
-            {/* Stays on the right when Back moves to the iPhone Duo's side column. */}
-            <View style={[s.row, { gap: 10, marginLeft: 'auto' }]}>
-              <IconButton icon="heart" size={40} iconSize={18} color={fav ? C.yellow : C.white} label={fav ? L().favoriteRemove : L().favoriteAdd} onPress={toggleFavorite} />
-              <IconButton
-                icon="share"
-                size={40}
-                iconSize={18}
-                label={L().share}
-                onPress={() => router.push({ pathname: '/nv/sdilet-hospodu', params: { ...params(), url: buildPubShareUrl(pub) } })}
-              />
-              <IconButton
-                icon="ellipsis"
-                size={40}
-                iconSize={18}
-                label={L().more}
-                onPress={() => {
-                  trackUiInteraction('compass_report_open');
-                  router.push({ pathname: '/nv/nesedi', params: params() });
-                }}
-              />
-            </View>
+            <PageActions
+              actions={[
+                { icon: 'heart', label: fav ? L().favoriteRemove : L().favoriteAdd, color: fav ? C.yellow : C.white, onPress: toggleFavorite },
+                { icon: 'share', label: L().share, onPress: () => router.push({ pathname: '/nv/sdilet-hospodu', params: { ...params(), url: buildPubShareUrl(pub) } }) },
+                {
+                  icon: 'ellipsis',
+                  label: L().more,
+                  // In the iPhone Duo's overflow sheet a plain "Další" would say nothing.
+                  menuLabel: L().wrongTitle,
+                  onPress: () => {
+                    trackUiInteraction('compass_report_open');
+                    router.push({ pathname: '/nv/nesedi', params: params() });
+                  },
+                },
+              ]}
+            />
           </View>
           <View style={{ gap: 6 }}>
             <D s={44} accessibilityRole="header">
