@@ -281,6 +281,7 @@ const TOP_PUBS_SHOWN = 4;
 
 function PubRows({ pubs }: { pubs: StatsView['topPubs'] }) {
   const hideNames = useHidePubNames();
+  const rankWidth = 8 + 14 * String(pubs.length).length;
   return (
     <Card>
       {pubs.map((pub, i) => (
@@ -288,7 +289,7 @@ function PubRows({ pubs }: { pubs: StatsView['topPubs'] }) {
           key={pub.key}
           last={i === pubs.length - 1}
           leading={
-            <D s={24} c={i === 0 ? C.yellow : C.muted} style={{ width: 22 }}>
+            <D s={24} c={i === 0 ? C.yellow : C.muted} numberOfLines={1} style={{ width: rankWidth }}>
               {String(i + 1)}
             </D>
           }
