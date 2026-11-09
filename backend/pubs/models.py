@@ -2083,7 +2083,10 @@ class PublishedNight(models.Model):
     # without rewriting the post. No party code, GPS, beer name, price or game
     # payload is copied into the published row.
     participant_ids = models.JSONField(default=list, blank=True)
+    # Empty ``photo_ids`` shows the author's shared photos from that night;
+    # ``hide_photos`` records that the author published it without any.
     photo_ids = models.JSONField(default=list, blank=True)
+    hide_photos = models.BooleanField(default=False)
     game_ids = models.JSONField(default=list, blank=True)
     visibility = models.CharField(max_length=16, choices=Visibility.choices, db_index=True)
     created_at = models.DateTimeField(auto_now_add=True)

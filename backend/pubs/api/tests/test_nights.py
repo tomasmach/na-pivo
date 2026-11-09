@@ -465,6 +465,70 @@ def test_pending_photo_client_reference_resolves_after_offline_upload(client):
     assert stranger_story["hero_photos"] == []
 
 
+def _photo(owner: Account, taken_at: datetime, visibility=BeerPhoto.Visibility.FRIENDS) -> BeerPhoto:
+    return BeerPhoto.objects.create(
+        account=owner,
+        client_id=uuid.uuid4(),
+        image=f"beer-photos/{uuid.uuid4()}.webp",
+        caption="Palanda",
+        visibility=visibility,
+        taken_at=taken_at,
+    )
+
+
+def _hero_ids(client: APIClient, token: str, scope: str = "friends") -> list[str]:
+    nights = client.get(f"/v1/nights/feed?scope={scope}", **_auth(token)).json()["nights"]
+    return [photo["id"] for photo in nights[0]["hero_photos"]]
+
+
+@pytest.mark.django_db
+def test_night_without_a_chosen_photo_shows_photos_shared_that_night(client):
+    owner_token, owner = _register(client, "autor")
+    friend_token, friend = _register(client, "kamos")
+    stranger_token, _stranger = _register(client, "divak")
+    _make_friends(owner, friend)
+    # Night runs 16:00–21:30 UTC; a rating photo right after the last beer counts.
+    before = _photo(owner, datetime(2026, 7, 21, 15, 30, tzinfo=UTC))
+    _photo(owner, datetime(2026, 7, 21, 19, tzinfo=UTC), BeerPhoto.Visibility.PRIVATE)
+    _photo(owner, datetime(2026, 7, 14, 20, tzinfo=UTC))
+    _photo(friend, datetime(2026, 7, 21, 20, tzinfo=UTC))
+
+    # Auto-publish and released clients never send photo_ids.
+    published = _publish(client, owner_token, visibility="public")
+    assert published.status_code == status.HTTP_201_CREATED, published.content
+    # Uploaded from the offline queue after the night already hung.
+    after = _photo(owner, datetime(2026, 7, 21, 22, tzinfo=UTC), BeerPhoto.Visibility.PUBLIC)
+
+    expected = [str(after.public_id), str(before.public_id)]
+    assert _hero_ids(client, owner_token) == expected
+    assert _hero_ids(client, friend_token) == expected
+    assert _hero_ids(client, stranger_token, "global") == []
+
+
+@pytest.mark.django_db
+def test_night_published_without_a_photo_stays_without_one(client):
+    owner_token, owner = _register(client, "autor")
+    photo = _photo(owner, datetime(2026, 7, 21, 20, tzinfo=UTC))
+    client_id = "night-2026-07-21"
+
+    removed = _publish(client, owner_token, client_id=client_id, photo_ids=[])
+    assert removed.status_code == status.HTTP_201_CREATED, removed.content
+    assert removed.json()["night"]["hero_photos"] == []
+
+    # The auto-publish at the end of the night omits photo_ids and keeps the choice.
+    _publish(client, owner_token, client_id=client_id, updated_at="2026-07-22T01:00:00+02:00")
+    assert _hero_ids(client, owner_token) == []
+
+    _publish(
+        client,
+        owner_token,
+        client_id=client_id,
+        photo_ids=[str(photo.public_id)],
+        updated_at="2026-07-22T02:00:00+02:00",
+    )
+    assert _hero_ids(client, owner_token) == [str(photo.public_id)]
+
+
 @pytest.mark.django_db
 def test_invalid_party_proof_drops_snapshot_without_blocking_publish(client):
     token, _owner = _register(client, "autor")

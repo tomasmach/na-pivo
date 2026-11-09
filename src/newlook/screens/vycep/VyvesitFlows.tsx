@@ -143,7 +143,9 @@ function useNightPhoto(night: NightSummary | null, since: number): BeerPhotoLoca
     return (
       photos.find((photo) => {
         const at = Date.parse(photo.takenAt);
-        return photoUri(photo) && ((at >= from && at <= to) || at >= since);
+        // A private or rejected photo would show here but never on the post.
+        const shareable = photo.visibility !== 'private' && photo.syncState !== 'failed';
+        return shareable && photoUri(photo) && ((at >= from && at <= to) || at >= since);
       }) ?? null
     );
   }, [night, photos, since]);
@@ -162,7 +164,7 @@ export function VyvesitSheet() {
   const shareDefault = useVycepStore((st) => st.shareDefault);
   const [openedAt] = useState(() => Date.now());
   const candidate = useNightPhoto(night, openedAt);
-  const [withPhoto, setWithPhoto] = useState(false);
+  const [withPhoto, setWithPhoto] = useState(true);
   const [busy, setBusy] = useState(false);
   const initial: NightVisibility = autopublish === 'public' || autopublish === 'friends' ? autopublish : shareDefault;
   const [scope, setScope] = useState<'all' | 'parta'>(initial === 'public' ? 'all' : 'parta');
@@ -212,7 +214,9 @@ export function VyvesitSheet() {
       dialog({ title: t.nv.vycep.nicknameTitle, body: t.nv.vycep.nicknameBody, actions: [{ label: t.nv.vycep.back }] });
       return;
     }
-    const payload = { ...nightPublishPayload(night, visibility), ...(photo ? { photoIds: [photo.id ?? photo.clientId] } : {}) };
+    // No photo yet lets the server show the ones taken later that night; a removed photo stays removed.
+    const photoIds = !withPhoto ? [] : photo ? [photo.id ?? photo.clientId] : undefined;
+    const payload = { ...nightPublishPayload(night, visibility), ...(photoIds ? { photoIds } : {}) };
     trackUiInteraction('night_publish', 'submit');
     setBusy(true);
     void publishNight(payload).then((res) => {

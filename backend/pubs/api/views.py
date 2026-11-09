@@ -981,6 +981,7 @@ def _published_night_story_updates(data: dict, account: Account) -> dict:
         # captured offline become the hero after its upload eventually lands.
         # Serialization still resolves only this author's friends-visible rows.
         updates["photo_ids"] = [str(value) for value in data["photo_ids"]]
+        updates["hide_photos"] = not updates["photo_ids"]
 
     snapshot = _snapshot_party_evening(data, account)
     if snapshot is None:
