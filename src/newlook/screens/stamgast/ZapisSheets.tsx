@@ -546,11 +546,7 @@ export function PridatPivoSheet() {
   const tile = <Tile icon="beer" bg={C.control} radius={18} size={36} />;
 
   return (
-    <Sheet top={140} closeIcon={false} scroll>
-      <View style={[s.row, { gap: 12, marginTop: -4 }]}>
-        <IconButton icon="chevron-left" size={40} iconSize={18} onPress={() => nvBack(router)} label={copy.back} />
-        <D s={30}>{copy.addBeer}</D>
-      </View>
+    <Sheet top={140} closeIcon={false} title={copy.addBeer} onBack={() => nvBack(router)} scroll>
       <View style={[s.row, { height: 52, borderRadius: 18, paddingHorizontal: 16, gap: 10, backgroundColor: C.control, borderWidth: 1, borderColor: C.tint }]}>
         <Icon name="search" size={18} color={C.text2} />
         <TextInput testID="beer-search" value={q} onChangeText={setQ} placeholder={copy.searchBeer} placeholderTextColor={C.muted} keyboardAppearance="dark" selectionColor={C.yellow} style={[font(16, 500), { flex: 1, padding: 0 }]} />
