@@ -32,7 +32,7 @@ import { distanceLabel, formatDistance, hoursNow } from './format';
 import { NvMap, type NvMapHandle } from './NvMap';
 import { BookTab } from '../../duo/BookTab';
 import { useNvRouter } from '../../duo/details';
-import { useBook, useRailSide, useWindowInsets } from '../../duo/layout';
+import { useBook, useIsDuo, useRailSide, useWindowInsets } from '../../duo/layout';
 import { usePane } from '../../duo/pane';
 import { openNvPub, setOpenOnly, toggleAmenityFilter, useKompasState } from './state';
 import { pinId, useKompas, type Kompas, type KompasTarget } from './useKompas';
@@ -156,8 +156,18 @@ export function KompasScreen() {
     setMode('map');
   };
   const { book } = useBook();
-  // The open Duo shows the compass and its map side by side, so neither has the switch.
-  if (book) return <BookTab tab="kompas" left={<CompassMode k={k} name={name} />} right={<MapMode k={k} name={name} beside />} />;
+  const duo = useIsDuo();
+  // The open Duo shows the compass and its map side by side, so neither has the switch. Folding keeps
+  // the map where you left it; a map hidden behind the compass would lose its camera, so it goes.
+  if (duo)
+    return (
+      <BookTab
+        tab="kompas"
+        folded={mode === 'map' ? 'right' : 'left'}
+        left={<CompassMode k={k} name={name} onMap={book ? undefined : showMap} />}
+        right={book || mode === 'map' ? <MapMode k={k} name={name} beside={book} onCompass={book ? undefined : showCompass} /> : undefined}
+      />
+    );
   return <BookTab tab="kompas" left={mode === 'map' ? <MapMode k={k} name={name} onCompass={showCompass} /> : <CompassMode k={k} name={name} onMap={showMap} />} />;
 }
 

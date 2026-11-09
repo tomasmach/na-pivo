@@ -19,7 +19,7 @@ import { usePartaSignalStore } from '@/stores/partaSignalStore';
 import { BottomFade, TabHeader, TopFade, useTabBarSpace, useTabHeaderScroll } from '../../components/chrome';
 import { BookTab } from '../../duo/BookTab';
 import { useDetailPages, useNvRouter } from '../../duo/details';
-import { useBook } from '../../duo/layout';
+import { useBook, useIsDuo } from '../../duo/layout';
 import { usePaneWidth } from '../../duo/pane';
 import { StatusCard } from '../../components/StatusCard';
 import { Ticket } from '../../components/forms';
@@ -218,6 +218,7 @@ export function PartaScreen() {
   const onScroll = useTabHeaderScroll('parta');
   const onPlansScroll = useTabHeaderScroll('parta-pozvanky');
   const { book } = useBook();
+  const duo = useIsDuo();
 
   useFocusEffect(
     useCallback(() => {
@@ -473,6 +474,17 @@ export function PartaScreen() {
       <BottomFade height={tabSpace + 40} tabBar />
     </View>
   );
+  const invitations = column(
+    <>
+      <TabHeader tab="parta-pozvanky" title={t.nv.parta.invitations}>
+        {plansList.length ? <IconButton icon="plus" label={t.nv.parta.newInvite} onPress={() => router.push('/nv/nova-pozvanka')} /> : null}
+      </TabHeader>
+      {carousel}
+      {dashboard ? <PartaPhotoStrip /> : null}
+      {home}
+    </>,
+    'parta-pozvanky',
+  );
   // On the open Duo the people stay on the left, so a friend opens beside the list; invitations and photos go right.
   if (book) {
     return (
@@ -505,17 +517,7 @@ export function PartaScreen() {
           </>,
           'parta',
         )}
-        right={column(
-          <>
-            <TabHeader tab="parta-pozvanky" title={t.nv.parta.invitations}>
-              {plansList.length ? <IconButton icon="plus" label={t.nv.parta.newInvite} onPress={() => router.push('/nv/nova-pozvanka')} /> : null}
-            </TabHeader>
-            {carousel}
-            {dashboard ? <PartaPhotoStrip /> : null}
-            {home}
-          </>,
-          'parta-pozvanky',
-        )}
+        right={invitations}
       />
     );
   }
@@ -553,6 +555,8 @@ export function PartaScreen() {
         </>,
         'parta',
       )}
+      // Folded, the Duo keeps the invitations half hidden, so opening the book finds it as it was.
+      right={duo ? invitations : undefined}
     />
   );
 }

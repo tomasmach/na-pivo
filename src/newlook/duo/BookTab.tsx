@@ -19,7 +19,18 @@ import { ColumnSlotProvider, MUTED_COLUMN_SLOT, useColumnSlot } from './paneCont
  * and the pages keep their place in the tree, so a fold only changes frames
  * and never remounts a screen or loses its scroll.
  */
-export function BookTab({ tab, left, right }: { tab: string; left: React.ReactNode; right?: React.ReactNode }) {
+export function BookTab({
+  tab,
+  left,
+  right,
+  folded = 'left',
+}: {
+  tab: string;
+  left: React.ReactNode;
+  right?: React.ReactNode;
+  /** The half a folded Duo shows; Kompas keeps its compass and map in place and shows the one you picked. */
+  folded?: 'left' | 'right';
+}) {
   const { book, foldX } = useBook();
   const insets = useWindowInsets();
   const width = usePaneWidth();
@@ -27,6 +38,7 @@ export function BookTab({ tab, left, right }: { tab: string; left: React.ReactNo
   const pages = useDetailPages(tab);
   const leaving = useLeavingPages(tab);
   const split = book && right !== undefined;
+  const rightAlone = !split && folded === 'right' && right !== undefined;
   // The right half of the book: the twin is passed on any Duo pose so it survives folding.
   const leftWidth = split ? Math.round(foldX - insets.left) : width;
   const rightWidth = width - leftWidth;
@@ -40,17 +52,17 @@ export function BookTab({ tab, left, right }: { tab: string; left: React.ReactNo
   const bleed = useRailSide() === 'right' ? insets.right : 0;
   return (
     <View style={{ flex: 1, flexDirection: 'row', backgroundColor: C.bg }}>
-      <View style={{ width: leftWidth }} onTouchStart={split ? () => setHalf('left') : undefined}>
+      <View style={rightAlone ? { display: 'none' } : { width: leftWidth }} onTouchStart={split ? () => setHalf('left') : undefined}>
         <PaneProvider value={leftPane}>
           <Covered by={open && !split}>{left}</Covered>
         </PaneProvider>
       </View>
       {right !== undefined ? (
         // Folded, the twin waits hidden, so unfolding finds it as it was (the diary's month, a scroll).
-        <View style={split ? { width: rightWidth } : { display: 'none' }} onTouchStart={split ? () => setHalf('right') : undefined}>
-          <PaneProvider value={rightPane}>
+        <View style={split ? { width: rightWidth } : rightAlone ? { width: leftWidth } : { display: 'none' }} onTouchStart={split ? () => setHalf('right') : undefined}>
+          <PaneProvider value={rightAlone ? leftPane : rightPane}>
             {/* The twin stays mounted under a page, so going back does not rebuild the map. */}
-            <Covered by={open || !split}>{right}</Covered>
+            <Covered by={open || (!split && !rightAlone)}>{right}</Covered>
           </PaneProvider>
         </View>
       ) : null}
