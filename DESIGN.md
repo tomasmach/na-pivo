@@ -41,9 +41,13 @@ se nemění.
   pivo, kámoš, pozvánka, večer, tvůj profil a seznamy z něj (nastavení, odznaky,
   pivní fotky, moje hospody, hlídaná piva), FotoPivař, Tour de pub, čísla, žebříčky
   a setkání. Na knize leží v pravé půlce, zavřené přes celý tab vedle lišty. Po
-  zavření i otevření zůstanou, kde byly, i s posunutím, a tah od jejich levého
-  okraje vrací zpět. Na knize je pravá půlka tichá: jantarové tlačítko v ní je šedé
-  a otevřený řádek v seznamu vlevo se zvýrazní.
+  zavření i otevření zůstanou, kde byly, i s posunutím. Výběr v levé půlce knihy
+  pravou půlku vymění prolnutím a stejný výběr podruhé vrátí jeho stránku; co otevře
+  pravá půlka nebo stránka, přijede zprava jako další stránka, odjede stejnou cestou
+  a zpět z ní vede i tah od levého okraje. Na zavřeném Duu tah vrací z každé stránky. Druhé
+  klepnutí na otevřený tab vrátí tab. Na knize je pravá půlka tichá: jantarové
+  tlačítko v ní je šedé a otevřený řádek nebo dlaždice vlevo nese jantarový vybraný
+  stav (`C.yellowSoft`).
 - **Panel.** Úkoly a formuláře otevřené na Duu jsou panel: zavřené přes celé okno
   vedle sloupce, na knize v pravé půlce přes ztmavené taby. Klepnutí do ztmavené
   části vrací zpět, kromě jednosměrných obrazovek (příchod, vyvěšování nocí).
