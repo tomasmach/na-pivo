@@ -1,4 +1,4 @@
-import { clusterCamera, clusterPins, NO_CLUSTER_ZOOM, targetPin, zoomOf } from '../clusterPins';
+import { bubblesOverlap, clusterCamera, clusterPins, NO_CLUSTER_ZOOM, targetPin, zoomOf } from '../clusterPins';
 
 const WIDTH = 390;
 const city = { longitudeDelta: 0.2 };
@@ -17,6 +17,13 @@ describe('clusterPins', () => {
     expect(clusters).toHaveLength(1);
     expect(clusters[0].count).toBe(3);
     expect(clusters[0].lat).toBeCloseTo(50.0807, 5);
+  });
+
+  it('tells when a cluster sits under another pin on screen', () => {
+    const target = { lat: 50.0876, lng: 14.4211 };
+    const cluster = { lat: 50.0879, lng: 14.4215 };
+    expect(bubblesOverlap(cluster, target, city, WIDTH)).toBe(true);
+    expect(bubblesOverlap(cluster, target, street, WIDTH)).toBe(false);
   });
 
   it('shows every pub on its own at street zoom', () => {

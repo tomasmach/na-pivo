@@ -60,15 +60,11 @@ function summaryLine(k: Kompas): string {
   return parts.join(' · ') || L().summaryAll;
 }
 
-/** The beer line under a pub: last week's count on the count layer, else the first tap with its price. */
-function subLine(target: KompasTarget, mode: 'price' | 'count', k: Kompas): string {
+/** The beer line under a pub: the first tap with its price. */
+function subLine(target: KompasTarget): string {
   if (target.kind === 'friend') return L().partyHere;
   if (target.kind === 'tour') return L().tourStop(target.stopNumber ?? 1);
   const pub = target.pub;
-  if (mode === 'count') {
-    const n = k.beersLastWeek?.get(target.key);
-    if (n) return L().lastWeekLine(n);
-  }
   const currency = useSettingsStore.getState().priceCurrency;
   const beer = pub?.beers?.[0];
   const czk = beer?.priceCzk ?? pub?.price?.czk;
@@ -163,7 +159,8 @@ function MapMode({ k, name, onCompass }: { k: Kompas; name: NameReveal; onCompas
   const { target } = k;
   const [collapsed, setCollapsed] = useState(false);
   const [cityKey, setCityKey] = useState<string | null>(null);
-  const layersDot = st.mapView !== 'okoli' || st.pinMode !== 'price' || st.onlyDrunk;
+  const showPubBeers = useSettingsStore((s) => s.showPubBeers);
+  const layersDot = st.mapView !== 'okoli' || !showPubBeers || st.onlyDrunk;
   const city = k.map.visitedCities.find((c) => c.key === cityKey) ?? k.map.visitedCities[0];
 
   const beerFilter = st.filters.beerBrand;
@@ -217,7 +214,8 @@ function MapMode({ k, name, onCompass }: { k: Kompas; name: NameReveal; onCompas
   const cities = useMemo(() => visitedCities.map((c) => ({ key: c.key, name: c.name, lat: c.lat, lng: c.lng, count: c.visitCount })), [visitedCities]);
 
   // The map buttons sit just above whatever card is showing, or above the tab bar when none is.
-  const cardSpace = st.mapView === 'stopy' ? (city ? 160 : 0) : target ? (collapsed ? 64 : 160) : 0;
+  const beers = target?.kind === 'pub' && !name.secret ? (k.beersByPub?.get(target.key) ?? 0) : 0;
+  const cardSpace = st.mapView === 'stopy' ? (city ? 160 : 0) : target ? (collapsed ? 64 : beers ? 180 : 160) : 0;
   return (
     <View style={{ flex: 1, backgroundColor: C.bg }}>
       <NvMap
@@ -228,12 +226,12 @@ function MapMode({ k, name, onCompass }: { k: Kompas; name: NameReveal; onCompas
         friends={friends}
         cities={cities}
         view={st.mapView}
-        pinMode={st.pinMode}
         selectedCity={city?.key}
         onPub={onPub}
         onCity={setCityKey}
         onRegion={k.map.loadRegion}
-        bottomPadding={tabSpace + 140}
+        // Clears the tallest pub card, the one with last week's beers, so the Google logo stays whole.
+        bottomPadding={tabSpace + 160}
         coveredTop={insets.top + 104}
       />
       <View
@@ -377,6 +375,7 @@ function MapMode({ k, name, onCompass }: { k: Kompas; name: NameReveal; onCompas
                         </T>
                       </View>
                     ) : (
+                    <>
                     <View style={[s.row, { gap: 5 }]}>
                       {hours ? (
                         <>
@@ -386,8 +385,17 @@ function MapMode({ k, name, onCompass }: { k: Kompas; name: NameReveal; onCompas
                           </T>
                         </>
                       ) : null}
-                      <T s={13} c={C.onYellowMuted} numberOfLines={1} style={s.fill}>{`${hours ? '· ' : ''}${subLine(target, st.pinMode, k)}`}</T>
+                      <T s={13} c={C.onYellowMuted} numberOfLines={1} style={s.fill}>{`${hours ? '· ' : ''}${subLine(target)}`}</T>
                     </View>
+                    {beers ? (
+                      <View style={[s.row, { gap: 5 }]}>
+                        <Icon name="beer" size={13} color={C.onYellowMuted} />
+                        <T s={13} c={C.onYellowMuted} numberOfLines={1} style={s.fill}>
+                          {L().lastWeekBeers(beers)}
+                        </T>
+                      </View>
+                    ) : null}
+                    </>
                     )}
                   </View>
                   {target.distance != null ? (
@@ -617,7 +625,7 @@ function CompassMode({ k, name, onMap }: { k: Kompas; name: NameReveal; onMap: (
                   </>
                 ) : null}
                 <T s={15} c={C.muted} numberOfLines={1} style={{ flexShrink: 1 }}>
-                  {`${hours ? '· ' : ''}${subLine(target, 'price', k)}`}
+                  {`${hours ? '· ' : ''}${subLine(target)}`}
                 </T>
               </View>
               {backToNearest ? (

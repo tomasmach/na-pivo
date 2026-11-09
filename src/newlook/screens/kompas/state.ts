@@ -13,7 +13,6 @@ import { useFocusedPubStore } from '@/stores/focusedPubStore';
 import { useSettingsStore, type KompasView } from '@/stores/settingsStore';
 
 export type MapView = 'okoli' | 'stopy' | 'parta';
-export type PinMode = 'price' | 'count';
 
 /**
  * What the Kompas tab, its sheets and the search share while the app runs:
@@ -23,7 +22,6 @@ export type PinMode = 'price' | 'count';
 type KompasState = {
   filters: PubSearchFilters;
   mapView: MapView;
-  pinMode: PinMode;
   onlyDrunk: boolean;
   /** A pub picked on the map, in search or on its page; it wins over the compass's own pick. */
   picked: Pub | null;
@@ -46,7 +44,6 @@ type KompasState = {
 export const useKompasState = create<KompasState>((set, get) => ({
   filters: EMPTY_PUB_SEARCH_FILTERS,
   mapView: 'okoli',
-  pinMode: 'price',
   onlyDrunk: false,
   picked: null,
   hoursDraft: null,
