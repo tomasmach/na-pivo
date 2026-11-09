@@ -54,9 +54,11 @@ const SHEETS = [
 ];
 
 const SHEET_ROUTES = new Set(SHEETS);
-// Full-screen maps, the camera and the one-way welcome screens keep the whole window on the open book;
-// the two system page sheets get their size from iOS.
-const WIDE_ROUTES = new Set(['tour-mapa', 'vyfot', 'onboarding', 'prichod', 'verejne-noci', 'tour-editor', 'nova-pozvanka']);
+// Full-screen maps, the camera and the onboarding (laid out in two halves itself) keep the whole
+// window on the open book; the two system page sheets get their size from iOS.
+const WIDE_ROUTES = new Set(['tour-mapa', 'vyfot', 'onboarding', 'tour-editor', 'nova-pozvanka']);
+// One-way screens: a tap beside their panel does not leave them.
+const ONE_WAY_ROUTES = new Set(['prichod', 'verejne-noci']);
 
 // A screen pushed on the open iPhone Duo comes up as a panel over the right half with the tabs
 // still visible beside it, like a split view's second column. Decided once per route when it is
@@ -90,7 +92,9 @@ export default function NewLookLayout() {
           route.name === '(tabs)' || SHEET_ROUTES.has(route.name) ? (
             children
           ) : (
-            <BesideColumn>{WIDE_ROUTES.has(route.name) ? children : <BookPanel>{children}</BookPanel>}</BesideColumn>
+            <BesideColumn>
+              {WIDE_ROUTES.has(route.name) ? children : <BookPanel dismissable={!ONE_WAY_ROUTES.has(route.name)}>{children}</BookPanel>}
+            </BesideColumn>
           )
         }
         screenOptions={({ route }) =>

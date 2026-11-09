@@ -83,6 +83,7 @@ import { Sheet } from '../../components/overlays';
 import { Button, Card, Chip, ChipWrap, D, IconButton, Kicker, Person, Press, ProgressRing, Row, Segmented, Spinner, T, Tile, Toggle } from '../../components/ui';
 import { dialog, toast } from '../../ui/store';
 import { C, SCREEN_X, s } from '../../theme';
+import { useBook, useWindowInsets } from '../../duo/layout';
 import { Dial } from '../kompas/Dial';
 import { setKompasView } from '../kompas/state';
 import { usePartaStore } from '../parta/partaStore';
@@ -2666,6 +2667,8 @@ export function OnboardingScreen() {
   const finished = useRef(false);
   const slides = P().onboarding.slides;
   const p = slides[page];
+  const { book, foldX } = useBook();
+  const windowInsets = useWindowInsets();
 
   useEffect(() => {
     void trackClientEvent({ event: 'onboarding_started' });
@@ -2679,69 +2682,94 @@ export function OnboardingScreen() {
     router.replace('/nv/prihlaseni');
   };
 
-  return (
-    <View style={{ flex: 1, backgroundColor: C.bg, paddingTop: insets.top + 8, paddingHorizontal: SCREEN_X, paddingBottom: Math.max(insets.bottom, 16) + 4 }}>
-      <View style={[s.row, { justifyContent: 'space-between', height: 32 }]}>
-        <View style={[s.row, { gap: 6 }]}>
-          {slides.map((_, i) => (
-            <View key={i} style={{ width: i === page ? 28 : 10, height: 6, borderRadius: 3, backgroundColor: i === page ? C.yellow : C.control }} />
-          ))}
-        </View>
-        <Press
-          testID="onboarding-skip"
-          onPress={() => {
-            trackUiInteraction('onboarding_skip');
-            finish('onboarding_skipped');
-          }}
-        >
-          <T s={15} w={600} c={C.muted}>
-            {P().onboarding.skip}
-          </T>
-        </Press>
+  const top = (
+    <View style={[s.row, { justifyContent: 'space-between', height: 32 }]}>
+      <View style={[s.row, { gap: 6 }]}>
+        {slides.map((_, i) => (
+          <View key={i} style={{ width: i === page ? 28 : 10, height: 6, borderRadius: 3, backgroundColor: i === page ? C.yellow : C.control }} />
+        ))}
       </View>
-      <View style={{ flex: 1, justifyContent: 'center' }}>
-        {page === 0 ? (
-          <Dial centerIcon="beer" />
-        ) : page === 1 ? (
-          <View style={{ alignItems: 'center', gap: 4 }}>
-            <D s={180} lh={1} c={C.yellow}>
-              3
-            </D>
-            <T s={18} w={600} c={C.text2}>
-              {P().onboarding.tonight}
-            </T>
-          </View>
-        ) : (
-          <View style={{ alignItems: 'center', gap: 16 }}>
-            <View style={s.row}>
-              {['K', 'M', 'J', 'T'].map((x, i) => (
-                <View key={x} style={{ marginLeft: i ? -14 : 0 }}>
-                  <Person initial={x} size={70} filled={x === 'T'} />
-                </View>
-              ))}
-            </View>
-            <T s={16} w={600} c={C.text2}>
-              {P().onboarding.partaDemo}
-            </T>
-          </View>
-        )}
-      </View>
-      <View style={{ gap: 14, paddingBottom: 40 }}>
-        <D s={48} lh={1}>
-          {p.title}
+      <Press
+        testID="onboarding-skip"
+        onPress={() => {
+          trackUiInteraction('onboarding_skip');
+          finish('onboarding_skipped');
+        }}
+      >
+        <T s={15} w={600} c={C.muted}>
+          {P().onboarding.skip}
+        </T>
+      </Press>
+    </View>
+  );
+  const art =
+    page === 0 ? (
+      <Dial centerIcon="beer" />
+    ) : page === 1 ? (
+      <View style={{ alignItems: 'center', gap: 4 }}>
+        <D s={180} lh={1} c={C.yellow}>
+          3
         </D>
-        <T s={16} c={C.text2} lh={1.45}>
-          {p.body}
+        <T s={18} w={600} c={C.text2}>
+          {P().onboarding.tonight}
         </T>
       </View>
-      <Button
-        label={page < slides.length - 1 ? P().onboarding.next : P().onboarding.done}
-        onPress={() => {
-          trackUiInteraction('onboarding_next');
-          if (page < slides.length - 1) setPage(page + 1);
-          else finish('onboarding_completed');
-        }}
-      />
+    ) : (
+      <View style={{ alignItems: 'center', gap: 16 }}>
+        <View style={s.row}>
+          {['K', 'M', 'J', 'T'].map((x, i) => (
+            <View key={x} style={{ marginLeft: i ? -14 : 0 }}>
+              <Person initial={x} size={70} filled={x === 'T'} />
+            </View>
+          ))}
+        </View>
+        <T s={16} w={600} c={C.text2}>
+          {P().onboarding.partaDemo}
+        </T>
+      </View>
+    );
+  const words = (
+    <View style={{ gap: 14, paddingBottom: 40 }}>
+      <D s={48} lh={1}>
+        {p.title}
+      </D>
+      <T s={16} c={C.text2} lh={1.45}>
+        {p.body}
+      </T>
+    </View>
+  );
+  const next = (
+    <Button
+      label={page < slides.length - 1 ? P().onboarding.next : P().onboarding.done}
+      onPress={() => {
+        trackUiInteraction('onboarding_next');
+        if (page < slides.length - 1) setPage(page + 1);
+        else finish('onboarding_completed');
+      }}
+    />
+  );
+  const pad = { paddingTop: insets.top + 8, paddingHorizontal: SCREEN_X, paddingBottom: Math.max(insets.bottom, 16) + 4 };
+
+  if (book) {
+    // The open iPhone Duo on its side: the picture fills the left half, the words and the button the right.
+    return (
+      <View style={{ flex: 1, flexDirection: 'row', backgroundColor: C.bg }}>
+        <View style={[{ width: foldX - windowInsets.left, justifyContent: 'center', alignItems: 'center' }, pad]}>{art}</View>
+        <View style={[s.fill, pad]}>
+          {top}
+          <View style={{ flex: 1 }} />
+          {words}
+          {next}
+        </View>
+      </View>
+    );
+  }
+  return (
+    <View style={[{ flex: 1, backgroundColor: C.bg }, pad]}>
+      {top}
+      <View style={{ flex: 1, justifyContent: 'center' }}>{art}</View>
+      {words}
+      {next}
     </View>
   );
 }

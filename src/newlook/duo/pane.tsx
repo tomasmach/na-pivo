@@ -59,7 +59,7 @@ export function BesideColumn({ tab = null, children }: { tab?: string | null; ch
  * dims the tabs under it and a tap there goes back. Elsewhere it is the whole
  * screen. The tree is the same either way, so folding never remounts it.
  */
-export function BookPanel({ children }: { children: React.ReactNode }) {
+export function BookPanel({ dismissable = true, children }: { dismissable?: boolean; children: React.ReactNode }) {
   const router = useRouter();
   const pane = usePane();
   const width = usePaneWidth();
@@ -77,7 +77,7 @@ export function BookPanel({ children }: { children: React.ReactNode }) {
     <View style={{ flex: 1, flexDirection: 'row' }}>
       <Pressable
         style={{ width: leftWidth, backgroundColor: C.scrim }}
-        disabled={!book}
+        disabled={!book || !dismissable}
         onPress={() => nvBack(router)}
         accessibilityRole="button"
         accessibilityLabel={t.nv.profil.chrome.back}
