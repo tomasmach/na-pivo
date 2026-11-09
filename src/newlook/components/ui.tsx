@@ -22,7 +22,7 @@ import { fireSelectionHaptic } from '@/utils/haptics';
 import { DURATION, enterTiming, fadeInTiming } from '../motion';
 import { C, display, font, s, shadow, type Weight } from '../theme';
 import { Icon, type IconName } from './Icon';
-import { usePane } from '../duo/pane';
+import { usePane } from '../duo/paneContext';
 
 type TProps = TextProps & { s?: number; w?: Weight; c?: string; lh?: number; style?: StyleProp<TextStyle> };
 

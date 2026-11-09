@@ -1,30 +1,15 @@
-import React, { createContext, useContext, useMemo } from 'react';
+import React, { useMemo } from 'react';
 import { View, useWindowDimensions, type GestureResponderEvent } from 'react-native';
 import { SafeAreaInsetsContext, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { WindowInsetsProvider, isBook, useLastHalf, useWindowInsets } from './layout';
+import { PaneProvider, usePane, type Pane } from './paneContext';
 
-/**
- * Where a piece of UI is laid out. `single` is a whole screen (a phone, the
- * folded Duo, a screen over the tabs), `left` and `right` the halves of a tab
- * on the open book.
- */
-export interface Pane {
-  tab: string | null;
-  side: 'single' | 'left' | 'right';
-  width: number;
-}
-
-const PaneContext = createContext<Pane | null>(null);
-export const PaneProvider = PaneContext.Provider;
-
-export function usePane(): Pane | null {
-  return useContext(PaneContext);
-}
+export { PaneProvider, usePane, type Pane };
 
 /** The width content lays out in: its half on the book, otherwise the window beside the Duo's column. */
 export function usePaneWidth(): number {
-  const pane = useContext(PaneContext);
+  const pane = usePane();
   const { width } = useWindowDimensions();
   const insets = useWindowInsets();
   return pane?.width ?? width - insets.left - insets.right;
