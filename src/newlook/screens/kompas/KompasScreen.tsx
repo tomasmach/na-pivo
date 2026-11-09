@@ -30,6 +30,10 @@ import { C, SCREEN_X, s, shadow } from '../../theme';
 import { Dial } from './Dial';
 import { distanceLabel, formatDistance, hoursNow } from './format';
 import { NvMap, type NvMapHandle } from './NvMap';
+import { BookTab } from '../../duo/BookTab';
+import { useNvRouter } from '../../duo/details';
+import { useBook, useRailSide, useWindowInsets } from '../../duo/layout';
+import { usePane } from '../../duo/pane';
 import { openNvPub, setOpenOnly, toggleAmenityFilter, useKompasState } from './state';
 import { pinId, useKompas, type Kompas, type KompasTarget } from './useKompas';
 
@@ -151,11 +155,18 @@ export function KompasScreen() {
     trackUiInteraction('compass_map_open');
     setMode('map');
   };
-  return mode === 'map' ? <MapMode k={k} name={name} onCompass={showCompass} /> : <CompassMode k={k} name={name} onMap={showMap} />;
+  const { book } = useBook();
+  // The open Duo shows the compass and its map side by side, so neither has the switch.
+  if (book) return <BookTab tab="kompas" left={<CompassMode k={k} name={name} />} right={<MapMode k={k} name={name} beside />} />;
+  return <BookTab tab="kompas" left={mode === 'map' ? <MapMode k={k} name={name} onCompass={showCompass} /> : <CompassMode k={k} name={name} onMap={showMap} />} />;
 }
 
-function MapMode({ k, name, onCompass }: { k: Kompas; name: NameReveal; onCompass: () => void }) {
-  const router = useRouter();
+/** `beside` is the map next to the compass on the open Duo: the compass already shows the pub, so the map has no card. */
+function MapMode({ k, name, onCompass, beside = false }: { k: Kompas; name: NameReveal; onCompass?: () => void; beside?: boolean }) {
+  const router = useNvRouter();
+  const avatar = usePane()?.side !== 'right';
+  const windowInsets = useWindowInsets();
+  const bleed = useRailSide() === 'right' ? windowInsets.right : 0;
   const insets = useSafeAreaInsets();
   const tabSpace = useTabBarSpace();
   const mapRef = useRef<NvMapHandle>(null);
@@ -217,9 +228,11 @@ function MapMode({ k, name, onCompass }: { k: Kompas; name: NameReveal; onCompas
   const cities = useMemo(() => visitedCities.map((c) => ({ key: c.key, name: c.name, lat: c.lat, lng: c.lng, count: c.visitCount })), [visitedCities]);
 
   // The map buttons sit just above whatever card is showing, or above the tab bar when none is.
-  const cardSpace = st.mapView === 'stopy' ? (city ? 160 : 0) : target ? (collapsed ? 64 : 160) : 0;
+  const cardSpace = st.mapView === 'stopy' ? (city ? 160 : 0) : target && !beside ? (collapsed ? 64 : 160) : 0;
   return (
     <View style={{ flex: 1, backgroundColor: C.bg }}>
+      {/* The map runs on under the iPhone Duo's side column, like the system's maps; only its controls keep clear. */}
+      <View style={{ position: 'absolute', top: 0, bottom: 0, left: 0, right: -bleed }}>
       <NvMap
         ref={mapRef}
         pins={k.pins}
@@ -235,23 +248,27 @@ function MapMode({ k, name, onCompass }: { k: Kompas; name: NameReveal; onCompas
         onRegion={k.map.loadRegion}
         bottomPadding={tabSpace + 140}
         coveredTop={insets.top + 104}
+        coveredRight={bleed}
       />
+      </View>
       <View
         pointerEvents="none"
         style={{
           position: 'absolute',
           top: 0,
           left: 0,
-          right: 0,
+          right: -bleed,
           height: 210,
           experimental_backgroundImage: 'linear-gradient(180deg, #0A0A0AF5 0%, #0A0A0AB3 60%, #0A0A0A00 100%)',
         }}
       />
       <View style={{ position: 'absolute', top: insets.top + 3, left: SCREEN_X, right: SCREEN_X, gap: 12 }}>
         <View style={[s.row, { gap: 10 }]}>
-          <Press haptic onPress={onCompass} accessibilityLabel={L().compassA11y} style={{ width: 54, height: 54 }}>
-            <MiniCompass />
-          </Press>
+          {onCompass ? (
+            <Press haptic onPress={onCompass} accessibilityLabel={L().compassA11y} style={{ width: 54, height: 54 }}>
+              <MiniCompass />
+            </Press>
+          ) : null}
           <Press
             haptic
             onPress={() => router.push('/nv/hledani')}
@@ -274,7 +291,7 @@ function MapMode({ k, name, onCompass }: { k: Kompas; name: NameReveal; onCompas
             </View>
             <IconButton icon="sliders-horizontal" size={38} iconSize={17} badge={k.filterCount || undefined} onPress={() => openFilters(router)} label={L().filters} />
           </Press>
-          <AvatarSlot />
+          {avatar ? <AvatarSlot /> : null}
         </View>
       </View>
       <ScrollView
@@ -358,7 +375,7 @@ function MapMode({ k, name, onCompass }: { k: Kompas; name: NameReveal; onCompas
               </View>
               <Button label={L().showMyPubs} icon="map-pinned" kind="onYellow" height={46} onPress={showCityPubs} />
             </Animated.View>
-          ) : st.mapView !== 'stopy' && target && !collapsed ? (
+          ) : beside ? null : st.mapView !== 'stopy' && target && !collapsed ? (
             <PubCard onCollapse={() => setCollapsed(true)} onPullOpen={() => openTarget(router, target, 'map', name, 'card')}>
               <Animated.View key={target.key} entering={SWAP_IN}>
                 <Press onPress={() => openTarget(router, target, 'map', name)} style={[s.row, { justifyContent: 'space-between', paddingLeft: 2 }]}>
@@ -538,8 +555,8 @@ function emptyCopy(state: Exclude<Kompas['state'], 'normal'>): { title: string; 
   }
 }
 
-function CompassMode({ k, name, onMap }: { k: Kompas; name: NameReveal; onMap: () => void }) {
-  const router = useRouter();
+function CompassMode({ k, name, onMap }: { k: Kompas; name: NameReveal; onMap?: () => void }) {
+  const router = useNvRouter();
   const insets = useSafeAreaInsets();
   const tabSpace = useTabBarSpace();
   const st = useKompasState();
@@ -553,10 +570,17 @@ function CompassMode({ k, name, onMap }: { k: Kompas; name: NameReveal; onMap: (
   return (
     <View style={{ flex: 1, backgroundColor: C.bg, paddingTop: insets.top + 8, paddingHorizontal: SCREEN_X, paddingBottom: tabSpace + 14 }}>
       <View style={[s.row, { justifyContent: 'space-between', height: 44 }]}>
-        <IconButton icon="map" color={C.yellow} onPress={onMap} label={L().map} iconSize={20} />
+        {onMap ? (
+          <IconButton icon="map" color={C.yellow} onPress={onMap} label={L().map} iconSize={20} />
+        ) : (
+          // Beside the map on the open Duo, which has the search and adding a pub.
+          <D s={44} accessibilityRole="header" numberOfLines={1}>
+            {t.nv.common.tabKompas}
+          </D>
+        )}
         <View style={[s.row, { gap: 10 }]}>
-          <IconButton icon="map-pin-plus" onPress={() => openAddPub(router)} label={L().addPub} iconSize={20} />
-          <IconButton icon="search" onPress={() => router.push('/nv/hledani')} label={L().search} iconSize={20} />
+          {onMap ? <IconButton icon="map-pin-plus" onPress={() => openAddPub(router)} label={L().addPub} iconSize={20} /> : null}
+          {onMap ? <IconButton icon="search" onPress={() => router.push('/nv/hledani')} label={L().search} iconSize={20} /> : null}
           <AvatarSlot />
         </View>
       </View>

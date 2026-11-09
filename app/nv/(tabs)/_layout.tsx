@@ -5,10 +5,18 @@ import { useReducedMotion } from 'react-native-reanimated';
 
 import { TabAvatar } from '@/newlook/components/chrome';
 import { TabBar } from '@/newlook/components/TabBar';
+import { registerDetailScreens } from '@/newlook/duo/details';
+import { BesideColumn } from '@/newlook/duo/pane';
 import { DURATION } from '@/newlook/motion';
+import { PubScreen } from '@/newlook/screens/kompas/PubScreen';
+import { KamosScreen, PlanScreen } from '@/newlook/screens/parta/PartaFlows';
+import { BeerScreen } from '@/newlook/screens/piva/BeerScreen';
+import { ProfilScreen } from '@/newlook/screens/profil/ProfilScreens';
 import { C } from '@/newlook/theme';
 
 export const unstable_settings = { initialRouteName: 'kompas' };
+
+registerDetailScreens({ hospoda: PubScreen, pivo: BeerScreen, kamos: KamosScreen, plan: PlanScreen, profil: ProfilScreen });
 
 // The navigator animates scenes with React Native's Animated, so the new look's tokens are restated here.
 const SHIFT = 12;
@@ -22,6 +30,8 @@ export default function NewLookTabs() {
   const shift = reducedMotion ? 0 : SHIFT;
   return (
     <Tabs
+      // A tab lies beside the iPhone Duo's side column, where its tab bar stands up.
+      screenLayout={({ route, children }) => <BesideColumn tab={route.name}>{children}</BesideColumn>}
       tabBar={(props) => (
         <>
           <TabBar {...props} />

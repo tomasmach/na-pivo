@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { Share, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { nvBack } from '@/newlook/navigation';
+import { useNvParams, useNvRouter } from '../../duo/details';
 
 import { generateUuidV4 } from '@/data/account';
 import {
@@ -52,8 +53,8 @@ function Loading({ failed, onRetry, failedText }: { failed: boolean; onRetry: ()
 }
 
 export function KamosScreen() {
-  const router = useRouter();
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const router = useNvRouter();
+  const { id = '' } = useNvParams<{ id: string }>();
   const [detail, setDetail] = useState<FriendProfileDetail | null>(null);
   const [duel, setDuel] = useState<FriendDuel | null>(null);
   const [failed, setFailed] = useState(false);
@@ -415,8 +416,8 @@ function PeopleRow({ label, people, last, trailing }: { label: string; people: F
 }
 
 export function PlanScreen() {
-  const router = useRouter();
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const router = useNvRouter();
+  const { id = '' } = useNvParams<{ id: string }>();
   const cached = usePartaStore((st) => st.plans?.find((p) => p.id === id) ?? null);
   const ping = usePartaStore((st) => !!id && st.pingIds.includes(id));
   const [detail, setDetail] = useState<PlanDetail | null>(null);

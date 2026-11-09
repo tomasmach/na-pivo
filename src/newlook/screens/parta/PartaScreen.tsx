@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { ScrollView, View, useWindowDimensions } from 'react-native';
+import { ScrollView, View } from 'react-native';
 import Animated from 'react-native-reanimated';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -17,6 +17,10 @@ import { useAccountStore } from '@/stores/accountStore';
 import { usePartaSignalStore } from '@/stores/partaSignalStore';
 
 import { BottomFade, TabHeader, TopFade, useTabBarSpace, useTabHeaderScroll } from '../../components/chrome';
+import { BookTab } from '../../duo/BookTab';
+import { useNvRouter } from '../../duo/details';
+import { useBook } from '../../duo/layout';
+import { usePaneWidth } from '../../duo/pane';
 import { StatusCard } from '../../components/StatusCard';
 import { Ticket } from '../../components/forms';
 import { Icon, type IconName } from '../../components/Icon';
@@ -199,10 +203,10 @@ function LiveRow({ profile, sub, last, cheer }: { profile: FriendProfile; sub: s
 }
 
 export function PartaScreen() {
-  const router = useRouter();
+  const router = useNvRouter();
   const insets = useSafeAreaInsets();
   const tabSpace = useTabBarSpace();
-  const { width } = useWindowDimensions();
+  const width = usePaneWidth();
   const dashboard = usePartaStore((st) => st.dashboard);
   const plans = usePartaStore((st) => st.plans);
   const failed = usePartaStore((st) => st.failed);
@@ -212,6 +216,8 @@ export function PartaScreen() {
   const [page, setPage] = useState(0);
   const ticketW = Math.min(300, width - SCREEN_X * 2 - 50);
   const onScroll = useTabHeaderScroll('parta');
+  const onPeopleScroll = useTabHeaderScroll('parta-lide');
+  const { book } = useBook();
 
   useFocusEffect(
     useCallback(() => {
@@ -280,14 +286,8 @@ export function PartaScreen() {
   };
   const plansList = plans ?? [];
 
-  return (
-    <View style={{ flex: 1, backgroundColor: C.bg }}>
-      <Animated.ScrollView
-        onScroll={onScroll}
-        scrollEventThrottle={16}
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={{ paddingTop: insets.top + 8, paddingHorizontal: SCREEN_X, gap: 20, paddingBottom: tabSpace + 30 }}
-      >
+  const live = (
+    <>
         <TabHeader tab="parta" title={t.nv.parta.title}>
           <Button label={t.nv.parta.pingPartyShort} icon="bell-ring" height={44} style={{ paddingHorizontal: 16 }} onPress={() => router.push('/nv/cinknout')} />
           <IconButton icon="user-plus" label={t.nv.parta.addA11y} onPress={() => router.push('/nv/sprava-party')} />
@@ -393,9 +393,22 @@ export function PartaScreen() {
                 <LiveRow key={p.account.id} profile={p.account} last={i === homePresence.length - 1} sub={t.nv.parta.atSomeonesHome} />
               ))}
             </Card>
+          </Animated.View>
+        ) : failed && plans !== null ? (
+          // Without plans the invitations card above already says the load failed.
+          <StatusCard text={t.nv.parta.loadFailed} action={t.nv.parta.retry} onAction={() => void load()} />
+        ) : null}
+    </>
+  );
+  const people = (
+    <>
+      {book ? <TabHeader tab="parta-lide" title={t.nv.parta.wholeParty} /> : null}
+      {dashboard ? (
+        <Animated.View entering={fadeIn} style={{ gap: 20 }}>
             <PartaPhotoStrip />
             {friends.length === 0 || rest.length ? (
               <>
+                {book ? null : (
                 <SectionTitle
                   title={t.nv.parta.wholeParty}
                   action={String(friends.length)}
@@ -404,6 +417,7 @@ export function PartaScreen() {
                     router.push('/nv/sprava-party');
                   }}
                 />
+                )}
                 <Card>
                   {friends.length === 0 ? (
                     <Row last leading={<Tile icon="user-plus" />} title={t.nv.parta.inviteFirst} chevron onPress={() => router.push('/nv/sprava-party')} />
@@ -426,11 +440,8 @@ export function PartaScreen() {
                 </Card>
               </>
             ) : null}
-          </Animated.View>
-        ) : failed && plans !== null ? (
-          // Without plans the invitations card above already says the load failed.
-          <StatusCard text={t.nv.parta.loadFailed} action={t.nv.parta.retry} onAction={() => void load()} />
-        ) : null}
+        </Animated.View>
+      ) : null}
         {/* Waits for the first load, so it doesn't show up under the loading card and then jump down. */}
         {dashboard || failed ? (
           <Animated.View entering={fadeIn}>
@@ -448,9 +459,34 @@ export function PartaScreen() {
             </Card>
           </Animated.View>
         ) : null}
+    </>
+  );
+  const column = (content: React.ReactNode, scrollKey: string) => (
+    <View style={{ flex: 1, backgroundColor: C.bg }}>
+      <Animated.ScrollView
+        onScroll={scrollKey === 'parta' ? onScroll : onPeopleScroll}
+        scrollEventThrottle={16}
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={{ paddingTop: insets.top + 8, paddingHorizontal: SCREEN_X, gap: 20, paddingBottom: tabSpace + 30 }}
+      >
+        {content}
       </Animated.ScrollView>
       <TopFade />
       <BottomFade height={tabSpace + 40} tabBar />
     </View>
+  );
+  // On the open Duo who is out and the invitations stay left, the whole crew lists on the right.
+  if (book) return <BookTab tab="parta" left={column(live, 'parta')} right={column(people, 'parta-lide')} />;
+  return (
+    <BookTab
+      tab="parta"
+      left={column(
+        <>
+          {live}
+          {people}
+        </>,
+        'parta',
+      )}
+    />
   );
 }

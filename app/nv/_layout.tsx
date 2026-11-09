@@ -6,6 +6,7 @@ import { StatusBar } from 'expo-status-bar';
 import { FullWindowOverlay } from 'react-native-screens';
 
 import { DialogHost, ToastHost } from '@/newlook/components/overlays';
+import { BesideColumn, BookColumn } from '@/newlook/duo/pane';
 import { C, FontFiles } from '@/newlook/theme';
 import { bridgeAppToasts } from '@/newlook/ui/store';
 
@@ -51,6 +52,10 @@ const SHEETS = [
   'sdileni-souhlas',
 ];
 
+const SHEET_ROUTES = new Set(SHEETS);
+// Full-screen maps and the camera fill the window on the open book too.
+const WIDE_ROUTES = new Set(['tour-mapa', 'vyfot']);
+
 // Sheets are native modals on iOS; only a window-level overlay keeps dialogs and toasts above them.
 const Overlay = Platform.OS === 'ios' ? FullWindowOverlay : React.Fragment;
 
@@ -61,7 +66,17 @@ export default function NewLookLayout() {
   return (
     <View style={{ flex: 1, backgroundColor: C.bg }}>
       <StatusBar style="light" />
-      <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: C.bg }, animation: 'slide_from_right' }}>
+      <Stack
+        // A screen over the tabs lies beside the iPhone Duo's side column; a sheet covers it and keeps its card off it.
+        screenLayout={({ route, children }) =>
+          route.name === '(tabs)' || SHEET_ROUTES.has(route.name) ? (
+            children
+          ) : (
+            <BesideColumn>{WIDE_ROUTES.has(route.name) ? children : <BookColumn>{children}</BookColumn>}</BesideColumn>
+          )
+        }
+        screenOptions={{ headerShown: false, contentStyle: { backgroundColor: C.bg }, animation: 'slide_from_right' }}
+      >
         <Stack.Screen name="(tabs)" options={{ animation: 'none' }} />
         <Stack.Screen
           name="hospoda/[id]"

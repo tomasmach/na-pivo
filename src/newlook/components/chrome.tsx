@@ -10,6 +10,9 @@ import { KeyboardAwareScrollView } from '@/components/shared/KeyboardAwareScroll
 import { t } from '@/i18n';
 import { useKeyboardHeight } from '@/utils/useKeyboardHeight';
 
+import { useDetailStore, useNvRouter } from '../duo/details';
+import { useBook, useRailSide, useWindowInsets } from '../duo/layout';
+import { usePane } from '../duo/pane';
 import { useKeyboardLift } from '../motion';
 import { useMe, useUnopenedBadges } from '../screens/profil/profilModel';
 import { useProfilWatchers } from '../screens/profil/useProfilWatchers';
@@ -145,16 +148,19 @@ export function AvatarSlot() {
  * itself out while its middle passes through that fade.
  */
 export function TabAvatar({ tab }: { tab: string }) {
-  const insets = useSafeAreaInsets();
+  const insets = useWindowInsets();
+  const { book, foldX, width } = useBook();
   const y = scrollOf(tab);
   const follow = useAnimatedStyle(() => ({
     opacity: interpolate(y.value, [AVATAR / 2, AVATAR / 2 + 16], [1, 0], 'clamp'),
     // Pulling down past the top stretches only the content; the header row stays put.
     transform: [{ translateY: -Math.max(0, y.value) }],
   }));
+  // On the open book the avatar belongs to the left half's header, and your profile opens in the right half.
+  const right = SCREEN_X + (book ? width - foldX : insets.right);
   return (
-    <Animated.View style={[{ position: 'absolute', top: insets.top + 8, right: SCREEN_X }, follow]}>
-      <LevelAvatar />
+    <Animated.View style={[{ position: 'absolute', top: insets.top + 8, right }, follow]}>
+      <LevelAvatar onPress={book ? () => useDetailStore.getState().push(tab, { route: 'profil', params: {} }) : undefined} />
     </Animated.View>
   );
 }
@@ -162,6 +168,8 @@ export function TabAvatar({ tab }: { tab: string }) {
 /** Big tab title row: title, optional actions, avatar. Stays put while its tab is pulled down past the top. */
 export function TabHeader({ tab, title, children }: { tab: string; title: string; children?: React.ReactNode }) {
   const y = scrollOf(tab);
+  // The right half of the open book has no avatar; it sits in the left half's header.
+  const avatar = usePane()?.side !== 'right';
   const hold = useAnimatedStyle(() => ({ transform: [{ translateY: Math.min(0, y.value) }] }));
   return (
     <Animated.View style={[s.row, { justifyContent: 'space-between', minHeight: 46 }, hold]}>
@@ -170,7 +178,7 @@ export function TabHeader({ tab, title, children }: { tab: string; title: string
       </D>
       <View style={[s.row, { gap: 10, alignSelf: 'flex-start' }]}>
         {children}
-        <AvatarSlot />
+        {avatar ? <AvatarSlot /> : null}
       </View>
     </Animated.View>
   );
@@ -193,7 +201,7 @@ export function BackHeader({
   icon?: IconName;
   style?: StyleProp<ViewStyle>;
 }) {
-  const router = useRouter();
+  const router = useNvRouter();
   return (
     <View style={[s.row, { justifyContent: 'space-between', height: 44 }, style]}>
       <View style={[s.row, s.fill, { gap: 14 }]}>
@@ -216,10 +224,11 @@ export function BackHeader({
   );
 }
 
-/** Space the floating tab bar takes at the bottom of a tab screen. */
+/** Space the floating tab bar takes at the bottom of a tab screen. Standing in the Duo's side column it takes none. */
 export function useTabBarSpace() {
   const insets = useSafeAreaInsets();
-  return TAB_BAR_HEIGHT + tabBarBottom(insets.bottom) + 12;
+  const rail = useRailSide();
+  return rail ? tabBarBottom(insets.bottom) + 12 : TAB_BAR_HEIGHT + tabBarBottom(insets.bottom) + 12;
 }
 
 export function tabBarBottom(insetBottom: number) {

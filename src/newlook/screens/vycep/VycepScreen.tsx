@@ -26,6 +26,8 @@ import { useToursStore } from '@/stores/toursStore';
 import { useVycepStore } from '@/stores/vycepStore';
 
 import { BottomFade, TabHeader, TopFade, useTabBarSpace, useTabHeaderScroll } from '../../components/chrome';
+import { BookTab } from '../../duo/BookTab';
+import { useBook } from '../../duo/layout';
 import { StatusCard } from '../../components/StatusCard';
 import { Icon, type IconName } from '../../components/Icon';
 import { D, T, Button, Dot, Press, Segmented } from '../../components/ui';
@@ -314,11 +316,12 @@ function useSummary(scope: NightsFeedScope) {
   return res?.ok ? res : null;
 }
 
-function useShortcutData() {
+function useShortcutData(enabled: boolean) {
   const [contestDays, setContestDays] = useState<number | null>(null);
   const [rank, setRank] = useState<number | null | undefined>(undefined);
   const plan = useToursStore((st) => st.plans[0] ?? null);
   useEffect(() => {
+    if (!enabled) return;
     let live = true;
     void fetchPhotoContestTeaser().then((snap) => {
       if (live && snap?.contest) setContestDays(daysUntil(snap.contest.periodEnd));
@@ -329,21 +332,32 @@ function useShortcutData() {
     return () => {
       live = false;
     };
-  }, []);
+  }, [enabled]);
   return { contestDays, rank, plan };
 }
 
+type Scope = 'svet' | 'parta';
+
 export function VycepScreen() {
+  const [scope, setScope] = useState<Scope>('svet');
+  const { book } = useBook();
+  // The open Duo shows the world and the crew side by side, so neither half has the switch.
+  if (book) return <BookTab tab="vycep" left={<Feed scope="svet" />} right={<Feed scope="parta" />} />;
+  return <BookTab tab="vycep" left={<Feed scope={scope} onScope={setScope} />} />;
+}
+
+/** One feed. With `onScope` it switches between the world and the crew; without, it is a half of the open Duo. */
+function Feed({ scope, onScope }: { scope: Scope; onScope?: (scope: Scope) => void }) {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const tabSpace = useTabBarSpace();
-  const [scope, setScope] = useState<'svet' | 'parta'>('svet');
+  const crewHalf = !onScope && scope === 'parta';
   const feedScope: NightsFeedScope = scope === 'svet' ? 'global' : 'friends';
   const autopublish = useVycepStore((st) => st.nightAutopublish);
   const feed = useFeed(feedScope);
   const summary = useSummary(feedScope);
-  const { contestDays, rank, plan } = useShortcutData();
-  const onScroll = useTabHeaderScroll('vycep');
+  const { contestDays, rank, plan } = useShortcutData(!crewHalf);
+  const onScroll = useTabHeaderScroll(crewHalf ? 'vycep-parta' : 'vycep');
 
   useEffect(() => {
     void syncSharingPrefs();
@@ -377,18 +391,24 @@ export function VycepScreen() {
         ListHeaderComponentStyle={{ gap: 16 }}
         ListHeaderComponent={
           <>
-            <TabHeader tab="vycep" title={t.nv.vycep.title}>
-              <Button label={t.nv.vycep.publishCta} icon="plus" height={44} style={{ paddingHorizontal: 18 }} onPress={publish} />
-            </TabHeader>
-            <Segmented
-              height={38}
-              options={[
-                { key: 'svet', label: t.nv.vycep.scopeWorld },
-                { key: 'parta', label: t.nv.vycep.scopeParta },
-              ]}
-              value={scope}
-              onChange={setScope}
-            />
+            {crewHalf ? (
+              <TabHeader tab="vycep-parta" title={t.nv.vycep.scopeParta} />
+            ) : (
+              <TabHeader tab="vycep" title={t.nv.vycep.title}>
+                <Button label={t.nv.vycep.publishCta} icon="plus" height={44} style={{ paddingHorizontal: 18 }} onPress={publish} />
+              </TabHeader>
+            )}
+            {onScope ? (
+              <Segmented
+                height={38}
+                options={[
+                  { key: 'svet', label: t.nv.vycep.scopeWorld },
+                  { key: 'parta', label: t.nv.vycep.scopeParta },
+                ]}
+                value={scope}
+                onChange={onScope}
+              />
+            ) : null}
             <View style={{ padding: 16, gap: 12, borderRadius: 24, backgroundColor: C.yellowWash, borderWidth: 1, borderColor: C.yellowEdge }}>
               <View style={[s.row, { gap: 8 }]}>
                 <Dot />
@@ -409,26 +429,28 @@ export function VycepScreen() {
                 ))}
               </View>
             </View>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginHorizontal: -SCREEN_X }} contentContainerStyle={{ paddingHorizontal: SCREEN_X, gap: 8 }}>
-              <Shortcut
-                icon="camera"
-                title={t.nv.vycep.shortcutContest}
-                sub={contestDays === null ? '' : contestDays > 0 ? t.nv.vycep.shortcutContestLeft(contestDays) : t.nv.vycep.shortcutContestToday}
-                onPress={() => router.push('/nv/fotopivar')}
-              />
-              <Shortcut
-                icon="route"
-                title={t.nv.vycep.shortcutTour}
-                sub={plan ? t.nv.vycep.shortcutTourSub(plan.stops.length) : t.nv.vycep.shortcutTourEmpty}
-                onPress={() => router.push('/nv/tour')}
-              />
-              <Shortcut
-                icon="trophy"
-                title={t.nv.vycep.shortcutBoards}
-                sub={rank === undefined ? '' : rank ? t.nv.vycep.shortcutBoardsRank(rank) : t.nv.vycep.shortcutBoardsNone}
-                onPress={() => router.push('/nv/zebricky')}
-              />
-            </ScrollView>
+            {crewHalf ? null : (
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginHorizontal: -SCREEN_X }} contentContainerStyle={{ paddingHorizontal: SCREEN_X, gap: 8 }}>
+                <Shortcut
+                  icon="camera"
+                  title={t.nv.vycep.shortcutContest}
+                  sub={contestDays === null ? '' : contestDays > 0 ? t.nv.vycep.shortcutContestLeft(contestDays) : t.nv.vycep.shortcutContestToday}
+                  onPress={() => router.push('/nv/fotopivar')}
+                />
+                <Shortcut
+                  icon="route"
+                  title={t.nv.vycep.shortcutTour}
+                  sub={plan ? t.nv.vycep.shortcutTourSub(plan.stops.length) : t.nv.vycep.shortcutTourEmpty}
+                  onPress={() => router.push('/nv/tour')}
+                />
+                <Shortcut
+                  icon="trophy"
+                  title={t.nv.vycep.shortcutBoards}
+                  sub={rank === undefined ? '' : rank ? t.nv.vycep.shortcutBoardsRank(rank) : t.nv.vycep.shortcutBoardsNone}
+                  onPress={() => router.push('/nv/zebricky')}
+                />
+              </ScrollView>
+            )}
             {feed.nights === null && !feed.failed ? (
               <>
                 <GhostPost />

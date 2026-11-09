@@ -6,6 +6,9 @@ import { nvBack } from '@/newlook/navigation';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { BottomFade, TabHeader, TopFade, useTabBarSpace, useTabHeaderScroll } from '../../components/chrome';
+import { BookTab } from '../../duo/BookTab';
+import { useNvRouter } from '../../duo/details';
+import { useBook } from '../../duo/layout';
 import { Ghost, StatusCard } from '../../components/StatusCard';
 import { Icon } from '../../components/Icon';
 import { D, T, Card, Chip, IconButton, Press, Row, Segmented, Tile } from '../../components/ui';
@@ -139,12 +142,24 @@ function useCollection() {
   };
 }
 
+type PivaTab = 'best' | 'bottom' | 'mine';
+
 export function PivaScreen() {
-  const router = useRouter();
+  const [tab, setTab] = useState<PivaTab>('best');
+  const { book } = useBook();
+  // The open Duo keeps your collection in the right half, so the left half switches only the rankings.
+  if (book) return <BookTab tab="piva" left={<PivaList tab={tab === 'mine' ? 'best' : tab} onTab={setTab} />} right={<PivaList tab="mine" />} />;
+  return <BookTab tab="piva" left={<PivaList tab={tab} onTab={setTab} />} />;
+}
+
+/** The rankings and your collection. Without `onTab` it is the collection in the right half of the open Duo. */
+function PivaList({ tab, onTab }: { tab: PivaTab; onTab?: (tab: PivaTab) => void }) {
+  const router = useNvRouter();
   const insets = useSafeAreaInsets();
   const tabSpace = useTabBarSpace();
   const p = t.nv.piva;
-  const [tab, setTab] = useState<'best' | 'bottom' | 'mine'>('best');
+  const { book } = useBook();
+  const collectionHalf = !onTab;
   const [style, setStyle] = useState<BeerStyle | null>(null);
   const region = useRankingRegion((st) => st.region);
   const degree = useRankingRegion((st) => st.degree);
@@ -159,7 +174,7 @@ export function PivaScreen() {
   const page = ranking.state.status === 'ready' ? ranking.state.data : null;
   const early = page?.early === true && tab === 'best';
   const unrated = collection.state.status === 'ready' ? collection.state.data.unrated : [];
-  const onScroll = useTabHeaderScroll('piva');
+  const onScroll = useTabHeaderScroll(collectionHalf ? 'piva-sbirka' : 'piva');
 
   return (
     <View style={{ flex: 1, backgroundColor: C.bg }}>
@@ -169,19 +184,25 @@ export function PivaScreen() {
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{ paddingTop: insets.top + 8, paddingHorizontal: SCREEN_X, gap: 16, paddingBottom: tabSpace + 30 }}
       >
-        <TabHeader tab="piva" title={p.title}>
-          <IconButton icon="search" iconSize={20} onPress={() => router.push('/nv/hledat-pivo')} label={p.searchA11y} />
-        </TabHeader>
-        <Segmented
-          height={38}
-          options={[
-            { key: 'best', label: p.tabs.best },
-            { key: 'bottom', label: p.tabs.bottom },
-            { key: 'mine', label: p.tabs.mine },
-          ]}
-          value={tab}
-          onChange={setTab}
-        />
+        {collectionHalf ? (
+          <TabHeader tab="piva-sbirka" title={p.tabs.mine} />
+        ) : (
+          <>
+            <TabHeader tab="piva" title={p.title}>
+              <IconButton icon="search" iconSize={20} onPress={() => router.push('/nv/hledat-pivo')} label={p.searchA11y} />
+            </TabHeader>
+            <Segmented
+              height={38}
+              options={[
+                { key: 'best', label: p.tabs.best },
+                { key: 'bottom', label: p.tabs.bottom },
+                ...(book ? [] : [{ key: 'mine' as const, label: p.tabs.mine }]),
+              ]}
+              value={tab}
+              onChange={onTab}
+            />
+          </>
+        )}
         {tab !== 'mine' ? (
           <>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginHorizontal: -SCREEN_X }} contentContainerStyle={{ paddingHorizontal: SCREEN_X, gap: 8 }}>
@@ -295,7 +316,7 @@ export function Stars({ n, size = 16 }: { n: number; size?: number }) {
 }
 
 function Collection({ data, watchedCount }: { data: BeerCollection; watchedCount: number }) {
-  const router = useRouter();
+  const router = useNvRouter();
   const c = t.nv.piva.collection;
   const taster = data.taster;
   const progress = taster && taster.target ? taster.have / taster.target : 0;

@@ -4,6 +4,7 @@ import MapView, { Marker, PROVIDER_GOOGLE } from 'react-native-maps';
 import Animated from 'react-native-reanimated';
 import { useRouter } from 'expo-router';
 import { nvBack } from '@/newlook/navigation';
+import { useNvRouter } from '../../duo/details';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { haversineMeters } from '@/compass/distance';
@@ -160,7 +161,7 @@ function eventWhen(event: Parameters<typeof eventDay>[0], now: Date): string {
 }
 
 export function PubScreen() {
-  const router = useRouter();
+  const router = useNvRouter();
   const insets = useSafeAreaInsets();
   const { key, pub: opened } = useParamPub();
   const details = usePubDetails(opened, key);

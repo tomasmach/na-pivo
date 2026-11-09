@@ -29,6 +29,7 @@ import { useKompasState } from '../kompas/state';
 import { fmtCount, fmtDistance, fmtRating, kindLine, lastKnownPosition, myLatestRating, reviewDay, saveBeerRating, savedRating, toggleWatch } from './model';
 import { Stars } from './PivaScreen';
 import { Loading, useLoad } from './states';
+import { useNvParams, useNvRouter } from '../../duo/details';
 
 const REVIEW_FILTERS: ReviewFilter[] = ['newest', 'party', 'photo'];
 
@@ -120,9 +121,9 @@ function useReviews(ref: BeerRef, filter: ReviewFilter) {
 }
 
 export function BeerScreen() {
-  const router = useRouter();
+  const router = useNvRouter();
   const insets = useSafeAreaInsets();
-  const params = useLocalSearchParams<{ id: string; name?: string; brewery?: string }>();
+  const params = useNvParams<{ id: string; name?: string; brewery?: string }>();
   const ref: BeerRef = { productKey: params.id && params.id !== '-' ? params.id : null, beerName: params.name ?? null, breweryName: params.brewery ?? null };
   const page = useBeerPage(ref);
 
@@ -141,7 +142,7 @@ export function BeerScreen() {
 }
 
 function BeerBody({ beer, beerRef, reload }: { beer: BeerPage; beerRef: BeerRef; reload: () => void }) {
-  const router = useRouter();
+  const router = useNvRouter();
   const insets = useSafeAreaInsets();
   const p = t.nv.piva;
   const b = p.beer;
