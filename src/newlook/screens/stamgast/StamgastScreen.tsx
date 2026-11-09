@@ -34,7 +34,7 @@ import { formatPrice } from '@/utils/currency';
 
 import { AvatarSlot, BottomFade, TabHeader, TopFade, useTabBarSpace } from '../../components/chrome';
 import { BookTab } from '../../duo/BookTab';
-import { useBook } from '../../duo/layout';
+import { useBook, useIsDuo } from '../../duo/layout';
 import { Icon, type IconName } from '../../components/Icon';
 import { Button, D, Press, Segmented, Stack, T, Tile } from '../../components/ui';
 import { fadeIn, fadeOut, riseIn, sinkOut } from '../../motion';
@@ -125,6 +125,7 @@ export function StamgastScreen() {
   };
   const copy = t.nv.stamgast;
   const { book } = useBook();
+  const duo = useIsDuo();
   // On the open Duo the diary is the right half, so the left half keeps counting.
   const leftMode = book && mode === 'denik' ? 'pocitat' : mode;
   const options: { key: Mode; label: string; dot?: boolean }[] = [
@@ -157,7 +158,8 @@ export function StamgastScreen() {
       {headerH > 0 ? <TopFade below={headerH} /> : null}
     </View>
   );
-  const right = book ? (
+  // Passed on any Duo pose: folded it waits hidden, so the diary keeps its month and scroll.
+  const right = duo ? (
     <View style={{ flex: 1, backgroundColor: C.bg }}>
       <View style={{ paddingTop: insets.top + 8, paddingHorizontal: SCREEN_X }}>
         <TabHeader tab="stamgast-denik" title={copy.segDiary} />

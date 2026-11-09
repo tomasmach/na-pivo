@@ -51,6 +51,13 @@ export function useBook(): { book: boolean; foldX: number; width: number; height
   return { book: isBook(width, height), foldX: width / 2, width, height };
 }
 
+/** The iPhone Duo in any pose: open as a book, or with the side column folded. */
+export function useIsDuo(): boolean {
+  const { book } = useBook();
+  const rail = useRailSide();
+  return book || rail !== null;
+}
+
 export type Half = 'left' | 'right';
 
 /**

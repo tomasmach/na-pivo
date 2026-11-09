@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { ScrollView, View } from 'react-native';
 import Animated from 'react-native-reanimated';
-import { useFocusEffect, useRouter } from 'expo-router';
+import { useFocusEffect } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import {
@@ -91,7 +91,7 @@ function MyPingStub({ plan, onEnded }: { plan: PartaPlan; onEnded?: () => void }
 }
 
 export function PlanStub({ plan, onEnded }: { plan: PartaPlan; onEnded?: () => void }) {
-  const router = useRouter();
+  const router = useNvRouter();
   const partySize = usePartaStore((st) => st.dashboard?.friends.length);
   const ping = usePartaStore((st) => st.pingIds.includes(plan.id));
   if (plan.isMine && ping) return <MyPingStub plan={plan} onEnded={onEnded} />;
@@ -177,7 +177,7 @@ export function PlanTicket({ plan, width, big, onEnded }: { plan: PartaPlan; wid
 }
 
 function LiveRow({ profile, sub, last, cheer }: { profile: FriendProfile; sub: string; last?: boolean; cheer?: FriendPresence }) {
-  const router = useRouter();
+  const router = useNvRouter();
   return (
     <Row
       last={last}

@@ -27,7 +27,7 @@ import { useVycepStore } from '@/stores/vycepStore';
 import { BottomFade, TabHeader, TopFade, useTabBarSpace, useTabHeaderScroll } from '../../components/chrome';
 import { BookTab } from '../../duo/BookTab';
 import { useDetailPages, useNvRouter } from '../../duo/details';
-import { useBook } from '../../duo/layout';
+import { useBook, useIsDuo } from '../../duo/layout';
 import { StatusCard } from '../../components/StatusCard';
 import { Icon, type IconName } from '../../components/Icon';
 import { D, T, Button, Dot, Press, Segmented } from '../../components/ui';
@@ -347,9 +347,11 @@ type Scope = 'svet' | 'parta';
 export function VycepScreen() {
   const [scope, setScope] = useState<Scope>('svet');
   const { book } = useBook();
+  const duo = useIsDuo();
   // The open Duo shows the world and the crew side by side, so neither half has the switch.
   if (book) return <BookTab tab="vycep" left={<Feed scope="svet" />} right={<Feed scope="parta" />} />;
-  return <BookTab tab="vycep" left={<Feed scope={scope} onScope={setScope} />} />;
+  // Folded the crew half waits hidden, so unfolding finds it where it was.
+  return <BookTab tab="vycep" left={<Feed scope={scope} onScope={setScope} />} right={duo ? <Feed scope="parta" /> : undefined} />;
 }
 
 /** One feed. With `onScope` it switches between the world and the crew; without, it is a half of the open Duo. */
@@ -399,8 +401,10 @@ function Feed({ scope, onScope }: { scope: Scope; onScope?: (scope: Scope) => vo
         ListHeaderComponentStyle={{ gap: 16 }}
         ListHeaderComponent={
           <>
-            {/* The crew half opens with its summary card, which names it; a second "Parta" title would read as the Parta tab. */}
-            {crewHalf ? null : (
+            {crewHalf ? (
+              // Named by the switch label it replaces on a phone.
+              <TabHeader tab="vycep-parta" title={t.nv.vycep.scopeParta} />
+            ) : (
               <TabHeader tab="vycep" title={t.nv.vycep.title}>
                 <Button label={t.nv.vycep.publishCta} icon="plus" height={44} style={{ paddingHorizontal: 18 }} onPress={publish} />
               </TabHeader>

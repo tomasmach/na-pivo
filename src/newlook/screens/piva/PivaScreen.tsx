@@ -8,7 +8,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BottomFade, TabHeader, TopFade, useTabBarSpace, useTabHeaderScroll } from '../../components/chrome';
 import { BookTab } from '../../duo/BookTab';
 import { useNvRouter } from '../../duo/details';
-import { useBook } from '../../duo/layout';
+import { useBook, useIsDuo } from '../../duo/layout';
 import { Ghost, StatusCard } from '../../components/StatusCard';
 import { Icon } from '../../components/Icon';
 import { D, T, Card, Chip, IconButton, Press, Row, Segmented, Tile } from '../../components/ui';
@@ -148,9 +148,11 @@ type PivaTab = 'best' | 'bottom' | 'mine';
 export function PivaScreen() {
   const [tab, setTab] = useState<PivaTab>('best');
   const { book } = useBook();
+  const duo = useIsDuo();
   // The open Duo keeps your collection in the right half, so the left half switches only the rankings.
   if (book) return <BookTab tab="piva" left={<PivaList tab={tab === 'mine' ? 'best' : tab} onTab={setTab} />} right={<PivaList tab="mine" />} />;
-  return <BookTab tab="piva" left={<PivaList tab={tab} onTab={setTab} />} />;
+  // Folded the collection half waits hidden, so unfolding finds it where it was.
+  return <BookTab tab="piva" left={<PivaList tab={tab} onTab={setTab} />} right={duo ? <PivaList tab="mine" /> : undefined} />;
 }
 
 /** The rankings and your collection. Without `onTab` it is the collection in the right half of the open Duo. */

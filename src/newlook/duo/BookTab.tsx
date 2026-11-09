@@ -27,6 +27,7 @@ export function BookTab({ tab, left, right }: { tab: string; left: React.ReactNo
   const pages = useDetailPages(tab);
   const leaving = useLeavingPages(tab);
   const split = book && right !== undefined;
+  // The right half of the book: the twin is passed on any Duo pose so it survives folding.
   const leftWidth = split ? Math.round(foldX - insets.left) : width;
   const rightWidth = width - leftWidth;
   const leftPane = useMemo<Pane>(
@@ -44,11 +45,12 @@ export function BookTab({ tab, left, right }: { tab: string; left: React.ReactNo
           <Covered by={open && !split}>{left}</Covered>
         </PaneProvider>
       </View>
-      {split ? (
-        <View style={{ width: rightWidth }} onTouchStart={() => setHalf('right')}>
+      {right !== undefined ? (
+        // Folded, the twin waits hidden, so unfolding finds it as it was (the diary's month, a scroll).
+        <View style={split ? { width: rightWidth } : { display: 'none' }} onTouchStart={split ? () => setHalf('right') : undefined}>
           <PaneProvider value={rightPane}>
             {/* The twin stays mounted under a page, so going back does not rebuild the map. */}
-            <Covered by={open}>{right}</Covered>
+            <Covered by={open || !split}>{right}</Covered>
           </PaneProvider>
         </View>
       ) : null}
