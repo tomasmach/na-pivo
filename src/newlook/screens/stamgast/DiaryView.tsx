@@ -32,6 +32,7 @@ import {
 } from './eveningData';
 import { VerdictMark } from './PubVerdict';
 import { nightDayLabel } from './stamgastFormat';
+import { useNvRouter } from '../../duo/details';
 
 type Period = 'tyden' | 'mesic' | 'rok';
 
@@ -127,7 +128,7 @@ function Hero({ count, label, meta }: { count: number; label: string; meta: stri
 }
 
 function CardHead({ title, onPrev, onNext, nextDisabled, prevLabel, nextLabel }: { title: string; onPrev?: () => void; onNext?: () => void; nextDisabled?: boolean; prevLabel?: string; nextLabel?: string }) {
-  const router = useRouter();
+  const router = useNvRouter();
   const copy = t.nv.stamgast;
   return (
     <View style={[s.row, { justifyContent: 'space-between', paddingHorizontal: 4, paddingBottom: 4 }]}>
@@ -168,7 +169,7 @@ function Record({ value, label }: { value: string; label: string }) {
 }
 
 function NightsCard({ nights, today }: { nights: readonly Night[]; today: string }) {
-  const router = useRouter();
+  const router = useNvRouter();
   if (!nights.length) return null;
   return (
     <View style={{ backgroundColor: C.card, borderRadius: 24, paddingTop: 14, paddingHorizontal: 16, paddingBottom: 8 }}>
@@ -199,7 +200,7 @@ function NightsCard({ nights, today }: { nights: readonly Night[]; today: string
 
 /** Drinks the server refused live only on the phone until they are fixed or removed. */
 function RejectedNudge({ nights }: { nights: readonly Night[] }) {
-  const router = useRouter();
+  const router = useNvRouter();
   const copy = t.nv.stamgast;
   const toFix = nightToFix(nights);
   if (!toFix) return null;
@@ -258,7 +259,7 @@ function useMoney() {
 }
 
 function Month({ nights, today, onToday }: { nights: Night[]; today: string; onToday?: () => void }) {
-  const router = useRouter();
+  const router = useNvRouter();
   const copy = t.nv.stamgast;
   const money = useMoney();
   const [offset, setOffset] = useState(0);

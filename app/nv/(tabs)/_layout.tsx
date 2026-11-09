@@ -12,11 +12,19 @@ import { PubScreen } from '@/newlook/screens/kompas/PubScreen';
 import { KamosScreen, PlanScreen } from '@/newlook/screens/parta/PartaFlows';
 import { BeerScreen } from '@/newlook/screens/piva/BeerScreen';
 import { ProfilScreen } from '@/newlook/screens/profil/ProfilScreens';
+import { EveningDetailScreen } from '@/newlook/screens/stamgast/EveningSheets';
 import { C } from '@/newlook/theme';
 
 export const unstable_settings = { initialRouteName: 'kompas' };
 
-registerDetailScreens({ hospoda: PubScreen, pivo: BeerScreen, kamos: KamosScreen, plan: PlanScreen, profil: ProfilScreen });
+registerDetailScreens({
+  hospoda: PubScreen,
+  pivo: BeerScreen,
+  kamos: KamosScreen,
+  plan: PlanScreen,
+  vecer: EveningDetailScreen,
+  profil: ProfilScreen,
+});
 
 // The navigator animates scenes with React Native's Animated, so the new look's tokens are restated here.
 const SHIFT = 12;

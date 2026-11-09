@@ -9,13 +9,14 @@ import { usePane } from './pane';
 
 /**
  * Pages that open into the right half of a tab on the open book instead of
- * covering the window: a pub, a beer, a friend, an invitation and your profile.
+ * covering the window: a pub, a beer, a friend, an invitation, an evening and your profile.
  */
 const DETAIL_PATHS = {
   '/nv/hospoda/[id]': 'hospoda',
   '/nv/pivo/[id]': 'pivo',
   '/nv/kamos/[id]': 'kamos',
   '/nv/plan/[id]': 'plan',
+  '/nv/vecer/[id]': 'vecer',
   '/nv/profil': 'profil',
 } as const;
 

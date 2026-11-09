@@ -29,6 +29,7 @@ import { beerTally, canFixRejectedField, dateOfDay, dayKeyOf, dayString, hourlyT
 import { durationLabel, nightDayLabel, servingLine } from './stamgastFormat';
 import { NO_VALUE } from '../../format';
 import { useBackfillPick, useCountPlace } from './placeStore';
+import { useNvParams, useNvRouter } from '../../duo/details';
 
 function Counter({ value, onChange }: { value: number; onChange: (n: number) => void }) {
   const copy = t.nv.stamgast;
@@ -437,9 +438,9 @@ export function OpravitPivoSheet() {
 }
 
 export function EveningDetailScreen() {
-  const router = useRouter();
+  const router = useNvRouter();
   const copy = t.nv.stamgast;
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const { id } = useNvParams<{ id: string }>();
   const { nights } = useAllNights();
   const currency = useSettingsStore((st) => st.priceCurrency);
   const night = nights.find((n) => n.day === id);
