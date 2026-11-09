@@ -13,7 +13,13 @@ export type DetailRoute =
   | 'odznaky'
   | 'pivni-fotky'
   | 'moje-hospody'
-  | 'hlidana-piva';
+  | 'hlidana-piva'
+  | 'fotopivar'
+  | 'tour'
+  | 'cisla'
+  | 'pivo-u-nekoho'
+  | 'moje-setkani'
+  | 'zebricky';
 
 /** Pages that stand for a route with an id in its path. */
 const WITH_ID: ReadonlySet<DetailRoute> = new Set(['hospoda', 'pivo', 'kamos', 'plan', 'vecer']);

@@ -21,6 +21,7 @@ import { useCounterSegment } from './counterSegment';
 import { dateOfDay } from './eveningData';
 import { computeStats, type StatsView } from './statsData';
 import { durationLabel, nightDayLabel } from './stamgastFormat';
+import { useNvRouter } from '../../duo/details';
 
 const L = () => t.nv.stamgast;
 const decimal = (n: number) => n.toLocaleString(intlLocale, { maximumFractionDigits: 1 });
@@ -28,7 +29,7 @@ const joined = (...parts: (string | null | undefined)[]) => parts.filter(Boolean
 const minutes = (ms: number) => durationLabel(Math.round(ms / 60000));
 
 export function StatsScreen() {
-  const router = useRouter();
+  const router = useNvRouter();
   const current = useTallyStore((st) => st.current);
   const history = useTallyStore((st) => st.history);
   const { stats: remote, settled } = useMyStatsState();

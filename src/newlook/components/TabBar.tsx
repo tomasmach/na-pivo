@@ -49,7 +49,6 @@ export function partaBadge(pendingRequests: number, unread: number, liveNow: boo
 export function TabBar({ state, navigateToTab }: BottomTabBarProps) {
   const insets = useWindowInsets();
   const rail = useRailSide();
-  // The open book shows the compass and the map together, so the tab is the compass again.
   const { book, foldX, width } = useBook();
   const current = state.routes[state.index]?.name;
   const pendingRequests = usePartaSignalStore((st) => st.pendingRequests);
@@ -68,7 +67,7 @@ export function TabBar({ state, navigateToTab }: BottomTabBarProps) {
   };
 
   const tab = (name: string, vertical = false) => {
-    const side = name === 'kompas' && kompasView === 'map' && !book ? MAP_SIDE : SIDE[name];
+    const side = name === 'kompas' && kompasView === 'map' ? MAP_SIDE : SIDE[name];
     const label = side.label();
     const on = current === name;
     const badge = name === 'parta' ? partaBadgeText : null;

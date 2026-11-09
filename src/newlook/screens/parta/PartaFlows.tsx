@@ -1,6 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { Share, View } from 'react-native';
-import { useLocalSearchParams, useRouter } from 'expo-router';
 import { nvBack } from '@/newlook/navigation';
 import { useNvParams, useNvRouter } from '../../duo/details';
 import type { ColumnAction } from '../../duo/paneContext';
@@ -24,7 +23,7 @@ import { useHomeEveningStore } from '@/stores/homeEveningStore';
 
 import { BackHeader, Screen } from '../../components/chrome';
 import { Icon } from '../../components/Icon';
-import { D, T, Button, Card, Chip, Dot, IconButton, Person, Row, Segmented } from '../../components/ui';
+import { D, T, Button, Card, Chip, Dot, Person, Row, Segmented } from '../../components/ui';
 import { NO_VALUE } from '../../format';
 import { dialog, toast } from '../../ui/store';
 import { C, s } from '../../theme';

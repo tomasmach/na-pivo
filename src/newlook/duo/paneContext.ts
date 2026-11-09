@@ -61,6 +61,10 @@ const ColumnSlotContext = createContext<ColumnSlot | null>(null);
 /** Set by a screen beside the iPhone Duo's side column, which shows Back and the screen's actions in that column. */
 export const ColumnSlotProvider = ColumnSlotContext.Provider;
 
+export function useColumnSlot(): ColumnSlot | null {
+  return useContext(ColumnSlotContext);
+}
+
 /**
  * Puts this screen's Back (or Close) at the top of the iPhone Duo's side
  * column, under the clock, where the system's toolbar puts it. Returns true

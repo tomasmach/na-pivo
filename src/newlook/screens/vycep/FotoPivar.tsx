@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Image, View, useWindowDimensions } from 'react-native';
+import { Image, View } from 'react-native';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { nvBack } from '@/newlook/navigation';
 
@@ -27,6 +27,8 @@ import { NO_VALUE } from '../../format';
 import { C, SCREEN_X, s } from '../../theme';
 import { dialog, toast } from '../../ui/store';
 import { daysUntil } from './nightData';
+import { useNvRouter } from '../../duo/details';
+import { usePaneWidth } from '../../duo/pane';
 
 function handleOf(account: FriendProfile): string {
   return account.nickname ? `@${account.nickname}` : account.displayName || t.nv.vycep.authorFallback;
@@ -51,8 +53,8 @@ function patchEntry(snap: PhotoContestSnapshot, id: string, patch: Partial<Photo
 }
 
 export function FotoPivarScreen() {
-  const router = useRouter();
-  const { width } = useWindowDimensions();
+  const router = useNvRouter();
+  const width = usePaneWidth();
   const { snap, failed, load, setSnap } = useContest();
   const parta = useVycepStore((st) => st.shareDefault) === 'friends';
   const myId = useAccountStore((st) => st.profile?.id ?? null);
@@ -339,7 +341,7 @@ function photoUri(photo: BeerPhotoLocal): string | null {
 
 export function PrihlasitFotkuSheet() {
   const router = useRouter();
-  const { width } = useWindowDimensions();
+  const width = usePaneWidth();
   const photos = useBeerPhotosStore((st) => st.photos);
   const choosable = (p: BeerPhotoLocal) => p.syncState === 'synced' && !!p.id && !p.inContest;
   const [sel, setSel] = useState<string | null>(null);

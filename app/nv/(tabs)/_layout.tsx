@@ -9,7 +9,7 @@ import { registerDetailScreens } from '@/newlook/duo/details';
 import { BesideColumn } from '@/newlook/duo/pane';
 import { DURATION } from '@/newlook/motion';
 import { PubScreen } from '@/newlook/screens/kompas/PubScreen';
-import { KamosScreen, PlanScreen } from '@/newlook/screens/parta/PartaFlows';
+import { KamosScreen, PivoUNekohoScreen, PlanScreen, ZebrickyScreen } from '@/newlook/screens/parta/PartaFlows';
 import { BeerScreen } from '@/newlook/screens/piva/BeerScreen';
 import { MojeHospodyScreen } from '@/newlook/screens/kompas/AddPubScreens';
 import { HlidanaPivaScreen } from '@/newlook/screens/piva/HlidanaPivaScreen';
@@ -17,6 +17,10 @@ import { NastaveniScreen, OdznakyScreen, ProfilScreen } from '@/newlook/screens/
 import { PivniFotkyScreen } from '@/newlook/screens/vycep/PhotoScreens';
 import { EveningDetailScreen } from '@/newlook/screens/stamgast/EveningSheets';
 import { C } from '@/newlook/theme';
+import { FotoPivarScreen } from '@/newlook/screens/vycep/FotoPivar';
+import { TourListScreen } from '@/newlook/screens/tour/TourScreens';
+import { StatsScreen } from '@/newlook/screens/stamgast/StatsScreen';
+import { MojeSetkaniScreen } from '@/newlook/screens/kompas/PubFlows';
 
 export const unstable_settings = { initialRouteName: 'kompas' };
 
@@ -32,6 +36,12 @@ registerDetailScreens({
   'pivni-fotky': PivniFotkyScreen,
   'moje-hospody': MojeHospodyScreen,
   'hlidana-piva': HlidanaPivaScreen,
+  fotopivar: FotoPivarScreen,
+  tour: TourListScreen,
+  cisla: StatsScreen,
+  'pivo-u-nekoho': PivoUNekohoScreen,
+  'moje-setkani': MojeSetkaniScreen,
+  zebricky: ZebrickyScreen,
 });
 
 // The navigator animates scenes with React Native's Animated, so the new look's tokens are restated here.

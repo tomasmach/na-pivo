@@ -1,21 +1,23 @@
 import React, { useMemo } from 'react';
 import { StyleSheet, View } from 'react-native';
-import Animated from 'react-native-reanimated';
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
+import Animated, { runOnJS, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 
-import { fadeIn } from '../motion';
+import { enterTiming, exitTiming, fadeIn } from '../motion';
 import { C } from '../theme';
-import { DetailPageView, useDetailPages, type DetailPage } from './details';
+import { DetailPageView, useDetailPages, useDetailStore, type DetailPage } from './details';
 import { useBook, useLastHalf, useRailSide, useWindowInsets } from './layout';
 import { PaneProvider, usePaneWidth, type Pane } from './pane';
+import { ColumnSlotProvider, useColumnSlot } from './paneContext';
 
 /**
  * A tab as one screen, or on the open book as two halves split on the fold:
- * the screen a phone shows on the left and its twin on the right. A pub,
- * beer, friend, invitation, evening or profile opened from the tab on the
- * iPhone Duo is a page of the tab: in the right half on the book, over the
- * whole tab when folded, so folding and unfolding keeps it on screen, like a
- * split view collapsing and expanding. The halves keep their place in the
- * tree, so a fold never remounts the screen under a page.
+ * the screen a phone shows on the left and its twin on the right. A place
+ * opened from the tab on the iPhone Duo is a page of the tab: in the right
+ * half on the book, over the whole tab when folded, so folding and unfolding
+ * keeps it on screen, like a split view collapsing and expanding. The halves
+ * and the pages keep their place in the tree, so a fold only changes frames
+ * and never remounts a screen or loses its scroll.
  */
 export function BookTab({ tab, left, right }: { tab: string; left: React.ReactNode; right?: React.ReactNode }) {
   const { book, foldX } = useBook();
@@ -31,29 +33,37 @@ export function BookTab({ tab, left, right }: { tab: string; left: React.ReactNo
     [leftWidth, split, tab],
   );
   const rightPane = useMemo<Pane>(() => ({ tab, side: 'right', width: rightWidth, fold: 'left' }), [rightWidth, tab]);
-  const page = pages[pages.length - 1];
+  const open = pages.length > 0;
   // A page covers the column beside it too, where the map under the side column would show through.
   const bleed = useRailSide() === 'right' ? insets.right : 0;
-  const overLeft = !!page && !split;
-  const overRight = !!page && split;
   return (
     <View style={{ flex: 1, flexDirection: 'row', backgroundColor: C.bg }}>
       <View style={{ width: leftWidth }} onTouchStart={split ? () => setHalf('left') : undefined}>
         <PaneProvider value={leftPane}>
-          <Covered by={overLeft}>{left}</Covered>
-          {overLeft ? <PageLayer page={page} bleed={bleed} /> : null}
+          <Covered by={open && !split}>{left}</Covered>
         </PaneProvider>
       </View>
       {split ? (
         <View style={{ width: rightWidth }} onTouchStart={() => setHalf('right')}>
           <PaneProvider value={rightPane}>
             {/* The twin stays mounted under a page, so going back does not rebuild the map. */}
-            <Covered by={overRight}>{right}</Covered>
-            {overRight ? <PageLayer page={page} bleed={bleed} /> : null}
+            <Covered by={open}>{right}</Covered>
           </PaneProvider>
-          <View pointerEvents="none" style={styles.fold} />
         </View>
       ) : null}
+      {open ? (
+        <View
+          style={{ position: 'absolute', top: 0, bottom: 0, left: split ? leftWidth : 0, width: (split ? rightWidth : leftWidth) + bleed }}
+          onTouchStart={split ? () => setHalf('right') : undefined}
+        >
+          <PaneProvider value={split ? rightPane : leftPane}>
+            {pages.map((page, i) => (
+              <PageLayer key={page.key} tab={tab} page={page} top={i === pages.length - 1} bleed={bleed} width={split ? rightWidth : leftWidth} />
+            ))}
+          </PaneProvider>
+        </View>
+      ) : null}
+      {split ? <View pointerEvents="none" style={[styles.fold, { left: leftWidth }]} /> : null}
     </View>
   );
 }
@@ -67,16 +77,56 @@ function Covered({ by, children }: { by: boolean; children: React.ReactNode }) {
   );
 }
 
-function PageLayer({ page, bleed }: { page: DetailPage; bleed: number }) {
+// How far from its leading edge a swipe back may start, like the system's edge swipe.
+const EDGE = 24;
+
+/**
+ * One page. Pages under the top one stay mounted, so going back finds them as
+ * they were; only the top one reaches VoiceOver and the side column. A swipe
+ * from its leading edge goes back, as on any iOS navigation stack.
+ */
+function PageLayer({ tab, page, top, bleed, width }: { tab: string; page: DetailPage; top: boolean; bleed: number; width: number }) {
+  const x = useSharedValue(0);
+  const slot = useColumnSlot();
+  const pop = () => useDetailStore.getState().pop(tab);
+  const swipe = Gesture.Pan()
+    .enabled(top)
+    .hitSlop({ left: 0, width: EDGE })
+    .activeOffsetX(10)
+    .failOffsetY([-12, 12])
+    .onUpdate((e) => {
+      x.value = Math.max(0, e.translationX);
+    })
+    .onEnd((e, success) => {
+      if (success && (e.translationX > width * 0.35 || e.velocityX > 700)) {
+        x.value = withTiming(width + bleed, exitTiming(), (done) => {
+          if (done) runOnJS(pop)();
+        });
+      } else {
+        x.value = withTiming(0, enterTiming());
+      }
+    });
+  const follow = useAnimatedStyle(() => ({ transform: [{ translateX: x.value }] }));
   return (
-    <Animated.View key={page.key} entering={fadeIn} style={{ position: 'absolute', top: 0, bottom: 0, left: 0, right: -bleed, backgroundColor: C.bg }}>
-      <View style={{ flex: 1, marginRight: bleed }}>
-        <DetailPageView page={page} />
-      </View>
-    </Animated.View>
+    <GestureDetector gesture={swipe}>
+      <Animated.View
+        entering={fadeIn}
+        style={[StyleSheet.absoluteFill, { backgroundColor: C.bg }, follow]}
+        accessibilityElementsHidden={!top}
+        importantForAccessibility={top ? 'auto' : 'no-hide-descendants'}
+        pointerEvents={top ? 'auto' : 'none'}
+      >
+        <View style={{ flex: 1, marginRight: bleed }}>
+          {/* A page under the top one keeps its Back and actions out of the column. */}
+          <ColumnSlotProvider value={top ? slot : null}>
+            <DetailPageView page={page} />
+          </ColumnSlotProvider>
+        </View>
+      </Animated.View>
+    </GestureDetector>
   );
 }
 
 const styles = StyleSheet.create({
-  fold: { position: 'absolute', left: 0, top: 0, bottom: 0, width: StyleSheet.hairlineWidth, backgroundColor: C.line },
+  fold: { position: 'absolute', top: 0, bottom: 0, width: StyleSheet.hairlineWidth, backgroundColor: C.line },
 });

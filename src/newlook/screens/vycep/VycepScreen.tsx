@@ -1,7 +1,6 @@
 import React, { memo, useCallback, useEffect, useRef, useState } from 'react';
 import { Image, ScrollView, View } from 'react-native';
 import Animated from 'react-native-reanimated';
-import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { reportProfileContent } from '@/data/auth';
@@ -27,6 +26,7 @@ import { useVycepStore } from '@/stores/vycepStore';
 
 import { BottomFade, TabHeader, TopFade, useTabBarSpace, useTabHeaderScroll } from '../../components/chrome';
 import { BookTab } from '../../duo/BookTab';
+import { useNvRouter } from '../../duo/details';
 import { useBook } from '../../duo/layout';
 import { StatusCard } from '../../components/StatusCard';
 import { Icon, type IconName } from '../../components/Icon';
@@ -349,7 +349,7 @@ export function VycepScreen() {
 
 /** One feed. With `onScope` it switches between the world and the crew; without, it is a half of the open Duo. */
 function Feed({ scope, onScope }: { scope: Scope; onScope?: (scope: Scope) => void }) {
-  const router = useRouter();
+  const router = useNvRouter();
   const insets = useSafeAreaInsets();
   const tabSpace = useTabBarSpace();
   const crewHalf = !onScope && scope === 'parta';

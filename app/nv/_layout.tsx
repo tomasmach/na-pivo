@@ -57,8 +57,8 @@ const SHEETS = [
 
 const SHEET_ROUTES = new Set(SHEETS);
 // Full-screen maps, the camera and the onboarding (laid out in two halves itself) keep the whole
-// window on the open book; the two system page sheets get their size from iOS.
-const WIDE_ROUTES = new Set(['tour-mapa', 'vyfot', 'onboarding', 'tour-editor', 'nova-pozvanka']);
+// window on the open book.
+const WIDE_ROUTES = new Set(['tour-mapa', 'vyfot', 'onboarding']);
 // One-way screens: a tap beside their panel does not leave them.
 const ONE_WAY_ROUTES = new Set(['prichod', 'verejne-noci']);
 
@@ -132,9 +132,10 @@ export default function NewLookLayout() {
           name="prihlaseni"
           options={({ route }) => panel(route.key, route.name) ?? { presentation: 'fullScreenModal', animation: 'slide_from_bottom' }}
         />
-        <Stack.Screen name="tour-editor" options={{ presentation: 'modal', animation: 'slide_from_bottom' }} />
+        {/* A page sheet on the Duo's open book would sit centred across the fold, so it is a panel there. */}
+        <Stack.Screen name="tour-editor" options={({ route }) => panel(route.key, route.name) ?? { presentation: 'modal', animation: 'slide_from_bottom' }} />
         <Stack.Screen name="tour-mapa" options={{ presentation: 'fullScreenModal', animation: 'fade', statusBarStyle: 'light' }} />
-        <Stack.Screen name="nova-pozvanka" options={{ presentation: 'modal', animation: 'slide_from_bottom' }} />
+        <Stack.Screen name="nova-pozvanka" options={({ route }) => panel(route.key, route.name) ?? { presentation: 'modal', animation: 'slide_from_bottom' }} />
         <Stack.Screen
           name="uctenka"
           options={({ route }) => panel(route.key, route.name) ?? { presentation: 'fullScreenModal', animation: 'slide_from_bottom' }}

@@ -19,6 +19,7 @@ import { byMonth } from '../vycep/PhotoScreens';
 import { personInitial } from './partaModel';
 import { fromRemote, partaStripPhotos, photoWhen, type ViewerPhoto } from './photoModel';
 import { useEdgeBleed } from '../../duo/paneContext';
+import { usePaneWidth } from '../../duo/pane';
 
 /** The list the full-screen viewer swipes through; set right before opening it. */
 const usePhotoViewer = create<{ photos: ViewerPhoto[] }>(() => ({ photos: [] }));
@@ -78,7 +79,9 @@ export function PartaPhotoStrip() {
 export function PartaPhotoScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { width, height } = useWindowDimensions();
+  const { height } = useWindowDimensions();
+  // The viewer's pages are as wide as its panel on the iPhone Duo, not the window.
+  const width = usePaneWidth();
   const { i } = useLocalSearchParams<{ i?: string }>();
   const photos = usePhotoViewer((st) => st.photos);
   const start = Math.min(Math.max(Number(i) || 0, 0), Math.max(photos.length - 1, 0));
@@ -197,7 +200,7 @@ export function FriendPhotosSection({ id, name }: { id: string; name: string }) 
 
 export function FriendPhotosScreen() {
   const router = useRouter();
-  const { width } = useWindowDimensions();
+  const width = usePaneWidth();
   const { id, name = '' } = useLocalSearchParams<{ id?: string; name?: string }>();
   const { photos, failed } = useFriendPhotos(id, name);
   const size = (width - SCREEN_X * 2 - 8) / 3;

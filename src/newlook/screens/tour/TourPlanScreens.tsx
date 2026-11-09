@@ -21,7 +21,7 @@ import { DEFAULT_TOUR_REGION } from '@/tours/TourMap';
 import { shareTourLink } from '@/tours/tourInvites';
 import { addDays, earliestMinutes, isPastDate, lastDay, minutesOf, pastLabel, suggestedTitle, timeOf, todayIn, weekday } from '@/tours/when';
 
-import { BackHeader, Screen } from '../../components/chrome';
+import { BackHeader, CloseButton, Screen } from '../../components/chrome';
 import { Input, PageTitle } from '../../components/forms';
 import { Icon } from '../../components/Icon';
 import { Sheet } from '../../components/overlays';
@@ -92,7 +92,7 @@ function EditorHeader({ title, onClose }: { title: string; onClose: () => void }
   return (
     <View style={[s.row, { justifyContent: 'space-between' }]}>
       <Kicker>{title}</Kicker>
-      <IconButton icon="x" size={40} iconSize={18} onPress={onClose} label={t.tours.close} />
+      <CloseButton onPress={onClose} label={t.tours.close} />
     </View>
   );
 }

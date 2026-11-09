@@ -275,6 +275,13 @@ export function BackButton({ label, onPress, size = 40, iconSize = 18 }: { label
   return <IconButton icon="chevron-left" size={size} iconSize={iconSize} onPress={onPress} label={label} />;
 }
 
+/** Close for a screen that came up as a task; on the iPhone Duo it stands at the top of the side column instead. */
+export function CloseButton({ label, onPress }: { label: string; onPress: () => void }) {
+  const inColumn = useColumnBack(onPress, true, 'x');
+  if (inColumn) return null;
+  return <IconButton icon="x" size={40} iconSize={18} onPress={onPress} label={label} />;
+}
+
 /** Space the floating tab bar takes at the bottom of a tab screen. Standing in the Duo's side column it takes none. */
 export function useTabBarSpace() {
   const insets = useSafeAreaInsets();

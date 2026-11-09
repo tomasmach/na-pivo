@@ -1,12 +1,12 @@
 import React, { useCallback, useState } from 'react';
 import { Image, ScrollView, View } from 'react-native';
-import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
+import { useFocusEffect } from 'expo-router';
 import { nvBack } from '@/newlook/navigation';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Icon } from '../../components/Icon';
 import { StatusCard } from '../../components/StatusCard';
-import { Chip, ChipWrap, D, IconButton, Kicker, Press, Stack, T } from '../../components/ui';
+import { Chip, ChipWrap, D, Kicker, Press, Stack, T } from '../../components/ui';
 import { BackButton, PageActions, TopFade } from '../../components/chrome';
 import { dialog, toast } from '../../ui/store';
 import { C, SCREEN_X, s } from '../../theme';

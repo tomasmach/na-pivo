@@ -1,6 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { ScrollView, View } from 'react-native';
-import { useRouter } from 'expo-router';
 
 import { fetchMyStats, type RemoteStats } from '@/data/statsClient';
 import { trackUiInteraction } from '@/data/uxTelemetry';

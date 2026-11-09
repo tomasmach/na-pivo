@@ -6,10 +6,11 @@ import { useBook, useRailSide } from './layout';
 import { usePane } from './paneContext';
 
 /**
- * Pages that open as a page of the tab on the iPhone Duo instead of covering
- * the window: a pub, a beer, a friend, an invitation, an evening, your profile
- * and the lists it leads to, so the level under it stays usable beside them,
- * like a split view's second column.
+ * Places to browse that open as a page of the tab on the iPhone Duo instead of
+ * covering the window: a pub, a beer, a friend, an invitation, an evening, your
+ * profile and its lists, the photo contest, tours, numbers, leaderboards and
+ * meetups. The level under them stays usable beside them, like a split view's
+ * second column. Tasks and forms stay panels.
  */
 const DETAIL_PATHS: Record<string, DetailRoute> = {
   '/nv/hospoda/[id]': 'hospoda',
@@ -23,6 +24,12 @@ const DETAIL_PATHS: Record<string, DetailRoute> = {
   '/nv/pivni-fotky': 'pivni-fotky',
   '/nv/moje-hospody': 'moje-hospody',
   '/nv/hlidana-piva': 'hlidana-piva',
+  '/nv/fotopivar': 'fotopivar',
+  '/nv/tour': 'tour',
+  '/nv/cisla': 'cisla',
+  '/nv/pivo-u-nekoho': 'pivo-u-nekoho',
+  '/nv/moje-setkani': 'moje-setkani',
+  '/nv/zebricky': 'zebricky',
 };
 
 export { detailPathname, useDetailPages, useDetailStore, type DetailPage, type DetailRoute } from './detailStore';
@@ -92,7 +99,11 @@ export function useNvRouter(): Router {
         const detail = detailOf(href);
         if (detail && page) store().replace(tab, detail);
         else if (detail) store().push(tab, detail);
-        else router.replace(href, options);
+        else if (page) {
+          // Replacing a page with a task: the page goes and the task opens over the tabs, which stay.
+          store().pop(tab);
+          router.push(href, options);
+        } else router.replace(href, options);
       },
       back: () => (page ? store().pop(tab) : router.back()),
       canGoBack: () => (page ? true : router.canGoBack()),

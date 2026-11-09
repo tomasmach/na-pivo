@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { View } from 'react-native';
 import * as Location from 'expo-location';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useLocalSearchParams } from 'expo-router';
 
 import {
   fetchCommunityEvents,
@@ -21,6 +21,7 @@ import { dialog, toast } from '../../ui/store';
 import { C, s } from '../../theme';
 import { ticketDay } from './partaModel';
 import { usePartaStore } from './partaStore';
+import { useNvRouter } from '../../duo/details';
 
 function hostName(event: CommunityEvent): string {
   return event.host.nickname ? `@${event.host.nickname}` : event.host.displayName || t.communityEvents.hostFallback;
@@ -86,7 +87,7 @@ function Message({ text, action, onAction }: { text: string; action?: string; on
 }
 
 export function PivoUNekohoScreen() {
-  const router = useRouter();
+  const router = useNvRouter();
   const [tab, setTab] = useState<'okoli' | 'moje'>('okoli');
   const { meetups, state, load } = useMeetups();
   useEffect(() => {

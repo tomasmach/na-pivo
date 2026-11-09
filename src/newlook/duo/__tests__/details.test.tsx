@@ -46,7 +46,7 @@ describe('detailOf', () => {
   });
 
   it('leaves every other screen to the router', () => {
-    expect(detailOf('/nv/zebricky')).toBeNull();
+    expect(detailOf('/nv/upravit-profil')).toBeNull();
     expect(detailOf({ pathname: '/nv/zapis' })).toBeNull();
   });
 });
@@ -86,8 +86,8 @@ describe('useNvRouter', () => {
   it('still covers the window with screens that are not details', async () => {
     openBook();
     const { result } = await renderHook(() => useNvRouter(), { wrapper: wrapper(tabPane) });
-    result.current.push('/nv/zebricky');
-    expect(router.push.mock.calls[0]?.[0]).toBe('/nv/zebricky');
+    result.current.push('/nv/upravit-profil');
+    expect(router.push.mock.calls[0]?.[0]).toBe('/nv/upravit-profil');
   });
 
   it('pushes over the window from a screen that is not a tab', async () => {
@@ -95,6 +95,17 @@ describe('useNvRouter', () => {
     const { result } = await renderHook(() => useNvRouter(), { wrapper: wrapper({ tab: null, side: 'single', width: 600 }) });
     result.current.push(PUB);
     expect(router.push.mock.calls[0]?.[0]).toEqual(PUB);
+  });
+
+  it('replaces a page with a task by closing the page and opening the task over the tabs', async () => {
+    openBook();
+    await act(async () => useDetailStore.getState().push('parta', { route: 'moje-setkani', params: {} }));
+    const page = useDetailStore.getState().pages.parta![0];
+    const { result } = await renderHook(() => useNvRouter(), { wrapper: wrapper({ tab: 'parta', side: 'right', width: 392 }, page) });
+    result.current.replace('/nv/zalozit-setkani');
+    expect(router.replace).not.toHaveBeenCalled();
+    expect(router.push.mock.calls[0]?.[0]).toBe('/nv/zalozit-setkani');
+    expect(useDetailStore.getState().pages.parta).toEqual([]);
   });
 
   it('goes back inside the half from a page there', async () => {

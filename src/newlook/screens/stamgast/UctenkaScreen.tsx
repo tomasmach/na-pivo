@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { ScrollView, View, useWindowDimensions } from 'react-native';
+import { ScrollView, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Polygon } from 'react-native-svg';
@@ -23,6 +23,7 @@ import { badgeIcon, nightBadge, nvBadgeAmount, nvBadgeName } from '../profil/pro
 import { beerTally, dateOfDay, minutesBetween, nightOrdinal, nightsOf, previousNight } from './eveningData';
 import { NightHangsNote, useNightHangs } from './NightHangsNote';
 import { durationLabel } from './stamgastFormat';
+import { usePaneWidth } from '../../duo/pane';
 
 const PAPER = '#F4F1E8';
 const INK = '#141414';
@@ -74,7 +75,7 @@ function NightChip({ icon, label }: { icon: IconName; label: string }) {
 export function UctenkaScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { width } = useWindowDimensions();
+  const width = usePaneWidth();
   const copy = t.nv.stamgast;
   const { day } = useLocalSearchParams<{ day?: string }>();
   const current = useTallyStore((st) => st.current);

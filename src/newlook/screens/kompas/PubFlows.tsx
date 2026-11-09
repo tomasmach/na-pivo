@@ -32,6 +32,7 @@ import { dialog, toast } from '../../ui/store';
 import { riseIn } from '../../motion';
 import { C, s } from '../../theme';
 import { useParamPub } from './usePubPage';
+import { useNvParams, useNvRouter } from '../../duo/details';
 
 const L = () => t.nv.kompas;
 const MEETUP_HOURS = 4;
@@ -253,8 +254,8 @@ function dayParts(iso: string): { dayNum: string; dayName: string; time: string 
 }
 
 export function MojeSetkaniScreen() {
-  const router = useRouter();
-  const { id } = useLocalSearchParams<{ id?: string }>();
+  const router = useNvRouter();
+  const { id } = useNvParams<{ id?: string }>();
   const [event, setEvent] = useState<CommunityEvent | null | undefined>(undefined);
   const [failed, setFailed] = useState(false);
   const [deciding, setDeciding] = useState<string | null>(null);

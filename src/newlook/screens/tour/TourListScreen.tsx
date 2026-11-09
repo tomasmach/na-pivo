@@ -25,6 +25,7 @@ import { dialog, toast } from '../../ui/store';
 import { fadeIn } from '../../motion';
 import { C, s } from '../../theme';
 import { planSummary, ticketDay, whenText } from './tourView';
+import { useNvRouter } from '../../duo/details';
 
 const STOPS: (TourStopsFilter | null)[] = [null, '2-3', '4-5', '6-8'];
 const HERO_TICKET_HEIGHT = 290;
@@ -54,7 +55,7 @@ function planOrigin(plan: TourPlan): string | null {
 }
 
 export function TourListScreen() {
-  const router = useRouter();
+  const router = useNvRouter();
   const [tab, setTab] = useState<'moje' | 'verejne'>('moje');
   const store = useToursStore();
   const tx = t.nv.tour;

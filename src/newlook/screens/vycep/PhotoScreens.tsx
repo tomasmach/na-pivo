@@ -24,6 +24,7 @@ import { C, SCREEN_X, font, s } from '../../theme';
 import { dialog, toast } from '../../ui/store';
 import { daysUntil } from './nightData';
 import { useNvParams, useNvRouter } from '../../duo/details';
+import { usePaneWidth } from '../../duo/pane';
 
 /** What the album, the beer gallery and the detail have in common. */
 type PhotoItem = {
@@ -110,7 +111,7 @@ function useContestTeaser() {
 
 export function PivniFotkyScreen() {
   const router = useNvRouter();
-  const { width } = useWindowDimensions();
+  const width = usePaneWidth();
   const { beer, name } = useNvParams<{ beer?: string; name?: string }>();
   const beerMode = !!(beer || name);
   const mine = useBeerPhotosStore((st) => st.photos);
