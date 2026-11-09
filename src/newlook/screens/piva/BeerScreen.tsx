@@ -187,7 +187,8 @@ function BeerBody({ beer, beerRef, reload }: { beer: BeerPage; beerRef: BeerRef;
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingTop: insets.top + 8, paddingHorizontal: SCREEN_X, gap: 22, paddingBottom: insets.bottom + 40 }}>
         <View style={[s.row, { justifyContent: 'space-between' }]}>
           <BackButton onPress={() => nvBack(router)} label={p.back} />
-          <View style={[s.row, { gap: 10 }]}>
+          {/* Stays on the right when Back moves to the iPhone Duo's side column. */}
+          <View style={[s.row, { gap: 10, marginLeft: 'auto' }]}>
             <IconButton
               icon={watched ? 'bell-ring' : 'bell'}
               size={40}
