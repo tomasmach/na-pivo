@@ -544,7 +544,7 @@ export function MojeHospodyScreen() {
 }
 
 function CityPubs({ name, pubs }: { name: string; pubs: NonNullable<ReturnType<typeof useKompasState.getState>['cityPubs']>['pubs'] }) {
-  const router = useRouter();
+  const router = useNvRouter();
   return (
     <Screen header={<BackHeader />}>
       <D s={44} accessibilityRole="header">
