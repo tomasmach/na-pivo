@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { ScrollView, View } from 'react-native';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Polygon } from 'react-native-svg';
 
@@ -15,6 +15,7 @@ import { formatPrice } from '@/utils/currency';
 import { BottomFade, TopFade } from '../../components/chrome';
 import { Icon, type IconName } from '../../components/Icon';
 import { Button, D, IconButton, Press, T } from '../../components/ui';
+import { useNvRouter } from '../../duo/details';
 import { C, SCREEN_X, s } from '../../theme';
 import { Stars } from '../piva/PivaScreen';
 import { myRating } from '../piva/model';
@@ -73,7 +74,7 @@ function NightChip({ icon, label }: { icon: IconName; label: string }) {
 
 /** "Dopito": the night's receipt, built from every sitting of that drinking day. */
 export function UctenkaScreen() {
-  const router = useRouter();
+  const router = useNvRouter();
   const insets = useSafeAreaInsets();
   const width = usePaneWidth();
   const copy = t.nv.stamgast;

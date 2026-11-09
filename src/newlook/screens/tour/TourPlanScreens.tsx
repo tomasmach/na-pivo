@@ -26,6 +26,7 @@ import { Input, PageTitle } from '../../components/forms';
 import { Icon } from '../../components/Icon';
 import { Sheet } from '../../components/overlays';
 import { Button, Card, Chip, D, IconButton, Kicker, Press, Row, Spinner, T, Tile } from '../../components/ui';
+import { useNvRouter } from '../../duo/details';
 import { dialog, toast } from '../../ui/store';
 import { C, display, s } from '../../theme';
 import { StickerKdoJde } from '../sdileni/Stickers';
@@ -652,7 +653,7 @@ function StopActions({ id }: { id: string }) {
 }
 
 function PlanActions({ id }: { id: string }) {
-  const router = useRouter();
+  const router = useNvRouter();
   const plan = useToursStore((st) => st.plans.find((p) => p.id === id));
   const walking = useToursStore((st) => st.activeRun?.planId === id);
   const [busy, setBusy] = useState(false);

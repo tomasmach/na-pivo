@@ -67,6 +67,8 @@ export function useInDetailPage(): boolean {
 
 type Router = ReturnType<typeof useRouter>;
 
+const TAB_ROOT = /^\/nv\/(kompas|vycep|stamgast|piva|parta)$/;
+
 /**
  * The router for screens that open details. On the iPhone Duo a pub, beer,
  * friend, invitation, evening or your profile opened from a tab becomes a page
@@ -82,10 +84,20 @@ export function useNvRouter(): Router {
   const rail = useRailSide();
   // On the iPhone Duo, folded or open, a detail opened inside a tab is a page of that tab;
   // a page already open keeps working the same way in any pose.
-  const tab = (book || rail || page) && pane?.tab ? pane.tab : null;
+  const duo = book || rail !== null;
+  const tab = (duo || page) && pane?.tab ? pane.tab : null;
   return useMemo(() => {
-    if (!tab) return router;
+    if (!duo && !page) return router;
     const store = useDetailStore.getState;
+    // Back to a tab, or to a place that is a page of one, also closes the pages above it, as on a phone.
+    const dismissTo: Router['dismissTo'] = (href, options) => {
+      const root = TAB_ROOT.exec(typeof href === 'string' ? href.split('?')[0] : href.pathname)?.[1];
+      const detail = detailOf(href);
+      if (root) store().popToRoot(root);
+      else if (detail && Object.values(store().pages).some((pages) => pages.at(-1)?.route === detail.route)) return router.dismissAll();
+      router.dismissTo(href, options);
+    };
+    if (!tab) return { ...router, dismissTo };
     const open = (href: Href, fallback: () => void) => {
       const detail = detailOf(href);
       // Like a split view: a selection in the left half replaces the right half on the book; anything
@@ -112,8 +124,9 @@ export function useNvRouter(): Router {
       },
       back: () => (page ? store().pop(tab) : router.back()),
       canGoBack: () => (page ? true : router.canGoBack()),
+      dismissTo,
     };
-  }, [book, page, pane?.side, router, tab]);
+  }, [book, duo, page, pane?.side, router, tab]);
 }
 
 const screens: Partial<Record<DetailRoute, React.ComponentType>> = {};

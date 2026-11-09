@@ -18,6 +18,7 @@ import { BackHeader, Screen } from '../../components/chrome';
 import { Icon } from '../../components/Icon';
 import { Sheet } from '../../components/overlays';
 import { Button, D, Press, T } from '../../components/ui';
+import { useNvRouter } from '../../duo/details';
 import { C, s } from '../../theme';
 import { dialog, toast } from '../../ui/store';
 import { nightToPublish, routeLine, shortDay } from './nightData';
@@ -152,7 +153,7 @@ function useNightPhoto(night: NightSummary | null, since: number): BeerPhotoLoca
 const DAY_PARAM = /^\d{4}-\d{2}-\d{2}$/;
 
 export function VyvesitSheet() {
-  const router = useRouter();
+  const router = useNvRouter();
   const param = useLocalSearchParams<{ day?: string }>().day;
   const day = typeof param === 'string' && DAY_PARAM.test(param) ? param : undefined;
   const night = useNightToPublish(day);

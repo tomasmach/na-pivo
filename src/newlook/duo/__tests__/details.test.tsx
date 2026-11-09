@@ -8,7 +8,7 @@ import { useAccountStore } from '@/stores/accountStore';
 import { DetailPageProvider, detailOf, useDetailStore, useNvRouter, type DetailPage } from '../details';
 import { PaneProvider, type Pane } from '../paneContext';
 
-const router = { push: jest.fn(), navigate: jest.fn(), replace: jest.fn(), back: jest.fn(), canGoBack: jest.fn(() => false) };
+const router = { push: jest.fn(), navigate: jest.fn(), replace: jest.fn(), back: jest.fn(), canGoBack: jest.fn(() => false), dismissTo: jest.fn(), dismissAll: jest.fn() };
 jest.mock('expo-router', () => ({
   useRouter: () => router,
   useLocalSearchParams: () => ({}),
@@ -131,6 +131,25 @@ describe('useNvRouter', () => {
     expect(leaving?.route).toBe('kamos');
     useDetailStore.getState().forget('parta', leaving!.key);
     expect(useDetailStore.getState().leaving.parta).toEqual([]);
+  });
+
+  it('closes the pages of a tab when a page goes back to that tab, as showing a pub on the map does', async () => {
+    openBook();
+    useDetailStore.getState().show('kompas', { route: 'hospoda', params: { id: 'u2fkbkdb' } });
+    const [pub] = useDetailStore.getState().pages.kompas ?? [];
+    const { result } = await renderHook(() => useNvRouter(), { wrapper: wrapper({ tab: 'kompas', side: 'right', width: 392 }, pub) });
+    result.current.dismissTo('/nv/kompas');
+    expect(useDetailStore.getState().pages.kompas).toEqual([]);
+    expect(router.dismissTo).toHaveBeenCalledWith('/nv/kompas', undefined);
+  });
+
+  it('closes the panels and sheets over a place that is a page instead of opening it again', async () => {
+    openBook();
+    useDetailStore.getState().show('vycep', { route: 'tour', params: {} });
+    const { result } = await renderHook(() => useNvRouter(), { wrapper: wrapper(null) });
+    result.current.dismissTo('/nv/tour');
+    expect(router.dismissAll).toHaveBeenCalled();
+    expect(router.dismissTo).not.toHaveBeenCalled();
   });
 
   it('still covers the window with screens that are not details', async () => {

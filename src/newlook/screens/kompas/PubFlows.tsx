@@ -432,7 +432,7 @@ export function MojeSetkaniScreen() {
 }
 
 export function PrichodScreen() {
-  const router = useRouter();
+  const router = useNvRouter();
   const insets = useSafeAreaInsets();
   const params = useLocalSearchParams<{ name?: string; lat?: string; lng?: string }>();
   const lat = Number(params.lat);

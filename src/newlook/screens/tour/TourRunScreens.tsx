@@ -28,6 +28,7 @@ import { PageTitle } from '../../components/forms';
 import { Icon } from '../../components/Icon';
 import { Sheet } from '../../components/overlays';
 import { Button, Card, D, IconButton, Kicker, Person, Press, Row, Spinner, Stack, T } from '../../components/ui';
+import { useNvRouter } from '../../duo/details';
 import { dialog, toast } from '../../ui/store';
 import { C, SCREEN_X, s } from '../../theme';
 import { openEditor, planHref, RosterStub, useRoster } from './TourListScreen';
@@ -345,7 +346,7 @@ export function TourRunContent({ embedded }: { embedded?: boolean }) {
 }
 
 function LiveRun({ run }: { run: TourRun }) {
-  const router = useRouter();
+  const router = useNvRouter();
   const insets = useSafeAreaInsets();
   const mark = useLastMark((st) => st.mark);
   const stops = run.snapshot.stops;
