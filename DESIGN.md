@@ -17,6 +17,37 @@ nemění. Hodnoty žijí v `src/newlook/theme.ts` a jsou světlejší než `np-*
 v `na-pivo-redesign.pen`. Web, ikona, splash a Live Activity zůstávají na
 původních hodnotách.
 
+## iPhone Duo v novém vzhledu (9. 11. 2026)
+
+Nový vzhled převzal knihu z §17.6 a doplnil to, co Apple pro Duo chce od iOS 27.1.
+Kód je v `src/newlook/duo/`. Platí jen na iOS: sloupec poznáme podle bočního insetu
+aspoň 60 bodů, knihu podle okna aspoň 800 × 600 bodů na šířku. Telefony a Android
+se nemění.
+
+- **Sloupec u hodin.** Zavřené i otevřené Duo drží vpravo sloupec 84 bodů s kamerou
+  a hodinami. Obsah končí před ním a lišta tabů v něm stojí svisle u spodního okraje:
+  dvě skleněné pilulky po dvou tabech a mezi nimi kruh Štamgasta, šířka 64 bodů.
+  Mapa Kompasu vede pod sloupcem dál, její ovládání ne.
+- **Zpět patří do sloupce.** Na stránce, panelu nebo obrazovce přes taby stojí Zpět
+  nahoře ve sloupci pod hodinami. Vlastní šipka zpět v obsahu se tam nekreslí.
+  Ostatní akce stránky (sdílet, oblíbit, …) zůstávají v jejím pravém horním rohu.
+- **Kniha.** Každý tab se dělí přesně v ohybu na obrazovku z telefonu a její dvojče:
+  Kompas a mapa, svět a parta Výčepu, počítadlo a deník, žebříčky a sbírka piv,
+  lidé a pozvánky v Partě. Přepínače mezi nimi na knize mizí. Řádky, které se
+  posouvají do stran, končí 20 bodů před ohybem.
+- **Stránka tabu.** Hospoda, pivo, kámoš, pozvánka, večer a tvůj profil se na Duu
+  otevřou jako stránka tabu: na knize v pravé půlce, zavřené přes celý tab vedle
+  lišty. Po zavření i otevření zůstanou, kde byly. Na knize je pravá půlka tichá:
+  jantarové tlačítko v ní je šedé a otevřený řádek v seznamu vlevo se zvýrazní.
+- **Panel.** Ostatní obrazovky otevřené na knize se ukážou v pravé půlce přes
+  ztmavené taby. Klepnutí do ztmavené části vrací zpět, kromě jednosměrných
+  obrazovek (příchod, vyvěšování nocí). Onboarding se na knize rozloží do dvou půlek:
+  obrázek vlevo, text a tlačítko vpravo. Mapy přes celé okno, foťák a systémové
+  karty (nová pozvánka, editor tour) si velikost řídí samy.
+- **Sheet, dialog, toast.** Leží vedle sloupce. Na knize se otevřou v půlce, kam
+  ses naposledy dotkl, a ztmavení pokryje celé okno. Karta sheetu má zaoblený i ten
+  spodní roh, který nesedí na rohu displeje.
+
 ## Pohyb nového vzhledu (1. 11. 2026)
 
 Nový vzhled (`src/newlook`, `app/nv`) se nehoupe. Žádná pružina s dojezdem, žádný
@@ -1686,6 +1717,9 @@ discovery (seznam hospod, kompasová buňka), `useNearbyPub` (`src/counter/useNe
 autopick hospody při zápisu. Třetí nezakládej.
 
 ### 17.6 Otevřený iPhone Duo: kniha
+
+Nový vzhled knihu přebírá a doplňuje, platí pro něj sekce „iPhone Duo v novém vzhledu“
+nahoře. Následující popis je původní varianta pro starý vzhled.
 
 Schválená varianta B „Kniha“ (mock `na-pivo-iphone-duo.html`, 23. 10. 2026). Platí jen na iOS
 a jen pro okno rozložené jako kniha (šířka aspoň 800 pt a výška aspoň 600 pt) nebo postavené na
