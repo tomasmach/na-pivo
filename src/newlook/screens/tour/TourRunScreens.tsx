@@ -28,6 +28,7 @@ import { PageTitle } from '../../components/forms';
 import { Icon } from '../../components/Icon';
 import { Sheet } from '../../components/overlays';
 import { Button, Card, D, IconButton, Kicker, Person, Press, Row, Spinner, Stack, T } from '../../components/ui';
+import { useNvRouter } from '../../duo/details';
 import { dialog, toast } from '../../ui/store';
 import { C, SCREEN_X, s } from '../../theme';
 import { openEditor, planHref, RosterStub, useRoster } from './TourListScreen';
@@ -157,7 +158,7 @@ function PlanDetail({ plan }: { plan: TourPlan }) {
       : null;
   return (
     <Screen
-      header={<BackHeader right={<IconButton icon="ellipsis" size={40} iconSize={18} label={t.tours.more} onPress={() => router.push({ pathname: '/nv/tour-akce', params: { plan: plan.id } } as unknown as Href)} />} />}
+      header={<BackHeader actions={[{ icon: 'ellipsis', label: t.tours.more, onPress: () => router.push({ pathname: '/nv/tour-akce', params: { plan: plan.id } } as unknown as Href) }]} />}
       footer={
         <View style={{ gap: 10 }}>
           <Button label={t.tours.start} icon="footprints" height={56} disabled={starting || busy} onPress={start} />
@@ -345,7 +346,7 @@ export function TourRunContent({ embedded }: { embedded?: boolean }) {
 }
 
 function LiveRun({ run }: { run: TourRun }) {
-  const router = useRouter();
+  const router = useNvRouter();
   const insets = useSafeAreaInsets();
   const mark = useLastMark((st) => st.mark);
   const stops = run.snapshot.stops;
@@ -903,7 +904,7 @@ export function TourHistoryScreen() {
   }
   return (
     <Screen
-      header={<BackHeader right={planExists ? <IconButton icon="ellipsis" size={40} iconSize={18} label={t.tours.more} onPress={() => router.push({ pathname: '/nv/tour-akce', params: { plan: current.planId } } as unknown as Href)} /> : null} />}
+      header={<BackHeader actions={planExists ? [{ icon: 'ellipsis', label: t.tours.more, onPress: () => router.push({ pathname: '/nv/tour-akce', params: { plan: current.planId } } as unknown as Href) }] : undefined} />}
       footer={planExists ? <Button label={t.tours.repeat} icon="copy" disabled={copying} onPress={() => void copy()} /> : undefined}
       gap={12}
     >

@@ -64,10 +64,12 @@ type Props = {
   bottomPadding?: number;
   /** Height of the controls drawn over the top of the map. */
   coveredTop?: number;
+  /** Width of the iPhone Duo's side column the map runs under; the map centres on what is left. */
+  coveredRight?: number;
 };
 
 export const NvMap = forwardRef<NvMapHandle, Props>(function NvMap(
-  { pins, me, target, friends, cities, view, selectedCity, onPub, onCity, onRegion, showRoute = true, bottomPadding = 0, coveredTop = 0 },
+  { pins, me, target, friends, cities, view, selectedCity, onPub, onCity, onRegion, showRoute = true, bottomPadding = 0, coveredTop = 0, coveredRight = 0 },
   handle,
 ) {
   const ref = useRef<MapView>(null);
@@ -75,7 +77,7 @@ export const NvMap = forwardRef<NvMapHandle, Props>(function NvMap(
   const [initialRegion] = useState(() => (me ? nearRegion(me) : COUNTRY_REGION));
   const [viewport, setViewport] = useState<Region>(initialRegion);
   const [size, setSize] = useState({ width: 0, height: 0 });
-  const padding = useMemo(() => ({ top: 0, left: 0, right: 0, bottom: bottomPadding }), [bottomPadding]);
+  const padding = useMemo(() => ({ top: 0, left: 0, right: coveredRight, bottom: bottomPadding }), [bottomPadding, coveredRight]);
   // Position fixes re-render the map; stable handlers let the marker lists skip them.
   const handlers = useRef({ onPub, onCity });
   useEffect(() => {

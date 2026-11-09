@@ -23,6 +23,7 @@ import { Icon } from '../../components/Icon';
 import { Sheet } from '../../components/overlays';
 import { Input } from '../../components/forms';
 import { Button, Chip, D, IconButton, Kicker, Press, Row, Segmented, Spinner, T, Tile } from '../../components/ui';
+import { useNvRouter } from '../../duo/details';
 import { C, SCREEN_X, font, s } from '../../theme';
 import { toast } from '../../ui/store';
 import { distanceLabel } from '../kompas/format';
@@ -498,7 +499,7 @@ export function ZapisSheet() {
 }
 
 export function PridatPivoSheet() {
-  const router = useRouter();
+  const router = useNvRouter();
   const copy = t.nv.stamgast;
   const place = useCountPlace();
   const home = place?.kind === 'outside';
@@ -659,7 +660,7 @@ type Phase = { step: 'shooting' } | { step: 'reading' } | { step: 'label'; beer:
  * "Doplnit info" (`listek`), which hands the confirmed beers back to that screen.
  */
 export function VyfotScreen() {
-  const router = useRouter();
+  const router = useNvRouter();
   const insets = useSafeAreaInsets();
   const copy = t.nv.stamgast;
   const { mode, source } = useLocalSearchParams<{ mode?: string; source?: string }>();

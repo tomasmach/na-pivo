@@ -10,6 +10,9 @@ import { KeyboardAwareScrollView } from '@/components/shared/KeyboardAwareScroll
 import { t } from '@/i18n';
 import { useKeyboardHeight } from '@/utils/useKeyboardHeight';
 
+import { useDetailStore, useNvRouter } from '../duo/details';
+import { useBook, useRailSide, useWindowInsets } from '../duo/layout';
+import { useColumnActions, useColumnBack, usePane, type ColumnAction } from '../duo/paneContext';
 import { useKeyboardLift } from '../motion';
 import { useMe, useUnopenedBadges } from '../screens/profil/profilModel';
 import { useProfilWatchers } from '../screens/profil/useProfilWatchers';
@@ -49,11 +52,23 @@ export function Glass({
   );
 }
 
-export function GlassButton({ icon, onPress, size = 46, label }: { icon: IconName; onPress?: () => void; size?: number; label?: string }) {
+export function GlassButton({
+  icon,
+  onPress,
+  size = 46,
+  label,
+  color = C.white,
+}: {
+  icon: IconName;
+  onPress?: () => void;
+  size?: number;
+  label?: string;
+  color?: string;
+}) {
   return (
     <Press haptic onPress={onPress} accessibilityRole="button" accessibilityLabel={label ?? icon}>
       <Glass style={[{ width: size, height: size, borderRadius: size / 2 }, s.center]}>
-        <Icon name={icon} size={20} color={C.white} />
+        <Icon name={icon} size={20} color={color} />
       </Glass>
     </Press>
   );
@@ -145,16 +160,35 @@ export function AvatarSlot() {
  * itself out while its middle passes through that fade.
  */
 export function TabAvatar({ tab }: { tab: string }) {
-  const insets = useSafeAreaInsets();
+  const insets = useWindowInsets();
+  const { book, foldX, width } = useBook();
   const y = scrollOf(tab);
   const follow = useAnimatedStyle(() => ({
     opacity: interpolate(y.value, [AVATAR / 2, AVATAR / 2 + 16], [1, 0], 'clamp'),
     // Pulling down past the top stretches only the content; the header row stays put.
     transform: [{ translateY: -Math.max(0, y.value) }],
   }));
+  const rail = useRailSide();
+  const duo = book || rail !== null;
+  const covered = useDetailStore((st) => (st.pages[tab]?.length ?? 0) > 0);
+  // Folded, a page covers the whole tab and its header with the avatar.
+  if (covered && !book) return null;
+  // On the open book the avatar belongs to the left half's header. On the Duo your profile is a page of the tab.
+  const right = SCREEN_X + (book ? width - foldX : insets.right);
   return (
-    <Animated.View style={[{ position: 'absolute', top: insets.top + 8, right: SCREEN_X }, follow]}>
-      <LevelAvatar />
+    <Animated.View style={[{ position: 'absolute', top: insets.top + 8, right }, follow]}>
+      <LevelAvatar
+        onPress={
+          duo
+            ? () => {
+                // On the book the avatar sits in the left half, so your profile replaces the right half.
+                const store = useDetailStore.getState();
+                if (book) store.show(tab, { route: 'profil', params: {} });
+                else store.push(tab, { route: 'profil', params: {} });
+              }
+            : undefined
+        }
+      />
     </Animated.View>
   );
 }
@@ -162,6 +196,8 @@ export function TabAvatar({ tab }: { tab: string }) {
 /** Big tab title row: title, optional actions, avatar. Stays put while its tab is pulled down past the top. */
 export function TabHeader({ tab, title, children }: { tab: string; title: string; children?: React.ReactNode }) {
   const y = scrollOf(tab);
+  // The right half of the open book has no avatar; it sits in the left half's header.
+  const avatar = usePane()?.side !== 'right';
   const hold = useAnimatedStyle(() => ({ transform: [{ translateY: Math.min(0, y.value) }] }));
   return (
     <Animated.View style={[s.row, { justifyContent: 'space-between', minHeight: 46 }, hold]}>
@@ -170,7 +206,7 @@ export function TabHeader({ tab, title, children }: { tab: string; title: string
       </D>
       <View style={[s.row, { gap: 10, alignSelf: 'flex-start' }]}>
         {children}
-        <AvatarSlot />
+        {avatar ? <AvatarSlot /> : null}
       </View>
     </Animated.View>
   );
@@ -184,6 +220,7 @@ export function BackHeader({
   onBack,
   icon = 'chevron-left',
   style,
+  actions,
 }: {
   title?: string;
   /** Big page title right next to the back button. */
@@ -192,12 +229,20 @@ export function BackHeader({
   onBack?: () => void;
   icon?: IconName;
   style?: StyleProp<ViewStyle>;
+  /** Icon actions of the page; on the iPhone Duo they stand in the side column under Back. */
+  actions?: ColumnAction[];
 }) {
-  const router = useRouter();
+  const router = useNvRouter();
+  const back = onBack ?? (() => nvBack(router));
+  // On the iPhone Duo Back stands at the top of the side column instead.
+  const inColumn = useColumnBack(back, icon === 'chevron-left');
+  const actionsInColumn = useColumnActions(actions ?? []);
+  const shownActions = actionsInColumn ? [] : (actions ?? []);
+  if (inColumn && !title && !heading && !right && !shownActions.length) return null;
   return (
     <View pointerEvents="box-none" style={[s.row, { justifyContent: 'space-between', height: 44 }, style]}>
       <View pointerEvents="box-none" style={[s.row, s.fill, { gap: 14 }]}>
-        <IconButton icon={icon} label={t.nv.profil.chrome.back} onPress={onBack ?? (() => nvBack(router))} iconSize={20} />
+        {inColumn ? null : <IconButton icon={icon} label={t.nv.profil.chrome.back} onPress={back} iconSize={20} />}
         {heading ? (
           <D s={44} accessibilityRole="header" numberOfLines={1} style={{ flexShrink: 1 }}>
             {heading}
@@ -213,15 +258,46 @@ export function BackHeader({
       ) : null}
       <View pointerEvents="box-none" style={[s.row, { gap: 10 }]}>
         {right}
+        {shownActions.map((a) => (
+          <IconButton key={`${a.icon}-${a.label}`} icon={a.icon} size={40} iconSize={18} color={a.color} label={a.label} onPress={a.onPress} />
+        ))}
       </View>
     </View>
   );
 }
 
-/** Space the floating tab bar takes at the bottom of a tab screen. */
+/** A page's icon actions in its own header row; on the iPhone Duo they stand in the side column under Back. */
+export function PageActions({ actions }: { actions: ColumnAction[] }) {
+  const inColumn = useColumnActions(actions);
+  if (inColumn) return null;
+  return (
+    <View pointerEvents="box-none" style={[s.row, { gap: 10, marginLeft: 'auto' }]}>
+      {actions.map((a) => (
+        <IconButton key={`${a.icon}-${a.label}`} icon={a.icon} size={40} iconSize={18} color={a.color} label={a.label} onPress={a.onPress} />
+      ))}
+    </View>
+  );
+}
+
+/** Back for a screen with its own header row; on the iPhone Duo it stands at the top of the side column instead. */
+export function BackButton({ label, onPress, size = 40, iconSize = 18 }: { label: string; onPress: () => void; size?: number; iconSize?: number }) {
+  const inColumn = useColumnBack(onPress);
+  if (inColumn) return null;
+  return <IconButton icon="chevron-left" size={size} iconSize={iconSize} onPress={onPress} label={label} />;
+}
+
+/** Close for a screen that came up as a task; on the iPhone Duo it stands at the top of the side column instead. */
+export function CloseButton({ label, onPress }: { label: string; onPress: () => void }) {
+  const inColumn = useColumnBack(onPress, true, 'x');
+  if (inColumn) return null;
+  return <IconButton icon="x" size={40} iconSize={18} onPress={onPress} label={label} />;
+}
+
+/** Space the floating tab bar takes at the bottom of a tab screen. Standing in the Duo's side column it takes none. */
 export function useTabBarSpace() {
   const insets = useSafeAreaInsets();
-  return TAB_BAR_HEIGHT + tabBarBottom(insets.bottom) + 12;
+  const rail = useRailSide();
+  return rail ? tabBarBottom(insets.bottom) + 12 : TAB_BAR_HEIGHT + tabBarBottom(insets.bottom) + 12;
 }
 
 export function tabBarBottom(insetBottom: number) {

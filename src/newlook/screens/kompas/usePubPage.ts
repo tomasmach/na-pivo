@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
 import { AppState } from 'react-native';
-import { useLocalSearchParams } from 'expo-router';
 import * as Location from 'expo-location';
 
 import { checkLocationPermission } from '@/compass/permissions';
@@ -21,6 +20,7 @@ import { selectPubVotes, usePubAmenitiesStore } from '@/stores/pubAmenitiesStore
 import { usePubPageStore } from '@/stores/pubPageStore';
 
 import { hoursNow } from './format';
+import { useNvParams } from '../../duo/details';
 
 const CELL = /^[0123456789bcdefghjkmnpqrstuvwxyz]{8}$/;
 const POSITION_MAX_AGE_MS = 5 * 60 * 1000;
@@ -41,7 +41,7 @@ function coordinate(value: string, limit: number): number {
  * catalogue, or the bare name and cell from a link. `id` is the geohash-8 cell.
  */
 export function useParamPub(): { key: string; pub: Pub | null } {
-  const params = useLocalSearchParams<{ id?: string; ref?: string; name?: string; lat?: string; lng?: string }>();
+  const params = useNvParams<{ id?: string; ref?: string; name?: string; lat?: string; lng?: string }>();
   const key = first(params.id).toLowerCase();
   const ref = first(params.ref);
   const name = first(params.name);

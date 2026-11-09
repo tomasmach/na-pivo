@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { View, useWindowDimensions } from 'react-native';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { View } from 'react-native';
+import { useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Polygon } from 'react-native-svg';
 
@@ -15,6 +15,7 @@ import { formatPrice } from '@/utils/currency';
 import { Screen } from '../../components/chrome';
 import { Icon, type IconName } from '../../components/Icon';
 import { Button, D, IconButton, Press, T } from '../../components/ui';
+import { useNvRouter } from '../../duo/details';
 import { C, SCREEN_X, s } from '../../theme';
 import { Stars } from '../piva/PivaScreen';
 import { myRating } from '../piva/model';
@@ -23,6 +24,7 @@ import { badgeIcon, nightBadge, nvBadgeAmount, nvBadgeName } from '../profil/pro
 import { beerTally, dateOfDay, minutesBetween, nightOrdinal, nightsOf, previousNight } from './eveningData';
 import { NightHangsNote, useNightHangs } from './NightHangsNote';
 import { durationLabel } from './stamgastFormat';
+import { usePaneWidth } from '../../duo/pane';
 
 const PAPER = '#F4F1E8';
 const INK = '#141414';
@@ -72,9 +74,9 @@ function NightChip({ icon, label }: { icon: IconName; label: string }) {
 
 /** "Dopito": the night's receipt, built from every sitting of that drinking day. */
 export function UctenkaScreen() {
-  const router = useRouter();
+  const router = useNvRouter();
   const insets = useSafeAreaInsets();
-  const { width } = useWindowDimensions();
+  const width = usePaneWidth();
   const copy = t.nv.stamgast;
   const { day } = useLocalSearchParams<{ day?: string }>();
   const current = useTallyStore((st) => st.current);

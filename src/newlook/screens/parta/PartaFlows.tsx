@@ -1,7 +1,8 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { Share, View } from 'react-native';
-import { useLocalSearchParams, useRouter } from 'expo-router';
 import { nvBack } from '@/newlook/navigation';
+import { useNvParams, useNvRouter } from '../../duo/details';
+import type { ColumnAction } from '../../duo/paneContext';
 
 import { generateUuidV4 } from '@/data/account';
 import {
@@ -22,7 +23,7 @@ import { useHomeEveningStore } from '@/stores/homeEveningStore';
 
 import { BackHeader, Screen } from '../../components/chrome';
 import { Icon } from '../../components/Icon';
-import { D, T, Button, Card, Chip, Dot, IconButton, Person, Row, Segmented } from '../../components/ui';
+import { D, T, Button, Card, Chip, Dot, Person, Row, Segmented } from '../../components/ui';
 import { NO_VALUE } from '../../format';
 import { dialog, toast } from '../../ui/store';
 import { C, s } from '../../theme';
@@ -52,8 +53,8 @@ function Loading({ failed, onRetry, failedText }: { failed: boolean; onRetry: ()
 }
 
 export function KamosScreen() {
-  const router = useRouter();
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const router = useNvRouter();
+  const { id = '' } = useNvParams<{ id: string }>();
   const [detail, setDetail] = useState<FriendProfileDetail | null>(null);
   const [duel, setDuel] = useState<FriendDuel | null>(null);
   const [failed, setFailed] = useState(false);
@@ -100,9 +101,7 @@ export function KamosScreen() {
   return (
     <Screen
       header={
-        <BackHeader
-          right={shareUrl ? <IconButton icon="share" size={40} iconSize={18} label={t.nv.parta.share} onPress={() => void Share.share({ message: shareUrl })} /> : undefined}
-        />
+        <BackHeader actions={shareUrl ? [{ icon: 'share', label: t.nv.parta.share, onPress: () => void Share.share({ message: shareUrl }) }] : undefined} />
       }
       footer={detail.isFriend ? <Button label={t.nv.parta.ping} icon="bell-ring" onPress={() => router.push({ pathname: '/nv/cinknout', params: { friend: profile.id } })} /> : undefined}
     >
@@ -415,8 +414,8 @@ function PeopleRow({ label, people, last, trailing }: { label: string; people: F
 }
 
 export function PlanScreen() {
-  const router = useRouter();
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const router = useNvRouter();
+  const { id = '' } = useNvParams<{ id: string }>();
   const cached = usePartaStore((st) => st.plans?.find((p) => p.id === id) ?? null);
   const ping = usePartaStore((st) => !!id && st.pingIds.includes(id));
   const [detail, setDetail] = useState<PlanDetail | null>(null);
@@ -444,11 +443,9 @@ export function PlanScreen() {
   // RSVPs and edits land in the store first; every detail fetch writes there too.
   const plan = cached ?? detail?.plan ?? null;
   const inviteUrl = plan?.isMine ? plan.inviteUrl : null;
-  const share = inviteUrl ? (
-    <IconButton icon="share" size={40} iconSize={18} label={t.nv.parta.shareInvite} onPress={() => void Share.share({ message: t.nv.parta.inviteMessage(plan?.name ?? '', inviteUrl) })} />
-  ) : (
-    <IconButton icon="share" size={40} iconSize={18} label={t.nv.parta.share} onPress={() => router.push('/nv/nalepky')} />
-  );
+  const share: ColumnAction = inviteUrl
+    ? { icon: 'share', label: t.nv.parta.shareInvite, onPress: () => void Share.share({ message: t.nv.parta.inviteMessage(plan?.name ?? '', inviteUrl) }) }
+    : { icon: 'share', label: t.nv.parta.share, onPress: () => router.push('/nv/nalepky') };
 
   if (gone) {
     return (
@@ -489,7 +486,7 @@ export function PlanScreen() {
       });
     };
     return (
-      <Screen header={<BackHeader right={share} />} gap={18}>
+      <Screen header={<BackHeader actions={[share]} />} gap={18}>
         <PlanTicket plan={plan} big onEnded={() => nvBack(router)} />
         <Card>
           <PeopleRow label={t.nv.parta.goingLabel} people={going} />
@@ -560,7 +557,7 @@ export function PlanScreen() {
   };
 
   return (
-    <Screen header={<BackHeader right={share} />} gap={18}>
+    <Screen header={<BackHeader actions={[share]} />} gap={18}>
       <PlanTicket plan={plan} big />
       <View style={{ backgroundColor: C.card, borderRadius: 24, padding: 16, gap: 14 }}>
         <View style={[s.row, { gap: 12, alignItems: 'flex-start' }]}>

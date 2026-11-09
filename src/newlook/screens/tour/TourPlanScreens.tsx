@@ -21,11 +21,12 @@ import { DEFAULT_TOUR_REGION } from '@/tours/TourMap';
 import { shareTourLink } from '@/tours/tourInvites';
 import { addDays, earliestMinutes, isPastDate, lastDay, minutesOf, pastLabel, suggestedTitle, timeOf, todayIn, weekday } from '@/tours/when';
 
-import { BackHeader, Screen } from '../../components/chrome';
+import { BackHeader, CloseButton, Screen } from '../../components/chrome';
 import { Input, PageTitle } from '../../components/forms';
 import { Icon } from '../../components/Icon';
 import { Sheet } from '../../components/overlays';
 import { Button, Card, Chip, D, IconButton, Kicker, Press, Row, Spinner, T, Tile } from '../../components/ui';
+import { useNvRouter } from '../../duo/details';
 import { dialog, toast } from '../../ui/store';
 import { C, display, s } from '../../theme';
 import { StickerKdoJde } from '../sdileni/Stickers';
@@ -92,7 +93,7 @@ function EditorHeader({ title, onClose }: { title: string; onClose: () => void }
   return (
     <View style={[s.row, { justifyContent: 'space-between' }]}>
       <Kicker>{title}</Kicker>
-      <IconButton icon="x" size={40} iconSize={18} onPress={onClose} label={t.tours.close} />
+      <CloseButton onPress={onClose} label={t.tours.close} />
     </View>
   );
 }
@@ -653,7 +654,7 @@ function StopActions({ id }: { id: string }) {
 }
 
 function PlanActions({ id }: { id: string }) {
-  const router = useRouter();
+  const router = useNvRouter();
   const plan = useToursStore((st) => st.plans.find((p) => p.id === id));
   const walking = useToursStore((st) => st.activeRun?.planId === id);
   const [busy, setBusy] = useState(false);

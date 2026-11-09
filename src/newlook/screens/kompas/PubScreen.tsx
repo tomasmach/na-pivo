@@ -4,6 +4,8 @@ import MapView, { Marker, PROVIDER_GOOGLE } from 'react-native-maps';
 import Animated from 'react-native-reanimated';
 import { useRouter } from 'expo-router';
 import { nvBack } from '@/newlook/navigation';
+import { useNvRouter } from '../../duo/details';
+import { usePaneWidth } from '../../duo/pane';
 
 import { haversineMeters } from '@/compass/distance';
 import { geohash8 } from '@/data/geohash';
@@ -20,7 +22,7 @@ import { formatPrice } from '@/utils/currency';
 import { dateTimeFormat, numberFormat } from '@/utils/intlFormat';
 import { openPubInMaps } from '@/utils/maps';
 
-import { BackHeader, Screen } from '../../components/chrome';
+import { BackButton, BackHeader, PageActions, Screen } from '../../components/chrome';
 import { Ghost } from '../../components/StatusCard';
 import { Icon } from '../../components/Icon';
 import { Button, D, Dot, IconButton, Press, ProgressRing, T } from '../../components/ui';
@@ -159,7 +161,8 @@ function eventWhen(event: Parameters<typeof eventDay>[0], now: Date): string {
 }
 
 export function PubScreen() {
-  const router = useRouter();
+  const router = useNvRouter();
+  const mapWidth = usePaneWidth();
   const { key, pub: opened } = useParamPub();
   const details = usePubDetails(opened, key);
   const { pub } = details;
@@ -209,27 +212,23 @@ export function PubScreen() {
 
   const header = (
     <View pointerEvents="box-none" style={[s.row, { justifyContent: 'space-between' }]}>
-      <IconButton icon="chevron-left" size={40} iconSize={18} onPress={() => nvBack(router)} label={L().back} />
-      <View pointerEvents="box-none" style={[s.row, { gap: 10 }]}>
-        <IconButton icon="heart" size={40} iconSize={18} color={fav ? C.yellow : C.white} label={fav ? L().favoriteRemove : L().favoriteAdd} onPress={toggleFavorite} />
-        <IconButton
-          icon="share"
-          size={40}
-          iconSize={18}
-          label={L().share}
-          onPress={() => router.push({ pathname: '/nv/sdilet-hospodu', params: { ...params(), url: buildPubShareUrl(pub) } })}
-        />
-        <IconButton
-          icon="ellipsis"
-          size={40}
-          iconSize={18}
-          label={L().more}
-          onPress={() => {
-            trackUiInteraction('compass_report_open');
-            router.push({ pathname: '/nv/nesedi', params: params() });
-          }}
-        />
-      </View>
+      <BackButton onPress={() => nvBack(router)} label={L().back} />
+      <PageActions
+        actions={[
+          { icon: 'heart', label: fav ? L().favoriteRemove : L().favoriteAdd, color: fav ? C.yellow : C.white, onPress: toggleFavorite },
+          { icon: 'share', label: L().share, onPress: () => router.push({ pathname: '/nv/sdilet-hospodu', params: { ...params(), url: buildPubShareUrl(pub) } }) },
+          {
+            icon: 'ellipsis',
+            label: L().more,
+            // In the iPhone Duo's overflow sheet a plain "Další" would say nothing.
+            menuLabel: L().wrongTitle,
+            onPress: () => {
+              trackUiInteraction('compass_report_open');
+              router.push({ pathname: '/nv/nesedi', params: params() });
+            },
+          },
+        ]}
+      />
     </View>
   );
   const footer = (
@@ -260,6 +259,8 @@ export function PubScreen() {
         </View>
         <Press onPress={() => showOnKompas(router, pub)} style={{ height: 112, borderRadius: 20, overflow: 'hidden', backgroundColor: C.card }}>
           <MapView
+            // Rebuilt when the iPhone Duo folds or opens: Google drops the pin and the centre on a resize.
+            key={mapWidth}
             provider={PROVIDER_GOOGLE}
             style={{ flex: 1 }}
             customMapStyle={GRAY_MAP}

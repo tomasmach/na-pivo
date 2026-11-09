@@ -6,6 +6,9 @@ import { nvBack } from '@/newlook/navigation';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { BottomFade, TabHeader, TopFade, useTabBarSpace, useTabHeaderScroll } from '../../components/chrome';
+import { BookTab } from '../../duo/BookTab';
+import { useDetailPages, useNvRouter } from '../../duo/details';
+import { useBook, useIsDuo } from '../../duo/layout';
 import { Ghost, StatusCard } from '../../components/StatusCard';
 import { Icon } from '../../components/Icon';
 import { D, T, Card, Chip, IconButton, Press, Row, Segmented, Tile } from '../../components/ui';
@@ -31,6 +34,7 @@ import { useBeerWatchStore } from '@/stores/beerWatchStore';
 import { STYLE_FILTERS, fmtCount, fmtDistance, fmtRating, kindLine, lastKnownPosition, styleFilterLabel } from './model';
 import { degreeLabel, regionLabel, useRankingRegion } from './RankingFilterSheets';
 import { useLoad, type Load } from './states';
+import { useEdgeBleed } from '../../duo/paneContext';
 
 const SHADES = [C.yellow, '#F7F7F2B3', '#F7F7F273', '#F7F7F242', '#F7F7F229'];
 const ROMAN = ['I', 'II', 'III', 'IV', 'V'];
@@ -59,7 +63,22 @@ export function openBeer(router: ReturnType<typeof useRouter>, productKey: strin
   else router.push(href);
 }
 
-function RankRow({ b, bottom, onPress, early, inRegion }: { b: RankedBeer; bottom?: boolean; onPress: () => void; early?: boolean; inRegion?: boolean }) {
+function RankRow({
+  b,
+  bottom,
+  onPress,
+  early,
+  inRegion,
+  selected,
+}: {
+  b: RankedBeer;
+  bottom?: boolean;
+  onPress: () => void;
+  early?: boolean;
+  inRegion?: boolean;
+  /** Open beside the list on the iPhone Duo, like a selected row in a split view. */
+  selected?: boolean;
+}) {
   const p = t.nv.piva;
   const sub = inRegion
     ? [b.brandName, b.drunkTotal ? p.drunkInRegion(b.drunkTotal) : ''].filter(Boolean).join(' · ')
@@ -67,7 +86,15 @@ function RankRow({ b, bottom, onPress, early, inRegion }: { b: RankedBeer; botto
       ? p.mostOften(p.rating.tags[b.topTag])
       : [b.brandName, kindLine(b.styles, b.degree)].filter(Boolean).join(' · ');
   return (
-    <Press onPress={onPress} style={[s.row, { paddingVertical: 12, gap: 12, borderBottomWidth: 1, borderBottomColor: C.hairline }]}>
+    <Press
+      onPress={onPress}
+      accessibilityState={selected ? { selected: true } : undefined}
+      style={[
+        s.row,
+        { paddingVertical: 12, gap: 12, borderBottomWidth: 1, borderBottomColor: C.hairline },
+        selected && { backgroundColor: C.yellowSoft, marginHorizontal: -12, paddingHorizontal: 12, borderRadius: 16, borderBottomColor: 'transparent' },
+      ]}
+    >
       <View style={{ width: 34, alignItems: 'center', gap: 2 }}>
         <D s={34} c={b.position === 1 && !bottom ? C.yellow : C.muted} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.6}>
           {String(b.position)}
@@ -139,12 +166,28 @@ function useCollection() {
   };
 }
 
+type PivaTab = 'best' | 'bottom' | 'mine';
+
 export function PivaScreen() {
-  const router = useRouter();
+  const [tab, setTab] = useState<PivaTab>('best');
+  const { book } = useBook();
+  const duo = useIsDuo();
+  // The open Duo keeps your collection in the right half, so the left half switches only the rankings.
+  if (book) return <BookTab tab="piva" left={<PivaList tab={tab === 'mine' ? 'best' : tab} onTab={setTab} />} right={<PivaList tab="mine" />} />;
+  // Folded the collection half waits hidden, so unfolding finds it where it was.
+  return <BookTab tab="piva" left={<PivaList tab={tab} onTab={setTab} />} right={duo ? <PivaList tab="mine" /> : undefined} />;
+}
+
+/** The rankings and your collection. Without `onTab` it is the collection in the right half of the open Duo. */
+function PivaList({ tab, onTab }: { tab: PivaTab; onTab?: (tab: PivaTab) => void }) {
+  const router = useNvRouter();
   const insets = useSafeAreaInsets();
   const tabSpace = useTabBarSpace();
   const p = t.nv.piva;
-  const [tab, setTab] = useState<'best' | 'bottom' | 'mine'>('best');
+  const { book } = useBook();
+  const collectionHalf = !onTab;
+  const openPage = useDetailPages('piva')[0];
+  const bleed = useEdgeBleed(SCREEN_X);
   const [style, setStyle] = useState<BeerStyle | null>(null);
   const region = useRankingRegion((st) => st.region);
   const degree = useRankingRegion((st) => st.degree);
@@ -159,7 +202,7 @@ export function PivaScreen() {
   const page = ranking.state.status === 'ready' ? ranking.state.data : null;
   const early = page?.early === true && tab === 'best';
   const unrated = collection.state.status === 'ready' ? collection.state.data.unrated : [];
-  const onScroll = useTabHeaderScroll('piva');
+  const onScroll = useTabHeaderScroll(collectionHalf ? 'piva-sbirka' : 'piva');
 
   return (
     <View style={{ flex: 1, backgroundColor: C.bg }}>
@@ -169,22 +212,28 @@ export function PivaScreen() {
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{ paddingTop: insets.top + 8, paddingHorizontal: SCREEN_X, gap: 16, paddingBottom: tabSpace + 30 }}
       >
-        <TabHeader tab="piva" title={p.title}>
-          <IconButton icon="search" iconSize={20} onPress={() => router.push('/nv/hledat-pivo')} label={p.searchA11y} />
-        </TabHeader>
-        <Segmented
-          height={38}
-          options={[
-            { key: 'best', label: p.tabs.best },
-            { key: 'bottom', label: p.tabs.bottom },
-            { key: 'mine', label: p.tabs.mine },
-          ]}
-          value={tab}
-          onChange={setTab}
-        />
+        {collectionHalf ? (
+          <TabHeader tab="piva-sbirka" title={p.tabs.mine} />
+        ) : (
+          <>
+            <TabHeader tab="piva" title={p.title}>
+              <IconButton icon="search" iconSize={20} onPress={() => router.push('/nv/hledat-pivo')} label={p.searchA11y} />
+            </TabHeader>
+            <Segmented
+              height={38}
+              options={[
+                { key: 'best', label: p.tabs.best },
+                { key: 'bottom', label: p.tabs.bottom },
+                ...(book ? [] : [{ key: 'mine' as const, label: p.tabs.mine }]),
+              ]}
+              value={tab}
+              onChange={onTab}
+            />
+          </>
+        )}
         {tab !== 'mine' ? (
           <>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginHorizontal: -SCREEN_X }} contentContainerStyle={{ paddingHorizontal: SCREEN_X, gap: 8 }}>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={bleed.style} contentContainerStyle={[bleed.contentStyle, { gap: 8 }]}>
               <Chip label={regionLabel(region)} trailing="chevron-down" active={!!region} plain onPress={() => router.push('/nv/kraj')} />
               <Chip label={degreeLabel(degree)} trailing="chevron-down" active={!!degree} plain onPress={() => router.push('/nv/stupen')} />
               {STYLE_FILTERS.map((f) => (
@@ -220,7 +269,15 @@ export function PivaScreen() {
             ) : page && page.items.length ? (
               <Animated.View entering={fadeIn}>
                 {page.items.map((b) => (
-                  <RankRow key={b.productKey} b={b} bottom={tab === 'bottom'} early={early && !region} inRegion={!!region} onPress={() => openBeer(router, b.productKey)} />
+                  <RankRow
+                    key={b.productKey}
+                    b={b}
+                    bottom={tab === 'bottom'}
+                    early={early && !region}
+                    inRegion={!!region}
+                    selected={openPage?.route === 'pivo' && openPage.params.id === b.productKey}
+                    onPress={() => openBeer(router, b.productKey)}
+                  />
                 ))}
               </Animated.View>
             ) : (
@@ -295,7 +352,7 @@ export function Stars({ n, size = 16 }: { n: number; size?: number }) {
 }
 
 function Collection({ data, watchedCount }: { data: BeerCollection; watchedCount: number }) {
-  const router = useRouter();
+  const router = useNvRouter();
   const c = t.nv.piva.collection;
   const taster = data.taster;
   const progress = taster && taster.target ? taster.have / taster.target : 0;

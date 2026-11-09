@@ -11,6 +11,7 @@ import { t } from '@/i18n';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { fireSuccessHaptic } from '@/utils/haptics';
 
+import { useLastHalf, useOverlayFrame } from '../duo/layout';
 import { DURATION, enter, exit, fadeIn, fadeInTiming, fadeOut, fadeOutTiming, riseIn, sinkOut, useKeyboardLift } from '../motion';
 import { useNvUi, type Toast } from '../ui/store';
 import { C, SCREEN_X, s, shadow } from '../theme';
@@ -35,6 +36,7 @@ export function ToastHost() {
   const hide = useNvUi((st) => st.hideToast);
   const insets = useSafeAreaInsets();
   const tabSpace = useTabBarSpace();
+  const frame = useOverlayFrame();
 
   useEffect(() => {
     if (!t) return;
@@ -51,8 +53,9 @@ export function ToastHost() {
       entering={t.at === 'bottom' ? riseIn : TOAST_IN}
       exiting={t.at === 'bottom' ? sinkOut : TOAST_OUT}
       style={[
-        { position: 'absolute', left: SCREEN_X, right: SCREEN_X, zIndex: 100 },
-        t.at === 'bottom' ? { bottom: tabSpace + 156 } : { top: insets.top - 6 },
+        { position: 'absolute', left: frame.left + SCREEN_X, width: frame.width - SCREEN_X * 2, zIndex: 100 },
+        // The iPhone Duo has no top inset; its clock sits in the side column.
+        t.at === 'bottom' ? { bottom: tabSpace + 156 } : { top: Math.max(insets.top - 6, 12) },
       ]}
     >
       <Pressable
@@ -102,14 +105,17 @@ export function ToastHost() {
 export function DialogHost() {
   const d = useNvUi((st) => st.dialog);
   const hide = useNvUi((st) => st.hideDialog);
+  const frame = useOverlayFrame();
   if (!d) return null;
   return (
     <Animated.View
       entering={fadeIn}
       exiting={fadeOut}
-      style={[{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: C.scrim, zIndex: 90 }, s.center]}
+      style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: C.scrim, zIndex: 90 }}
     >
       <Pressable style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }} onPress={hide} accessibilityLabel={t.nv.common.close} />
+      {/* Centred beside the Duo's side column; on the open book in the half last touched, off the fold. */}
+      <View pointerEvents="box-none" style={[{ position: 'absolute', top: 0, bottom: 0, left: frame.left, width: frame.width }, s.center]}>
       <View
         accessibilityViewIsModal
         style={{
@@ -148,6 +154,7 @@ export function DialogHost() {
             />
           ))}
         </View>
+      </View>
       </View>
     </Animated.View>
   );
@@ -193,7 +200,10 @@ export function Sheet({
   const router = useRouter();
   const routeKey = useRoute().key;
   const insets = useSafeAreaInsets();
-  const { height } = useWindowDimensions();
+  const { width: windowWidth, height } = useWindowDimensions();
+  // Beside the Duo's side column; on the open book in the half last touched, so it never lies across the fold.
+  const [half] = useState(() => useLastHalf.getState().half);
+  const frame = useOverlayFrame(half);
   const reduced = useReducedMotion();
   const close = onClose ?? (() => nvBack(router));
   const [footerH, setFooterH] = useState(52);
@@ -265,12 +275,16 @@ export function Sheet({
         style={[
           {
             position: 'absolute',
-            left: 0,
-            right: 0,
+            left: frame.left,
+            width: frame.width,
             bottom: 0,
             backgroundColor: C.dialog,
             borderTopLeftRadius: 34,
             borderTopRightRadius: 34,
+            // Beside the Duo's side column or the fold the card does not meet the display's corner, so it rounds there.
+            borderBottomLeftRadius: frame.left > 0 ? 34 : 0,
+            borderBottomRightRadius: frame.left + frame.width < windowWidth ? 34 : 0,
+            overflow: 'hidden',
             borderTopWidth: 1,
             borderColor: C.tint,
             paddingTop: 22,

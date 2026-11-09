@@ -1,12 +1,12 @@
 import React, { useCallback, useState } from 'react';
 import { Image, View } from 'react-native';
-import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
+import { useFocusEffect } from 'expo-router';
 import { nvBack } from '@/newlook/navigation';
 
 import { Icon } from '../../components/Icon';
 import { StatusCard } from '../../components/StatusCard';
-import { Chip, ChipWrap, D, IconButton, Kicker, Press, Stack, T } from '../../components/ui';
-import { Screen } from '../../components/chrome';
+import { Chip, ChipWrap, D, Kicker, Press, Stack, T } from '../../components/ui';
+import { BackButton, PageActions, Screen } from '../../components/chrome';
 import { dialog, toast } from '../../ui/store';
 import { C, s } from '../../theme';
 import { RundaButton } from '../vycep/VycepScreen';
@@ -28,6 +28,7 @@ import { useKompasState } from '../kompas/state';
 import { fmtCount, fmtDistance, fmtRating, kindLine, lastKnownPosition, myLatestRating, reviewDay, saveBeerRating, savedRating, toggleWatch } from './model';
 import { Stars } from './PivaScreen';
 import { Loading, useLoad } from './states';
+import { useNvParams, useNvRouter } from '../../duo/details';
 
 const REVIEW_FILTERS: ReviewFilter[] = ['newest', 'party', 'photo'];
 
@@ -118,26 +119,22 @@ function useReviews(ref: BeerRef, filter: ReviewFilter) {
   return { items, total: page?.total ?? 0, status: first.state.status, hasMore: cursor !== null, more: loadMore };
 }
 
-function BackButton() {
-  const router = useRouter();
-  return <IconButton icon="chevron-left" size={40} iconSize={18} onPress={() => nvBack(router)} label={t.nv.piva.back} />;
-}
-
 export function BeerScreen() {
-  const params = useLocalSearchParams<{ id: string; name?: string; brewery?: string }>();
+  const router = useNvRouter();
+  const params = useNvParams<{ id: string; name?: string; brewery?: string }>();
   const ref: BeerRef = { productKey: params.id && params.id !== '-' ? params.id : null, beerName: params.name ?? null, breweryName: params.brewery ?? null };
   const page = useBeerPage(ref);
 
   if (page.state.status === 'ready') return <BeerBody beer={page.state.data} beerRef={ref} reload={page.retry} />;
   return (
-    <Screen header={<BackButton />} scroll={false} gap={0}>
+    <Screen header={<BackButton onPress={() => nvBack(router)} label={t.nv.piva.back} />} scroll={false} gap={0}>
       {page.state.status === 'loading' ? <Loading pad={80} /> : <StatusCard text={t.nv.piva.beer.failed} action={t.nv.piva.retry} onAction={page.retry} style={{ marginTop: 12 }} />}
     </Screen>
   );
 }
 
 function BeerBody({ beer, beerRef, reload }: { beer: BeerPage; beerRef: BeerRef; reload: () => void }) {
-  const router = useRouter();
+  const router = useNvRouter();
   const p = t.nv.piva;
   const b = p.beer;
   const [mine, setMine] = useState(() => {
@@ -178,22 +175,22 @@ function BeerBody({ beer, beerRef, reload }: { beer: BeerPage; beerRef: BeerRef;
 
   const header = (
     <View pointerEvents="box-none" style={[s.row, { justifyContent: 'space-between' }]}>
-      <BackButton />
-      <View pointerEvents="box-none" style={[s.row, { gap: 10 }]}>
-        <IconButton
-          icon={watched ? 'bell-ring' : 'bell'}
-          size={40}
-          iconSize={18}
-          color={C.yellow}
-          label={watched ? b.unwatch : b.watch}
-          onPress={() => {
-            if (watchBusy) return;
-            setWatchBusy(true);
-            void toggleWatch(beer.beerName, beer.breweryName).finally(() => setWatchBusy(false));
-          }}
-        />
-        <IconButton icon="share" size={40} iconSize={18} label={b.share} onPress={() => router.push('/nv/nalepky')} />
-      </View>
+      <BackButton onPress={() => nvBack(router)} label={p.back} />
+      <PageActions
+        actions={[
+          {
+            icon: watched ? 'bell-ring' : 'bell',
+            label: watched ? b.unwatch : b.watch,
+            color: C.yellow,
+            onPress: () => {
+              if (watchBusy) return;
+              setWatchBusy(true);
+              void toggleWatch(beer.beerName, beer.breweryName).finally(() => setWatchBusy(false));
+            },
+          },
+          { icon: 'share', label: b.share, onPress: () => router.push('/nv/nalepky') },
+        ]}
+      />
     </View>
   );
 

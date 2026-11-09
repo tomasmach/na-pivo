@@ -17,6 +17,46 @@ nemění. Hodnoty žijí v `src/newlook/theme.ts` a jsou světlejší než `np-*
 v `na-pivo-redesign.pen`. Web, ikona, splash a Live Activity zůstávají na
 původních hodnotách.
 
+## iPhone Duo v novém vzhledu (9. 11. 2026)
+
+Nový vzhled převzal knihu z §17.6 a doplnil to, co Apple pro Duo chce od iOS 27.1.
+Kód je v `src/newlook/duo/`. Platí jen na iOS: sloupec poznáme podle bočního insetu
+aspoň 60 bodů, knihu podle okna aspoň 800 × 600 bodů na šířku. Telefony a Android
+se nemění.
+
+- **Sloupec u hodin.** Zavřené i otevřené Duo drží vpravo sloupec 84 bodů s kamerou
+  a hodinami. Obsah končí před ním a lišta tabů v něm stojí svisle u spodního okraje:
+  dvě skleněné pilulky po dvou tabech a mezi nimi kruh Štamgasta, šířka 64 bodů.
+  Mapa Kompasu vede pod sloupcem dál, její ovládání ne.
+- **Lišta nástrojů ve sloupci.** Na stránce, panelu nebo obrazovce přes taby stojí
+  Zpět (u úkolů jako přihlášení nebo nová pozvánka Zavřít) nahoře ve sloupci pod hodinami a pod ním ikonové akce
+  stránky: srdcovka, sdílet, úprava profilu, nastavení. Co se nad lištu tabů nevejde,
+  schová „…“, které otevře systémovou nabídku akcí. Vlastní šipka zpět a ikony
+  v hlavičce stránky se na Duu nekreslí.
+- **Kniha.** Každý tab se dělí přesně v ohybu na obrazovku z telefonu a její dvojče:
+  Kompas a mapa, svět a parta Výčepu, počítadlo a deník, žebříčky a sbírka piv,
+  lidé a pozvánky v Partě. Přepínače mezi nimi na knize mizí. Řádky, které se
+  posouvají do stran, končí 20 bodů před ohybem.
+- **Stránka tabu.** Místa k prohlížení se na Duu otevřou jako stránka tabu: hospoda,
+  pivo, kámoš, pozvánka, večer, tvůj profil a seznamy z něj (nastavení, odznaky,
+  pivní fotky, moje hospody, hlídaná piva), FotoPivař, Tour de pub, čísla, žebříčky
+  a setkání. Na knize leží v pravé půlce, zavřené přes celý tab vedle lišty. Po
+  zavření i otevření zůstanou, kde byly, i s posunutím. Výběr v levé půlce knihy
+  pravou půlku vymění prolnutím a stejný výběr podruhé vrátí jeho stránku; co otevře
+  pravá půlka nebo stránka, přijede zprava jako další stránka, odjede stejnou cestou
+  a zpět z ní vede i tah od levého okraje. Na zavřeném Duu tah vrací z každé stránky. Druhé
+  klepnutí na otevřený tab vrátí tab. Na knize je pravá půlka tichá: jantarové
+  tlačítko v ní je šedé a otevřený řádek nebo dlaždice vlevo nese jantarový vybraný
+  stav (`C.yellowSoft`).
+- **Panel.** Úkoly a formuláře otevřené na Duu jsou panel: zavřené přes celé okno
+  vedle sloupce, na knize v pravé půlce přes ztmavené taby. Klepnutí do ztmavené
+  části vrací zpět, kromě jednosměrných obrazovek (příchod, vyvěšování nocí).
+  Onboarding se na knize rozloží do dvou půlek: obrázek vlevo, text a tlačítko
+  vpravo. Mapy přes celé okno a foťák mají celé okno.
+- **Sheet, dialog, toast.** Leží vedle sloupce. Na knize se otevřou v půlce, kam
+  ses naposledy dotkl, a ztmavení pokryje celé okno. Karta sheetu má zaoblený i ten
+  spodní roh, který nesedí na rohu displeje.
+
 ## Počty piv na mapě nového vzhledu (9. 11. 2026)
 
 Špendlík hospody dál ukazuje cenu piva. Když tam minulý týden pili aspoň tři lidé,
@@ -1699,6 +1739,9 @@ discovery (seznam hospod, kompasová buňka), `useNearbyPub` (`src/counter/useNe
 autopick hospody při zápisu. Třetí nezakládej.
 
 ### 17.6 Otevřený iPhone Duo: kniha
+
+Nový vzhled knihu přebírá a doplňuje, platí pro něj sekce „iPhone Duo v novém vzhledu“
+nahoře. Následující popis je původní varianta pro starý vzhled.
 
 Schválená varianta B „Kniha“ (mock `na-pivo-iphone-duo.html`, 23. 10. 2026). Platí jen na iOS
 a jen pro okno rozložené jako kniha (šířka aspoň 800 pt a výška aspoň 600 pt) nebo postavené na

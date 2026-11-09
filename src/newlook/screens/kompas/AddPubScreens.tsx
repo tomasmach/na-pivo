@@ -39,6 +39,7 @@ import { distanceLabel } from './format';
 import { GRAY_MAP, nearRegion } from './NvMap';
 import { useKompasState } from './state';
 import { useRecentPosition } from './usePubPage';
+import { useNvParams, useNvRouter } from '../../duo/details';
 
 const L = () => t.nv.kompas;
 
@@ -535,15 +536,15 @@ export function SpendlikScreen() {
 }
 
 export function MojeHospodyScreen() {
-  const router = useRouter();
-  const { city } = useLocalSearchParams<{ city?: string }>();
+  const router = useNvRouter();
+  const { city } = useNvParams<{ city?: string }>();
   const cityPubs = useKompasState((st) => st.cityPubs);
   if (city && cityPubs?.name === city) return <CityPubs name={cityPubs.name} pubs={cityPubs.pubs} />;
   return <AddedPubs onAdd={() => router.push('/nv/pridat-hospodu')} />;
 }
 
 function CityPubs({ name, pubs }: { name: string; pubs: NonNullable<ReturnType<typeof useKompasState.getState>['cityPubs']>['pubs'] }) {
-  const router = useRouter();
+  const router = useNvRouter();
   return (
     <Screen header={<BackHeader />}>
       <D s={44} accessibilityRole="header">

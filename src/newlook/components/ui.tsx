@@ -22,6 +22,7 @@ import { fireSelectionHaptic } from '@/utils/haptics';
 import { DURATION, enterTiming, fadeInTiming } from '../motion';
 import { C, display, font, s, shadow, type Weight } from '../theme';
 import { Icon, type IconName } from './Icon';
+import { usePane } from '../duo/paneContext';
 
 type TProps = TextProps & { s?: number; w?: Weight; c?: string; lh?: number; style?: StyleProp<TextStyle> };
 
@@ -130,7 +131,10 @@ export function Button({
 }) {
   // A dimmed yellow turns brown on the dark ground, so a disabled primary sits back as a plain control.
   const dimmedPrimary = !!disabled && kind === 'primary';
-  const k = dimmedPrimary ? DISABLED_PRIMARY : BUTTON[kind];
+  // The open iPhone Duo keeps one yellow call to action per window: the right half speaks quietly.
+  const pane = usePane();
+  const quiet = kind === 'primary' && pane?.side === 'right';
+  const k = dimmedPrimary ? DISABLED_PRIMARY : BUTTON[quiet ? 'raised' : kind];
   const labelSize = height >= 56 ? 17 : height >= 50 ? 16 : 15;
   return (
     <Press
@@ -376,6 +380,7 @@ export function Row({
   subColor = C.muted,
   titleWeight = 600,
   chevron,
+  selected,
 }: {
   title: React.ReactNode;
   sub?: React.ReactNode;
@@ -388,6 +393,8 @@ export function Row({
   subColor?: string;
   titleWeight?: Weight;
   chevron?: boolean;
+  /** The row whose page is open beside the list, on the open iPhone Duo. */
+  selected?: boolean;
 }) {
   const body = (
     <View
@@ -395,6 +402,7 @@ export function Row({
         s.row,
         { minHeight: height, gap: 12, paddingVertical: 10 },
         !last && { borderBottomWidth: 1, borderBottomColor: C.hairline },
+        selected && { backgroundColor: C.yellowSoft, marginHorizontal: -12, paddingHorizontal: 12, borderRadius: 16, borderBottomColor: 'transparent' },
       ]}
     >
       {leading}
@@ -421,7 +429,7 @@ export function Row({
     </View>
   );
   return onPress ? (
-    <Press onPress={onPress} accessibilityRole="button">
+    <Press onPress={onPress} accessibilityRole="button" accessibilityState={selected ? { selected: true } : undefined}>
       {body}
     </Press>
   ) : (

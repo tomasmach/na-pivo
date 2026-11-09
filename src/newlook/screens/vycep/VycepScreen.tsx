@@ -1,7 +1,6 @@
 import React, { memo, useCallback, useEffect, useRef, useState } from 'react';
 import { Image, ScrollView, View } from 'react-native';
 import Animated from 'react-native-reanimated';
-import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { reportProfileContent } from '@/data/auth';
@@ -26,6 +25,9 @@ import { useToursStore } from '@/stores/toursStore';
 import { useVycepStore } from '@/stores/vycepStore';
 
 import { BottomFade, TabHeader, TopFade, useTabBarSpace, useTabHeaderScroll } from '../../components/chrome';
+import { BookTab } from '../../duo/BookTab';
+import { useDetailPages, useNvRouter } from '../../duo/details';
+import { useBook, useIsDuo } from '../../duo/layout';
 import { StatusCard } from '../../components/StatusCard';
 import { Icon, type IconName } from '../../components/Icon';
 import { D, T, Button, Dot, Press, Segmented } from '../../components/ui';
@@ -34,6 +36,7 @@ import { fadeIn } from '../../motion';
 import { C, SCREEN_X, s } from '../../theme';
 import { dialog, toast } from '../../ui/store';
 import { clockTime, daysUntil, routeLine } from './nightData';
+import { useEdgeBleed } from '../../duo/paneContext';
 
 export function RundaButton({ count, given, onPress, disabled }: { count: number; given: boolean; onPress: () => void; disabled?: boolean }) {
   if (disabled) {
@@ -76,9 +79,14 @@ export function RundaButton({ count, given, onPress, disabled }: { count: number
   );
 }
 
-function Shortcut({ icon, title, sub, onPress }: { icon: IconName; title: string; sub: string; onPress: () => void }) {
+function Shortcut({ icon, title, sub, onPress, selected }: { icon: IconName; title: string; sub: string; onPress: () => void; selected?: boolean }) {
   return (
-    <Press onPress={onPress} style={{ width: 118, padding: 12, gap: 6, borderRadius: 18, backgroundColor: C.card }}>
+    <Press
+      onPress={onPress}
+      accessibilityState={selected ? { selected: true } : undefined}
+      // Open beside the feed on the iPhone Duo, like a selected row in a split view.
+      style={{ width: 118, padding: 12, gap: 6, borderRadius: 18, backgroundColor: selected ? C.yellowSoft : C.card }}
+    >
       <Icon name={icon} size={16} color={C.yellow} />
       <View style={{ gap: 2 }}>
         <T s={14} w={700}>
@@ -106,25 +114,34 @@ function postWhen(iso: string, now = new Date()): string {
   return d.toLocaleDateString(intlLocale, { day: 'numeric', month: 'numeric' });
 }
 
-const Post = memo(function Post({ night, showScope, onRemoved }: { night: PublishedNight; showScope: boolean; onRemoved: (id: string) => void }) {
-  const [given, setGiven] = useState(night.myRound);
-  const [count, setCount] = useState(night.rounds);
-  const busy = useRef(false);
+type NightChange = { round: { given: boolean; count: number } } | 'removed';
+/**
+ * A post's round and its removal go through the feeds that list it: on the open Duo the world and the
+ * crew feed can both list a friend's public night, and a change in one shows in the other.
+ */
+const nightListeners = new Set<(id: string, change: NightChange) => void>();
+const tellFeeds = (id: string, change: NightChange) => nightListeners.forEach((listener) => listener(id, change));
+/** Nights whose round is on its way to the server, in either feed. */
+const roundsInFlight = new Set<string>();
+
+const Post = memo(function Post({ night, showScope }: { night: PublishedNight; showScope: boolean }) {
+  const given = night.myRound;
+  const count = night.rounds;
   const handle = authorHandle(night);
+  const setRound = (round: { given: boolean; count: number }) => tellFeeds(night.id, { round });
 
   const toggleRound = () => {
-    if (busy.current || night.isMine) return;
-    busy.current = true;
+    if (roundsInFlight.has(night.id) || night.isMine) return;
+    roundsInFlight.add(night.id);
     const turningOn = !given;
+    const before = { given, count };
     trackUiInteraction('night_react', turningOn ? 'toggle_on' : 'toggle_off');
-    setGiven(turningOn);
-    setCount((c) => Math.max(0, c + (turningOn ? 1 : -1)));
+    setRound({ given: turningOn, count: Math.max(0, count + (turningOn ? 1 : -1)) });
     void (turningOn ? reactToNight(night.id) : clearNightReaction(night.id)).then((res) => {
-      busy.current = false;
+      roundsInFlight.delete(night.id);
       trackUiInteraction('night_react', res.ok || isRetriableNightError(res) ? 'success' : 'failure');
       if (res.ok) {
-        setCount(res.rounds);
-        setGiven(res.myRound);
+        setRound({ given: res.myRound, count: res.rounds });
         return;
       }
       if (isRetriableNightError(res)) {
@@ -132,8 +149,7 @@ const Post = memo(function Post({ night, showScope, onRemoved }: { night: Publis
         toast({ kind: 'offline', title: t.nv.vycep.roundQueued, icon: 'hand-platter' });
         return;
       }
-      setGiven(!turningOn);
-      setCount((c) => Math.max(0, c + (turningOn ? -1 : 1)));
+      setRound(before);
       toast({ kind: 'error', title: t.nv.vycep.roundError, icon: 'hand-platter' });
     });
   };
@@ -179,7 +195,7 @@ const Post = memo(function Post({ night, showScope, onRemoved }: { night: Publis
               if (!res.ok) void enqueueNightOp({ op: 'unpublish', clientId });
               useVycepStore.getState().markUnpublished(clientId);
               toast({ kind: 'info', title: t.nv.vycep.unpublished, icon: 'megaphone' });
-              onRemoved(night.id);
+              tellFeeds(night.id, 'removed');
             });
           },
         },
@@ -294,9 +310,20 @@ function useFeed(scope: NightsFeedScope) {
     });
   }, [scope, view.cursor]);
 
-  const remove = useCallback((id: string) => setState((prev) => ({ ...prev, nights: prev.nights?.filter((n) => n.id !== id) ?? null })), []);
+  useEffect(() => {
+    const follow = (id: string, change: NightChange) =>
+      setState((prev) => ({
+        ...prev,
+        nights:
+          change === 'removed'
+            ? (prev.nights?.filter((n) => n.id !== id) ?? null)
+            : (prev.nights?.map((n) => (n.id === id ? { ...n, myRound: change.round.given, rounds: change.round.count } : n)) ?? null),
+      }));
+    nightListeners.add(follow);
+    return () => void nightListeners.delete(follow);
+  }, []);
 
-  return { ...view, load, loadMore, remove };
+  return { ...view, load, loadMore };
 }
 
 function useSummary(scope: NightsFeedScope) {
@@ -314,11 +341,12 @@ function useSummary(scope: NightsFeedScope) {
   return res?.ok ? res : null;
 }
 
-function useShortcutData() {
+function useShortcutData(enabled: boolean) {
   const [contestDays, setContestDays] = useState<number | null>(null);
   const [rank, setRank] = useState<number | null | undefined>(undefined);
   const plan = useToursStore((st) => st.plans[0] ?? null);
   useEffect(() => {
+    if (!enabled) return;
     let live = true;
     void fetchPhotoContestTeaser().then((snap) => {
       if (live && snap?.contest) setContestDays(daysUntil(snap.contest.periodEnd));
@@ -329,25 +357,40 @@ function useShortcutData() {
     return () => {
       live = false;
     };
-  }, []);
+  }, [enabled]);
   return { contestDays, rank, plan };
 }
 
+type Scope = 'svet' | 'parta';
+
 export function VycepScreen() {
-  const router = useRouter();
+  const [scope, setScope] = useState<Scope>('svet');
+  const { book } = useBook();
+  const duo = useIsDuo();
+  // The open Duo shows the world and the crew side by side, so neither half has the switch.
+  if (book) return <BookTab tab="vycep" left={<Feed scope="svet" />} right={<Feed scope="parta" />} />;
+  // Folded the crew half waits hidden, so unfolding finds it where it was.
+  return <BookTab tab="vycep" left={<Feed scope={scope} onScope={setScope} />} right={duo ? <Feed scope="parta" /> : undefined} />;
+}
+
+/** One feed. With `onScope` it switches between the world and the crew; without, it is a half of the open Duo. */
+function Feed({ scope, onScope }: { scope: Scope; onScope?: (scope: Scope) => void }) {
+  const router = useNvRouter();
   const insets = useSafeAreaInsets();
   const tabSpace = useTabBarSpace();
-  const [scope, setScope] = useState<'svet' | 'parta'>('svet');
+  const crewHalf = !onScope && scope === 'parta';
+  const openRoute = useDetailPages('vycep')[0]?.route;
+  const bleed = useEdgeBleed(SCREEN_X);
   const feedScope: NightsFeedScope = scope === 'svet' ? 'global' : 'friends';
   const autopublish = useVycepStore((st) => st.nightAutopublish);
   const feed = useFeed(feedScope);
   const summary = useSummary(feedScope);
-  const { contestDays, rank, plan } = useShortcutData();
-  const onScroll = useTabHeaderScroll('vycep');
+  const { contestDays, rank, plan } = useShortcutData(!crewHalf);
+  const onScroll = useTabHeaderScroll(crewHalf ? 'vycep-parta' : 'vycep');
 
   useEffect(() => {
-    void syncSharingPrefs();
-  }, []);
+    if (!crewHalf) void syncSharingPrefs();
+  }, [crewHalf]);
 
   const publish = () => router.push(autopublish === null ? '/nv/prvni-vyveseni' : '/nv/vyvesit');
 
@@ -367,7 +410,7 @@ export function VycepScreen() {
         keyExtractor={nightKey}
         renderItem={({ item, index }) => {
           // Everything in the world tab is public, so only your own night repeats who can see it.
-          const post = <Post night={item} showScope={scope === 'parta' || item.isMine} onRemoved={feed.remove} />;
+          const post = <Post night={item} showScope={scope === 'parta' || item.isMine} />;
           return index < FADED_POSTS ? <Animated.View entering={fadeIn}>{post}</Animated.View> : post;
         }}
         onEndReached={feed.loadMore}
@@ -377,18 +420,25 @@ export function VycepScreen() {
         ListHeaderComponentStyle={{ gap: 16 }}
         ListHeaderComponent={
           <>
-            <TabHeader tab="vycep" title={t.nv.vycep.title}>
-              <Button label={t.nv.vycep.publishCta} icon="plus" height={44} style={{ paddingHorizontal: 18 }} onPress={publish} />
-            </TabHeader>
-            <Segmented
-              height={38}
-              options={[
-                { key: 'svet', label: t.nv.vycep.scopeWorld },
-                { key: 'parta', label: t.nv.vycep.scopeParta },
-              ]}
-              value={scope}
-              onChange={setScope}
-            />
+            {crewHalf ? (
+              // Named by the switch label it replaces on a phone.
+              <TabHeader tab="vycep-parta" title={t.nv.vycep.scopeParta} />
+            ) : (
+              <TabHeader tab="vycep" title={t.nv.vycep.title}>
+                <Button label={t.nv.vycep.publishCta} icon="plus" height={44} style={{ paddingHorizontal: 18 }} onPress={publish} />
+              </TabHeader>
+            )}
+            {onScope ? (
+              <Segmented
+                height={38}
+                options={[
+                  { key: 'svet', label: t.nv.vycep.scopeWorld },
+                  { key: 'parta', label: t.nv.vycep.scopeParta },
+                ]}
+                value={scope}
+                onChange={onScope}
+              />
+            ) : null}
             <View style={{ padding: 16, gap: 12, borderRadius: 24, backgroundColor: C.yellowWash, borderWidth: 1, borderColor: C.yellowEdge }}>
               <View style={[s.row, { gap: 8 }]}>
                 <Dot />
@@ -409,26 +459,31 @@ export function VycepScreen() {
                 ))}
               </View>
             </View>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginHorizontal: -SCREEN_X }} contentContainerStyle={{ paddingHorizontal: SCREEN_X, gap: 8 }}>
-              <Shortcut
-                icon="camera"
-                title={t.nv.vycep.shortcutContest}
-                sub={contestDays === null ? '' : contestDays > 0 ? t.nv.vycep.shortcutContestLeft(contestDays) : t.nv.vycep.shortcutContestToday}
-                onPress={() => router.push('/nv/fotopivar')}
-              />
-              <Shortcut
-                icon="route"
-                title={t.nv.vycep.shortcutTour}
-                sub={plan ? t.nv.vycep.shortcutTourSub(plan.stops.length) : t.nv.vycep.shortcutTourEmpty}
-                onPress={() => router.push('/nv/tour')}
-              />
-              <Shortcut
-                icon="trophy"
-                title={t.nv.vycep.shortcutBoards}
-                sub={rank === undefined ? '' : rank ? t.nv.vycep.shortcutBoardsRank(rank) : t.nv.vycep.shortcutBoardsNone}
-                onPress={() => router.push('/nv/zebricky')}
-              />
-            </ScrollView>
+            {crewHalf ? null : (
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={bleed.style} contentContainerStyle={[bleed.contentStyle, { gap: 8 }]}>
+                <Shortcut
+                  icon="camera"
+                  title={t.nv.vycep.shortcutContest}
+                  sub={contestDays === null ? '' : contestDays > 0 ? t.nv.vycep.shortcutContestLeft(contestDays) : t.nv.vycep.shortcutContestToday}
+                  onPress={() => router.push('/nv/fotopivar')}
+                  selected={openRoute === 'fotopivar'}
+                />
+                <Shortcut
+                  icon="route"
+                  title={t.nv.vycep.shortcutTour}
+                  sub={plan ? t.nv.vycep.shortcutTourSub(plan.stops.length) : t.nv.vycep.shortcutTourEmpty}
+                  onPress={() => router.push('/nv/tour')}
+                  selected={openRoute === 'tour'}
+                />
+                <Shortcut
+                  icon="trophy"
+                  title={t.nv.vycep.shortcutBoards}
+                  sub={rank === undefined ? '' : rank ? t.nv.vycep.shortcutBoardsRank(rank) : t.nv.vycep.shortcutBoardsNone}
+                  onPress={() => router.push('/nv/zebricky')}
+                  selected={openRoute === 'zebricky'}
+                />
+              </ScrollView>
+            )}
             {feed.nights === null && !feed.failed ? (
               <>
                 <GhostPost />

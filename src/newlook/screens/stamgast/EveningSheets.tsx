@@ -29,6 +29,7 @@ import { beerTally, canFixRejectedField, dateOfDay, dayKeyOf, dayString, hourlyT
 import { durationLabel, nightDayLabel, servingLine } from './stamgastFormat';
 import { NO_VALUE } from '../../format';
 import { useBackfillPick, useCountPlace } from './placeStore';
+import { useNvParams, useNvRouter } from '../../duo/details';
 
 function Counter({ value, onChange }: { value: number; onChange: (n: number) => void }) {
   const copy = t.nv.stamgast;
@@ -443,9 +444,9 @@ export function OpravitPivoSheet() {
 }
 
 export function EveningDetailScreen() {
-  const router = useRouter();
+  const router = useNvRouter();
   const copy = t.nv.stamgast;
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const { id } = useNvParams<{ id: string }>();
   const { nights } = useAllNights();
   const currency = useSettingsStore((st) => st.priceCurrency);
   const night = nights.find((n) => n.day === id);
@@ -467,7 +468,7 @@ export function EveningDetailScreen() {
   const share = () => router.push({ pathname: '/nv/vyvesit', params: { day: night.day } });
   return (
     <Screen
-      header={<BackHeader right={hangs ? undefined : <IconButton icon="share" size={40} iconSize={18} label={copy.share} onPress={share} />} />}
+      header={<BackHeader actions={hangs ? undefined : [{ icon: 'share', label: copy.share, onPress: share }]} />}
       footer={
         <View style={[s.row, { gap: 10 }]}>
           {hangs ? null : <Button label={copy.postToVycep} icon="megaphone" flex onPress={share} />}

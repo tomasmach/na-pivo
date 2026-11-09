@@ -1,6 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Keyboard, ScrollView, TextInput, View } from 'react-native';
-import { useRouter } from 'expo-router';
 import { nvBack } from '@/newlook/navigation';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -22,6 +21,7 @@ import { formatPrice } from '@/utils/currency';
 
 import { Icon } from '../../components/Icon';
 import { Button, Card, Person, Press, Row, Spinner, T, Tile } from '../../components/ui';
+import { useNvRouter } from '../../duo/details';
 import { C, SCREEN_X, font, s } from '../../theme';
 import { distanceLabel, hoursNow } from './format';
 import { openNvPub, useKompasState } from './state';
@@ -75,7 +75,7 @@ function MissingPub({ onPress }: { onPress: () => void }) {
 }
 
 export function HledaniScreen() {
-  const router = useRouter();
+  const router = useNvRouter();
   const insets = useSafeAreaInsets();
   const [q, setQ] = useState('');
   const [response, setResponse] = useState<{ term: string; pubs: PubSearchResult[]; failed: boolean } | null>(null);

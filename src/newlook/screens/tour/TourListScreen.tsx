@@ -20,11 +20,12 @@ import { BackHeader, Screen } from '../../components/chrome';
 import { Ghost, StatusCard } from '../../components/StatusCard';
 import { Input, PageTitle, Ticket } from '../../components/forms';
 import { Icon } from '../../components/Icon';
-import { Button, Card, Chip, IconButton, Person, Press, Row, Segmented, Spinner, Stack, T, Tile } from '../../components/ui';
+import { Button, Card, Chip, Person, Press, Row, Segmented, Spinner, Stack, T, Tile } from '../../components/ui';
 import { dialog, toast } from '../../ui/store';
 import { fadeIn } from '../../motion';
 import { C, s } from '../../theme';
 import { planSummary, ticketDay, whenText } from './tourView';
+import { useNvRouter } from '../../duo/details';
 
 const STOPS: (TourStopsFilter | null)[] = [null, '2-3', '4-5', '6-8'];
 const HERO_TICKET_HEIGHT = 290;
@@ -54,7 +55,7 @@ function planOrigin(plan: TourPlan): string | null {
 }
 
 export function TourListScreen() {
-  const router = useRouter();
+  const router = useNvRouter();
   const [tab, setTab] = useState<'moje' | 'verejne'>('moje');
   const store = useToursStore();
   const tx = t.nv.tour;
@@ -86,7 +87,7 @@ export function TourListScreen() {
 
   return (
     <Screen
-      header={<BackHeader right={<IconButton icon="ellipsis" size={40} iconSize={18} label={tx.more} onPress={more} />} />}
+      header={<BackHeader actions={[{ icon: 'ellipsis', label: tx.more, onPress: more }]} />}
       footer={
         tab === 'moje' ? (
           <Button label={store.draft ? t.tours.continueDraft : tx.create} icon="plus" disabled={!store.hydrated} onPress={() => void openEditor(router)} />
