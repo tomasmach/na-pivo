@@ -79,6 +79,9 @@ function Covered({ by, children }: { by: boolean; children: React.ReactNode }) {
 
 // How far from its leading edge a swipe back may start, like the system's edge swipe.
 const EDGE = 24;
+// Built once on the JS thread; the gesture's worklets only read them.
+const SWIPE_OUT = exitTiming();
+const SWIPE_BACK = enterTiming();
 
 /**
  * One page. Pages under the top one stay mounted, so going back finds them as
@@ -99,11 +102,11 @@ function PageLayer({ tab, page, top, bleed, width }: { tab: string; page: Detail
     })
     .onEnd((e, success) => {
       if (success && (e.translationX > width * 0.35 || e.velocityX > 700)) {
-        x.value = withTiming(width + bleed, exitTiming(), (done) => {
+        x.value = withTiming(width + bleed, SWIPE_OUT, (done) => {
           if (done) runOnJS(pop)();
         });
       } else {
-        x.value = withTiming(0, enterTiming());
+        x.value = withTiming(0, SWIPE_BACK);
       }
     });
   const follow = useAnimatedStyle(() => ({ transform: [{ translateX: x.value }] }));
