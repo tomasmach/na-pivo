@@ -278,6 +278,7 @@ export function DoplnitInfoScreen() {
 
   return (
     <Screen
+      header={<BackHeader />}
       footer={
         tab === 'vybaveni' ? undefined : (
           <View style={{ gap: 14 }}>
@@ -293,7 +294,6 @@ export function DoplnitInfoScreen() {
       }
       gap={16}
     >
-      <BackHeader />
       <PageTitle kicker={pub.name} title={L().fillTitle} />
       <Segmented
         height={38}
