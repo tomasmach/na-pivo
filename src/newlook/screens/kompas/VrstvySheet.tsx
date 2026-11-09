@@ -10,7 +10,7 @@ import { useSettingsStore } from '@/stores/settingsStore';
 import { Sheet } from '../../components/overlays';
 import { Icon, type IconName } from '../../components/Icon';
 import { Card, Press, Row, T, Toggle } from '../../components/ui';
-import { C, s, shadow } from '../../theme';
+import { C, s } from '../../theme';
 import { useKompasState, type MapView } from './state';
 
 const VIEWS: { key: MapView; label: () => string; icon: IconName }[] = [
