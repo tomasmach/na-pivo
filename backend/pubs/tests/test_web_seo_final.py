@@ -8,8 +8,10 @@ import uuid
 from io import BytesIO, StringIO
 
 import pytest
+from asgiref.sync import async_to_sync
 from django.core.cache import cache
 from django.core.management import call_command
+from django.test import AsyncClient
 from django.utils import timezone, translation
 from django.utils.translation import pgettext
 from PIL import Image
@@ -149,6 +151,21 @@ def test_a_pub_address_and_an_app_link_with_a_slash_lead_on_in_one_step(client):
         assert client.get(meant).status_code == 200
     english = client.get(f"/h/{key}/", HTTP_ACCEPT_LANGUAGE="en")
     assert english["Location"] == f"/en/pub/dom-slaski-{key}"
+
+
+def test_addresses_lead_on_the_same_way_on_the_async_server():
+    pub = _pub("Dom Slaski", city="Praha 1")
+    key = pub.cache_key
+    client = AsyncClient()
+
+    for asked, meant in (
+        ("/hospody/", "/hospody"),
+        ("/zebricky?kraj=praha", "/zebricky/praha"),
+        (f"/hospoda/stare-jmeno-{key}/", f"/hospoda/dom-slaski-{key}"),
+        (f"/h/{key.upper()}/?n=Dom%20Slaski", f"/hospoda/dom-slaski-{key}"),
+    ):
+        response = async_to_sync(client.get)(asked)
+        assert (response.status_code, response["Location"]) == (301, meant), asked
 
 
 def test_an_old_district_filter_keeps_its_page_and_a_page_past_the_end_leads_to_the_last(client):
