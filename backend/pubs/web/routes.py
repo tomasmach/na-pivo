@@ -9,9 +9,11 @@ follow the same naming, so the tag reaches them too.
 
 from __future__ import annotations
 
+from asgiref.sync import iscoroutinefunction, sync_to_async
 from django.http import HttpRequest, HttpResponsePermanentRedirect
 from django.urls import NoReverseMatch, Resolver404, URLPattern, path, resolve, reverse
 from django.utils import translation
+from django.utils.decorators import sync_and_async_middleware
 
 from pubs.i18n import current_locale, normalize_locale
 
@@ -104,37 +106,63 @@ def _pub_address(path: str, request: HttpRequest) -> str:
     return web_reverse(_PUB_PAGE, lang, key=target) if target else path
 
 
+def _may_move(request: HttpRequest) -> bool:
+    path = request.path_info
+    if request.method not in ("GET", "HEAD") or path.startswith(("/v1/", "/admin/")):
+        return False
+    return path.endswith("/") or path != path.lower() or "kraj" in request.GET
+
+
+def _canonical_redirect(request: HttpRequest) -> HttpResponsePermanentRedirect | None:
+    path = request.path_info
+    target = _address(path)
+    query = request.META.get("QUERY_STRING", "")
+    old_kraj = "kraj" in request.GET and _page(target) == "web-rankings"
+    if old_kraj:
+        from pubs.web.rankings import region_path
+
+        params = request.GET.copy()
+        lang = "en" if target.startswith("/en/") else "cs"
+        target, query = region_path(params.pop("kraj")[-1], lang), params.urlencode()
+    if target == path and not old_kraj:
+        return None
+    page = None if old_kraj else _page(target)
+    if page in (_PUB_PAGE, _SHARE_PAGE):
+        target = _pub_address(target, request)
+        if page == _SHARE_PAGE:
+            # Like the /h/ view itself: ?n= only picks the pub and the pub page has no use for it.
+            query = ""
+    location = request.path[: len(request.path) - len(path)] + target
+    return HttpResponsePermanentRedirect(f"{location}?{query}" if query else location)
+
+
+@sync_and_async_middleware
 def canonical_address_middleware(get_response):
     """An old or sloppy address of a web page leads to its address in one 301, query string kept.
 
     /hospody/ and /CENY lose the slash and the capitals, and the old ?kraj= of the rankings moves into the
     path, all at once. GET and HEAD only, so a form post is never turned into a GET, and never the API or admin.
+
+    It has to run async under ASGI. A sync-only middleware makes Django run the middleware above it
+    in a thread that calls back into the event loop. When a client hangs up within the first few
+    milliseconds, asgiref then lets Django finish the request and close the body before the view
+    runs, and the view's request.data fails with "I/O operation on closed file" (a 500).
     """
 
-    def middleware(request: HttpRequest):
-        path = request.path_info
-        if request.method not in ("GET", "HEAD") or path.startswith(("/v1/", "/admin/")):
-            return get_response(request)
-        if not (path.endswith("/") or path != path.lower() or "kraj" in request.GET):
-            return get_response(request)
-        target = _address(path)
-        query = request.META.get("QUERY_STRING", "")
-        old_kraj = "kraj" in request.GET and _page(target) == "web-rankings"
-        if old_kraj:
-            from pubs.web.rankings import region_path
+    if iscoroutinefunction(get_response):
 
-            params = request.GET.copy()
-            lang = "en" if target.startswith("/en/") else "cs"
-            target, query = region_path(params.pop("kraj")[-1], lang), params.urlencode()
-        if target == path and not old_kraj:
-            return get_response(request)
-        page = None if old_kraj else _page(target)
-        if page in (_PUB_PAGE, _SHARE_PAGE):
-            target = _pub_address(target, request)
-            if page == _SHARE_PAGE:
-                # Like the /h/ view itself: ?n= only picks the pub and the pub page has no use for it.
-                query = ""
-        location = request.path[: len(request.path) - len(path)] + target
-        return HttpResponsePermanentRedirect(f"{location}?{query}" if query else location)
+        async def middleware(request: HttpRequest):
+            if _may_move(request):
+                # Finding a pub's current address reads the database.
+                redirect = await sync_to_async(_canonical_redirect)(request)
+                if redirect is not None:
+                    return redirect
+            return await get_response(request)
+
+    else:
+
+        def middleware(request: HttpRequest):
+            redirect = _canonical_redirect(request) if _may_move(request) else None
+            return redirect or get_response(request)
 
     return middleware
