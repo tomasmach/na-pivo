@@ -137,14 +137,13 @@ def pub_regulars(request: Request, cache_key: str, period: str, now: datetime | 
                 {"account_pk": viewer.id, "beers": my_beers, "account": dict(FriendProfileSerializer(viewer).data)}
             )
             ranked.sort(key=lambda row: -row["beers"])
+    blocked = _blocked_account_ids(viewer)
+    ranked = [row for row in ranked if row["account_pk"] not in blocked]
     shown = ranked if len(ranked) >= MIN_REGULARS else []
 
-    blocked = _blocked_account_ids(viewer)
     friends = set(_accepted_friend_ids(viewer))
     entries = []
     for row in shown:
-        if row["account_pk"] in blocked:
-            continue
         account = dict(row["account"])
         if account.get("avatar_url"):
             account["avatar_url"] = request.build_absolute_uri(account["avatar_url"])

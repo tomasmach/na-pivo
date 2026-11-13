@@ -2,8 +2,8 @@
  * Pub regulars — `GET /v1/pubs/regulars`: who drank the most beers in one pub.
  *
  * Only people who turned on the listing in their public profile appear, and
- * today's beers never count. `me` is the caller's own standing, so the answer
- * belongs to one account and the cache is cleared at every account boundary.
+ * today's beers never count. Nothing is cached here: whoever turns the listing
+ * off disappears on the next open, and `me` never outlives an account switch.
  */
 
 import { clearCachedAnonymousAccount, ensureAccount } from './account';
@@ -13,7 +13,6 @@ import { trackApiFailure } from './telemetryClient';
 
 const ENDPOINT = '/v1/pubs/regulars';
 const REQUEST_TIMEOUT_MS = 9000;
-const CACHE_TTL_MS = 5 * 60 * 1000;
 
 export type RegularsPeriod = '30d' | 'year' | 'all';
 
@@ -70,23 +69,11 @@ export function parsePubRegulars(data: unknown, fallback: RegularsPeriod): PubRe
   };
 }
 
-const memoryCache = new Map<string, { at: number; regulars: PubRegulars }>();
-
-export function clearPubRegularsCache(): void {
-  memoryCache.clear();
-}
-
 export async function fetchPubRegulars(
   pubKey: string,
   period: RegularsPeriod,
-  options: { signal?: AbortSignal; force?: boolean } = {},
+  options: { signal?: AbortSignal } = {},
 ): Promise<PubRegulars | null> {
-  const cacheKey = `${pubKey}:${period}`;
-  if (!options.force) {
-    const hit = memoryCache.get(cacheKey);
-    if (hit && Date.now() - hit.at < CACHE_TTL_MS) return hit.regulars;
-  }
-
   const endpoint = getBackendEndpoint(`${ENDPOINT}?cache_key=${encodeURIComponent(pubKey)}&period=${period}`);
   if (!endpoint || options.signal?.aborted) return null;
   const session = await ensureAccount(options.signal);
@@ -106,9 +93,7 @@ export async function fetchPubRegulars(
       trackApiFailure('pub_regulars_fetch', { endpoint: ENDPOINT, status: resp.status });
       return null;
     }
-    const regulars = parsePubRegulars(await resp.json(), period);
-    if (regulars) memoryCache.set(cacheKey, { at: Date.now(), regulars });
-    return regulars;
+    return parsePubRegulars(await resp.json(), period);
   } catch (err) {
     const isAbort = err instanceof Error && err.name === 'AbortError';
     if (!options.signal?.aborted && !isAbort) {

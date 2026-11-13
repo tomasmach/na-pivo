@@ -1,7 +1,7 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { View } from 'react-native';
 import Animated from 'react-native-reanimated';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 
 import { fetchPubRegulars, type PubRegular, type PubRegulars, type RegularsPeriod } from '@/data/pubRegularsClient';
 import { t } from '@/i18n';
@@ -28,14 +28,16 @@ export function RegularsRow({ pubKey, name }: { pubKey: string; name: string }) 
   const router = useRouter();
   const [regulars, setRegulars] = useState<PubRegulars | null>(null);
 
-  useEffect(() => {
-    if (!pubKey) return;
-    const controller = new AbortController();
-    void fetchPubRegulars(pubKey, '30d', { signal: controller.signal }).then((next) => {
-      if (!controller.signal.aborted) setRegulars(next);
-    });
-    return () => controller.abort();
-  }, [pubKey]);
+  useFocusEffect(
+    useCallback(() => {
+      if (!pubKey) return undefined;
+      const controller = new AbortController();
+      void fetchPubRegulars(pubKey, '30d', { signal: controller.signal }).then((next) => {
+        if (!controller.signal.aborted && next) setRegulars(next);
+      });
+      return () => controller.abort();
+    }, [pubKey]),
+  );
 
   const leader = regulars?.entries[0];
   if (!leader) return null;
@@ -117,7 +119,7 @@ export function RegularsSheet() {
   useEffect(() => {
     if (!pubKey) return;
     const controller = new AbortController();
-    void fetchPubRegulars(pubKey, period, { signal: controller.signal, force: attempt > 0 }).then((next) => {
+    void fetchPubRegulars(pubKey, period, { signal: controller.signal }).then((next) => {
       if (!controller.signal.aborted) setResult({ key, regulars: next });
     });
     return () => controller.abort();
@@ -131,7 +133,7 @@ export function RegularsSheet() {
         toast({ kind: 'error', title: res.detail || t.nv.parta.failed, icon: 'circle-alert' });
         return;
       }
-      void fetchPubRegulars(pubKey, period, { force: true }).then((next) => {
+      void fetchPubRegulars(pubKey, period).then((next) => {
         if (next) setResult({ key, regulars: next });
       });
     });

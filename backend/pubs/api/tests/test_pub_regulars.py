@@ -140,15 +140,19 @@ def test_turning_the_listing_off_or_going_ghost_hides_at_once(client):
 def test_blocked_people_are_left_out_for_the_viewer(client):
     _catalog(PUB)
     token, viewer = _regular(client, "ja", listed=False)
-    people = [_regular(client, name)[1] for name in ("a", "b", "c")]
+    people = [_regular(client, name)[1] for name in ("a", "b", "c", "d")]
     for index, account in enumerate(people):
         _beers(account, index + 1)
-    FriendBlock.objects.create(blocker=people[2], blocked=viewer)
+    FriendBlock.objects.create(blocker=people[3], blocked=viewer)
 
     body = _get(client, token).json()
 
-    assert _names(body) == [("b", 2), ("a", 1)]
-    assert [entry["rank"] for entry in body["entries"]] == [1, 2]
+    assert _names(body) == [("c", 3), ("b", 2), ("a", 1)]
+    assert [entry["rank"] for entry in body["entries"]] == [1, 2, 3]
+
+    # With the blocked one gone only two are left, too few to show anybody.
+    FriendBlock.objects.create(blocker=viewer, blocked=people[2])
+    assert _get(client, token).json()["entries"] == []
 
 
 @pytest.mark.django_db

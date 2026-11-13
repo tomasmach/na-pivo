@@ -7,7 +7,7 @@ jest.mock('../backendConfig', () => ({
 }));
 jest.mock('../telemetryClient', () => ({ trackApiFailure: jest.fn() }));
 
-import { clearPubRegularsCache, fetchPubRegulars, parsePubRegulars } from '../pubRegularsClient';
+import { fetchPubRegulars, parsePubRegulars } from '../pubRegularsClient';
 
 const ENTRY = {
   rank: 1,
@@ -47,21 +47,17 @@ describe('fetchPubRegulars', () => {
   const fetchMock = jest.fn();
 
   beforeEach(() => {
-    clearPubRegularsCache();
     fetchMock.mockReset();
     global.fetch = fetchMock as unknown as typeof fetch;
   });
 
-  it('asks for one pub and period, then answers from memory until forced', async () => {
+  it('asks the server on every open, so a listing turned off never lingers', async () => {
     fetchMock.mockResolvedValue({ ok: true, status: 200, json: async () => ({ period: '30d', entries: [ENTRY], me: {} }) });
 
     await fetchPubRegulars('u2fkbn1z', '30d');
     await fetchPubRegulars('u2fkbn1z', '30d');
-    expect(fetchMock).toHaveBeenCalledTimes(1);
-    expect(fetchMock.mock.calls[0][0]).toBe('http://127.0.0.1:8012/v1/pubs/regulars?cache_key=u2fkbn1z&period=30d');
-
-    await fetchPubRegulars('u2fkbn1z', '30d', { force: true });
     expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock.mock.calls[0][0]).toBe('http://127.0.0.1:8012/v1/pubs/regulars?cache_key=u2fkbn1z&period=30d');
   });
 
   it('returns null on a server error', async () => {
