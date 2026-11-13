@@ -1201,6 +1201,8 @@ export function UpravitProfilScreen() {
   const [name, setName] = useState(initialName);
   const [nick, setNick] = useState(initialNick);
   const [pub, setPub] = useState(me.isPublic);
+  const initialRegular = me.profile?.showAsPubRegular === true;
+  const [regular, setRegular] = useState(initialRegular);
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
   const [avatarBusy, setAvatarBusy] = useState(false);
@@ -1248,7 +1250,7 @@ export function UpravitProfilScreen() {
     const trimmedNick = nick.trim();
     const trimmedName = name.trim();
     const nickChanged = trimmedNick !== initialNick;
-    const params: { nickname?: string; displayName?: string; isPublic?: boolean } = {};
+    const params: { nickname?: string; displayName?: string; isPublic?: boolean; showAsPubRegular?: boolean } = {};
     if (nickChanged) {
       const local = checkNicknameLocal(trimmedNick);
       if (!local.valid) return setError(nicknameReasonMessage(local.reason));
@@ -1256,6 +1258,7 @@ export function UpravitProfilScreen() {
     }
     if (trimmedName !== initialName.trim()) params.displayName = trimmedName;
     if (pub !== me.isPublic) params.isPublic = pub;
+    if (regular !== initialRegular) params.showAsPubRegular = regular;
     if (Object.keys(params).length === 0) return nvBack(router);
     setError('');
     setSaving(true);
@@ -1305,10 +1308,11 @@ export function UpravitProfilScreen() {
       </View>
       <ErrorLine text={error} />
       <Card>
-        <Row last title={P().editProfile.public} trailing={<Toggle testID="profile-public" value={pub} onChange={setPub} />} />
+        <Row last={!pub} title={P().editProfile.public} trailing={<Toggle testID="profile-public" value={pub} onChange={setPub} />} />
+        {pub ? <Row last title={P().editProfile.regulars} trailing={<Toggle testID="profile-regulars" value={regular} onChange={setRegular} />} /> : null}
       </Card>
       <T s={13} c={C.muted} lh={1.45}>
-        {P().editProfile.publicNote}
+        {pub ? `${P().editProfile.publicNote} ${P().editProfile.regularsNote}` : P().editProfile.publicNote}
       </T>
     </Screen>
   );

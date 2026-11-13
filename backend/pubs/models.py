@@ -909,6 +909,11 @@ class Account(models.Model):
         default=False,
         help_text="Manually exclude this account from global leaderboard scores and listings.",
     )
+    show_as_pub_regular = models.BooleanField(
+        default=False,
+        help_text="Opt-in: list my nickname and beer count among the regulars on the pages "
+        "of pubs where I drank the most. Needs a public profile.",
+    )
 
     # ---------- lifecycle / deletion ----------
     status = models.CharField(

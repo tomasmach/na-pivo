@@ -20,6 +20,7 @@ import { clearFriendsDashboardSnapshot } from './friendsSnapshot';
 import { resetForegroundPulls } from './foregroundPulls';
 import { clearScreenCache } from './screenCache';
 import { clearLeaderboardsCache } from './leaderboardsClient';
+import { clearPubRegularsCache } from './pubRegularsClient';
 import { clearNightsQueue } from './nightsQueue';
 import { clearPhotoContestTeaserCache } from './photoContestClient';
 import { clearTourRunQueue } from './tourRunQueue';
@@ -167,6 +168,7 @@ export async function clearLocalPrivateAccountData(): Promise<void> {
   useBeerWatchStore.getState().reset();
   // The cached boards carry the outgoing account's own rank.
   clearLeaderboardsCache();
+  clearPubRegularsCache();
   // So do the contest snapshot (own entry and votes) and the counter nudge state.
   clearPhotoContestTeaserCache();
   useContestResultsStore.setState({

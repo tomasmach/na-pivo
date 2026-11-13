@@ -12363,6 +12363,7 @@ def _export_account_data(account: Account) -> dict:
             "excluded_from_leaderboards": account.excluded_from_leaderboards,
             "share_default": account.share_default,
             "night_autopublish": account.night_autopublish,
+            "show_as_pub_regular": account.show_as_pub_regular,
         },
         "auth_sessions": [
             {

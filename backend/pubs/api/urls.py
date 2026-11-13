@@ -86,6 +86,7 @@ from .profil_views import AccountNightSummaryView, AccountXpEventsView
 from .pub_beers_views import PubBeerBoardView, PubBeersLastWeekView
 from .pub_event_views import PubEventView
 from .pub_reach_views import PubReachView
+from .pub_regulars_views import PubRegularsView
 from .tour_invite_views import MyTourInviteListView, MyTourInviteView, TourInvitesView
 from .tour_run_views import TourRunMemberView, TourRunPreviewView, TourRunView
 from .tour_search_views import TourSearchView
@@ -472,6 +473,7 @@ urlpatterns = [
         name="pubs-beers-last-week",
     ),
     path("pubs/beer-board", PubBeerBoardView.as_view(), name="pubs-beer-board"),
+    path("pubs/regulars", PubRegularsView.as_view(), name="pubs-regulars"),
     path("pubs/suggest", PubLocationSuggestView.as_view(), name="pubs-suggest"),
     path("pubs/geocode", PubLocationGeocodeView.as_view(), name="pubs-geocode"),
     path(
