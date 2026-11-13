@@ -115,7 +115,7 @@ export const profilEn: Strings['nv']['profil'] = {
     publicNote:
       'A public profile shows you in leaderboards and in search by nickname and photo. Your location and individual beers are not published.',
     regulars: 'Show me among the regulars',
-    regularsNote: "On the page of a pub where you're among the top, others will see your nickname and how many beers you had there in the last 30 days, this year or in total. Today's beers show from tomorrow.",
+    regularsNote: "On the page of a pub where you're among the top, others will see your nickname and beer count. Today's beers count from tomorrow.",
     save: 'Save',
     saved: 'Profile saved.',
   },

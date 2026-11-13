@@ -184,8 +184,10 @@ export const kompasCs = {
   regularsFailed: 'Štamgasty se nepodařilo načíst.',
   regularsOptIn: 'Ukazovat mě mezi štamgasty',
   regularsOptInSub: (n: number, rank: number | null) =>
-    n > 0 && rank ? `Máš tu ${beers(n)}, to je ${rank}. místo.` : 'Zatím tu nemáš žádné pivo.',
-  regularsOptInNote: 'Ostatní uvidí tvou přezdívku a počet piv u hospod, kde jsi mezi nejlepšími. Vypneš to tady nebo v úpravě profilu.',
+    n > 0 && rank ? `Máš tu ${beers(n)}, to by bylo ${rank}. místo.` : 'Zatím tu nemáš žádné pivo.',
+  regularsOptInNote: 'Ostatní tě uvidí u hospod, kde jsi mezi nejlepšími. Dnešní piva se započítají až zítra.',
+  regularsGhost: 'V ghost modu se mezi štamgasty neukazuješ.',
+  regularsA11y: (rank: number, name: string, n: number) => `${rank}. místo, ${name}, ${beers(n)}`,
   regularsNeedsProfile: 'Ukázat se mezi štamgasty',
   regularsNeedsProfileSub: 'Potřebuješ veřejný profil s přezdívkou.',
   rating: (value: string, count: string) => `${value} z ${count} hodnocení`,

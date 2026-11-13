@@ -115,7 +115,7 @@ export const profilCs = {
     publicNote:
       'Veřejný profil tě zviditelní v žebříčcích a vyhledávání podle přezdívky a fotky. Poloha ani jednotlivá piva se nezveřejňují.',
     regulars: 'Ukazovat mě mezi štamgasty',
-    regularsNote: 'Na stránce hospody, kde jsi mezi nejlepšími, uvidí ostatní tvou přezdívku a počet tvých piv v ní za posledních 30 dní, letos nebo celkem. Dnešní piva se ukážou až zítra.',
+    regularsNote: 'Na stránce hospody, kde jsi mezi nejlepšími, uvidí ostatní tvou přezdívku a počet piv. Dnešní piva se započítají až zítra.',
     save: 'Uložit',
     saved: 'Profil uložený.',
   },

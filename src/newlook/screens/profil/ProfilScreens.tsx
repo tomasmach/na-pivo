@@ -1258,7 +1258,8 @@ export function UpravitProfilScreen() {
     }
     if (trimmedName !== initialName.trim()) params.displayName = trimmedName;
     if (pub !== me.isPublic) params.isPublic = pub;
-    if (regular !== initialRegular) params.showAsPubRegular = regular;
+    const keepRegular = pub && regular;
+    if (keepRegular !== initialRegular) params.showAsPubRegular = keepRegular;
     if (Object.keys(params).length === 0) return nvBack(router);
     setError('');
     setSaving(true);

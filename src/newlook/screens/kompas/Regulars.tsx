@@ -50,7 +50,7 @@ export function RegularsRow({ pubKey, name }: { pubKey: string; name: string }) 
       >
         <View style={s.row}>
           {regulars.entries.slice(0, 3).map((regular, i) => (
-            <View key={regular.account.id} style={{ marginLeft: i ? -10 : 0, borderRadius: 18, borderWidth: 2, borderColor: C.card }}>
+            <View key={regular.account.id} style={{ marginLeft: i ? -14 : 0, borderRadius: 18, borderWidth: 2, borderColor: C.card }}>
               <Person initial={initialOf(regular)} uri={regular.account.avatarUrl} size={32} />
             </View>
           ))}
@@ -72,27 +72,30 @@ export function RegularsRow({ pubKey, name }: { pubKey: string; name: string }) 
 function RegularLine({ regular, last }: { regular: PubRegular; last: boolean }) {
   const me = useMe();
   const tone = regular.isMe ? C.yellow : C.white;
+  const name = regular.isMe ? L().regularsYou : `@${regular.account.nickname}`;
   return (
-    <Row
-      last={last}
-      leading={
-        <View style={[s.row, { gap: 14 }]}>
-          <D s={22} c={regular.isMe || regular.rank === 1 ? C.yellow : C.muted} style={{ minWidth: 18 }}>
-            {String(regular.rank)}
+    <View accessible accessibilityLabel={L().regularsA11y(regular.rank, name, regular.beers)}>
+      <Row
+        last={last}
+        leading={
+          <View style={[s.row, { gap: 14 }]}>
+            <D s={22} c={regular.isMe || regular.rank === 1 ? C.yellow : C.muted} style={{ minWidth: 18 }}>
+              {String(regular.rank)}
+            </D>
+            <Person initial={initialOf(regular)} uri={regular.account.avatarUrl ?? (regular.isMe ? me.avatarUrl : null)} size={36} filled={regular.isMe} />
+          </View>
+        }
+        title={name}
+        titleColor={tone}
+        titleWeight={700}
+        sub={regular.isFriend ? L().regularsFriend : undefined}
+        trailing={
+          <D s={24} c={tone}>
+            {String(regular.beers)}
           </D>
-          <Person initial={initialOf(regular)} uri={regular.account.avatarUrl ?? (regular.isMe ? me.avatarUrl : null)} size={36} filled={regular.isMe} />
-        </View>
-      }
-      title={regular.isMe ? L().regularsYou : `@${regular.account.nickname}`}
-      titleColor={tone}
-      titleWeight={700}
-      sub={regular.isFriend ? L().regularsFriend : undefined}
-      trailing={
-        <D s={24} c={tone}>
-          {String(regular.beers)}
-        </D>
-      }
-    />
+        }
+      />
+    </View>
   );
 }
 
@@ -128,7 +131,9 @@ export function RegularsSheet() {
         toast({ kind: 'error', title: res.detail || t.nv.parta.failed, icon: 'circle-alert' });
         return;
       }
-      setAttempt((n) => n + 1);
+      void fetchPubRegulars(pubKey, period, { force: true }).then((next) => {
+        if (next) setResult({ key, regulars: next });
+      });
     });
   };
 
@@ -187,23 +192,22 @@ export function RegularsSheet() {
               <RegularLine regular={myRow} last />
             </View>
           ) : null}
-          {mine?.ghost ? null : mine?.eligible ? (
-            <View style={{ gap: 6 }}>
-              <Row
-                last
-                title={L().regularsOptIn}
-                sub={L().regularsOptInSub(mine.beers, mine.rank)}
-                trailing={<Toggle testID="regulars-opt-in" value={listed} onChange={toggle} />}
-              />
-              <T s={13} c={C.muted} lh={1.4}>
-                {L().regularsOptInNote}
-              </T>
-            </View>
+          {mine?.ghost ? (
+            <T s={14} c={C.text2} lh={1.4}>
+              {L().regularsGhost}
+            </T>
+          ) : mine?.eligible ? (
+            <Row
+              last
+              title={L().regularsOptIn}
+              sub={meInList ? undefined : L().regularsOptInSub(mine.beers, mine.rank)}
+              trailing={<Toggle testID="regulars-opt-in" value={listed} onChange={toggle} />}
+            />
           ) : (
             <Row last title={L().regularsNeedsProfile} sub={L().regularsNeedsProfileSub} chevron onPress={needsProfile} />
           )}
           <T s={13} c={C.muted} lh={1.4}>
-            {L().regularsNote}
+            {mine?.eligible && !mine.ghost ? L().regularsOptInNote : L().regularsNote}
           </T>
         </Animated.View>
       )}
