@@ -32,6 +32,7 @@ const SHEETS = [
   'odhad',
   'hodnoceni',
   'palec',
+  'stamgasti',
   'pripominky',
   'do-denicku',
   'vyvesit',

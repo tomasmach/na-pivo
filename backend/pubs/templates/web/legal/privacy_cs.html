@@ -1,7 +1,7 @@
 {% load web %}{# Legal text: change a word only together with the date under the heading. #}
 <article class="pp-legal__doc">
   <h1 class="np-h1">Zásady ochrany osobních údajů</h1>
-  <p class="pp-legal__updated">Poslední aktualizace: 6. listopadu 2026</p>
+  <p class="pp-legal__updated">Poslední aktualizace: 13. listopadu 2026</p>
   <details class="pp-legal__contents">
     <summary class="pp-select__bar">Obsah{% icon "chevron-down" %}</summary>
     <nav aria-label="Obsah dokumentu">{% include "web/legal/privacy_cs_toc.html" %}</nav>
@@ -72,6 +72,7 @@
 
   <h3>Žebříčky a gamifikace</h3>
   <p>Aplikace obsahuje žebříčky a odznaky (počty piv, navštívené hospody, zkušenostní body za mapování hospod apod.). V žebříčcích se zobrazuje váš veřejný profil a odvozené skóre. Abychom udrželi žebříčky férové, používáme <strong>jednoduchá automatická pravidla proti podvádění</strong>: záznam, který vypadá nevěrohodně (např. překročení denního limitu nebo podezřele rychlá série záznamů), zůstane ve vašem soukromém deníku, ale nezapočítá se do veřejných žebříčků a statistik. Nic vám nemažou a kromě viditelnosti v žebříčcích nemají žádný jiný dopad.</p>
+  <p><strong>Štamgasti hospody.</strong> Pokud si v úpravě profilu zapnete „Ukazovat mě mezi štamgasty“, zobrazíme na stránce hospody, kde patříte mezi lidi s nejvíce pivy za posledních 30 dní, letos nebo celkem, vaši přezdívku, profilovou fotku a počet piv v této hospodě. Nastavení je dobrovolné, ve výchozím stavu vypnuté a vyžaduje veřejný profil. Piva z aktuálního dne započítáme až následující den a v ghost mode se nezobrazujete. Nastavení můžete kdykoli vypnout a ze stránek hospod tím ihned zmizíte.</p>
 
   <h3>Push notifikace</h3>
   <p>Pokud povolíte notifikace, aplikace získá push token a odešle ho na náš server spolu s platformou a verzí aplikace. Notifikace (žádosti o přátelství, dění v Partě, reakce) doručujeme přes <strong>Expo Push Service</strong>, který k tomu zpracovává token a obsah zprávy. Hospodské připomínky z geofencingu se zobrazují přímo v telefonu a přes žádnou externí službu neprocházejí.</p>

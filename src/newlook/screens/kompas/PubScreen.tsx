@@ -32,6 +32,7 @@ import { C, SCREEN_X, s } from '../../theme';
 import { distanceLabel, weekRows } from './format';
 import { GRAY_MAP } from './NvMap';
 import { openPubVerdict, verdictLabel } from '../stamgast/PubVerdict';
+import { RegularsRow } from './Regulars';
 import { nvPubParams, showOnKompas, useKompasState } from './state';
 import { usePubDetails, useParamPub, useRecentPosition } from './usePubPage';
 
@@ -285,6 +286,7 @@ export function PubScreen() {
             </T>
           </View>
         </Press>
+        <RegularsRow pubKey={key} name={pub.name} />
         <View style={[s.row, { gap: 14, paddingVertical: 14, paddingHorizontal: 16, borderRadius: 20, backgroundColor: C.card }]}>
           <View style={{ width: 40, height: 40 }}>
             <ProgressRing size={40} progress={Math.max(0.02, details.mappedPercent / 100)} stroke={4} track={C.hairline} />

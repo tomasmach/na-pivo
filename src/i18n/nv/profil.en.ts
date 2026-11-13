@@ -113,7 +113,9 @@ export const profilEn: Strings['nv']['profil'] = {
     nickHint: 'Friends find you by your @nickname.',
     public: 'Public profile',
     publicNote:
-      'A public profile shows you in leaderboards and in search by nickname and photo. Your location and individual beers are never published.',
+      'A public profile shows you in leaderboards and in search by nickname and photo. Your location and individual beers are not published.',
+    regulars: 'Show me among the regulars',
+    regularsNote: "On the page of a pub where you're among the top, others will see your nickname and beer count. Today's beers count from tomorrow.",
     save: 'Save',
     saved: 'Profile saved.',
   },

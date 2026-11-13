@@ -142,6 +142,8 @@ export interface AccountProfile {
   avatarUrl: string | null;
   /** Public-by-default visibility. */
   isPublic: boolean;
+  /** Opt-in listing among the regulars on pub pages; absent on older backends. */
+  showAsPubRegular?: boolean;
   email: string;
   emailVerified: boolean;
   providers: AuthProvider[];
@@ -181,6 +183,7 @@ interface RawAccount {
   nickname?: string | null;
   display_name?: string;
   is_public?: boolean;
+  show_as_pub_regular?: boolean;
   created?: boolean;
   avatar_url?: string | null;
   /** Defensive alias some providers/responses use instead of avatar_url. */
@@ -400,6 +403,7 @@ function parseProfile(data: RawAccount): AccountProfile {
     displayName: data.display_name ?? '',
     // Public-by-default: only an explicit false makes the profile private.
     isPublic: data.is_public !== false,
+    showAsPubRegular: data.show_as_pub_regular === true,
     // Backend guarantees an absolute, loadable URL; `picture` is a defensive alias.
     avatarUrl: (data.avatar_url ?? data.picture) || null,
     email: data.email ?? '',
@@ -1030,11 +1034,13 @@ export async function updateProfile(params: {
   nickname?: string;
   displayName?: string;
   isPublic?: boolean;
+  showAsPubRegular?: boolean;
 }): Promise<AuthResult> {
   const body: Record<string, unknown> = {};
   if (params.nickname !== undefined) body.nickname = params.nickname;
   if (params.displayName !== undefined) body.display_name = params.displayName;
   if (params.isPublic !== undefined) body.is_public = params.isPublic;
+  if (params.showAsPubRegular !== undefined) body.show_as_pub_regular = params.showAsPubRegular;
 
   const res = await authFetch('/v1/account/me', { method: 'PATCH', bearer: 'current', body });
   return resolveProfileResult(res);

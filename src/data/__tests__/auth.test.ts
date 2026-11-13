@@ -224,6 +224,7 @@ describe('registerEmail', () => {
       displayName: 'Jan',
       avatarUrl: null,
       isPublic: true,
+      showAsPubRegular: false,
       email: 'jan@example.com',
       emailVerified: true,
       providers: ['email'],

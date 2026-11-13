@@ -160,6 +160,7 @@ interface AccountState {
     nickname?: string;
     displayName?: string;
     isPublic?: boolean;
+    showAsPubRegular?: boolean;
   }) => Promise<AuthResult>;
   checkNicknameAvailable: (nickname: string) => Promise<NicknameAvailability>;
   uploadAvatar: (localUri: string) => Promise<AuthResult>;

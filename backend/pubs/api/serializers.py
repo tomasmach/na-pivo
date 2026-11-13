@@ -3251,6 +3251,7 @@ class AccountMeSerializer(serializers.ModelSerializer):
             "last_seen_at",
             "share_default",
             "night_autopublish",
+            "show_as_pub_regular",
         ]
 
     def _auth_snapshot(self, obj: Account) -> dict:
@@ -3474,6 +3475,7 @@ class AccountUpdateSerializer(serializers.ModelSerializer):
             "marketing_emails_enabled",
             "share_default",
             "night_autopublish",
+            "show_as_pub_regular",
         ]
 
     def validate_nickname(self, value: str | None) -> str | None:

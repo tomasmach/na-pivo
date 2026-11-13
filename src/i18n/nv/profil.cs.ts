@@ -113,7 +113,9 @@ export const profilCs = {
     nickHint: 'Pod @přezdívkou tě najdou kamarádi.',
     public: 'Veřejný profil',
     publicNote:
-      'Veřejný profil tě zviditelní v žebříčcích a vyhledávání podle přezdívky a fotky. Poloha ani jednotlivá piva se nikdy nezveřejňují.',
+      'Veřejný profil tě zviditelní v žebříčcích a vyhledávání podle přezdívky a fotky. Poloha ani jednotlivá piva se nezveřejňují.',
+    regulars: 'Ukazovat mě mezi štamgasty',
+    regularsNote: 'Na stránce hospody, kde jsi mezi nejlepšími, uvidí ostatní tvou přezdívku a počet piv. Dnešní piva se započítají až zítra.',
     save: 'Uložit',
     saved: 'Profil uložený.',
   },
