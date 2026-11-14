@@ -58,8 +58,6 @@ function hasBase(entry: CommunityEntry): boolean {
   return entry.beers_base !== undefined || entry.hours_base !== undefined;
 }
 
-/** The entry as it goes to the server, or null while the pub's current menu
- *  cannot be read: an edit with a base is never sent as the whole truth. */
 async function toSendable(entry: CommunityEntry): Promise<CommunityEntry | null> {
   if (!hasBase(entry)) return entry;
   const pub = { id: entry.client_id, name: entry.name, lat: entry.lat, lng: entry.lng, city: entry.city };
@@ -67,8 +65,6 @@ async function toSendable(entry: CommunityEntry): Promise<CommunityEntry | null>
   return now ? rebaseCommunityEntry(entry, now) : null;
 }
 
-/** Bumped when the queue is cleared for an account change, so a flush already
- *  under way stops before it sends anything more under the next account. */
 let clearGeneration = 0;
 
 const { load: loadQueue, save: saveQueue } = createQueueStorage<CommunityEntry>(
@@ -134,8 +130,6 @@ export function enqueuePubCommunity(entry: CommunityEntry): Promise<CommunityRes
     // earlier one would move it past a one-beer change queued after it.
     const latest = queue.filter((queued) => entryCell(queued) === cell).at(-1);
     let next: CommunityEntry[];
-    // An edit made against what its editor showed stays its own step, applied
-    // to the server's menu as it is when that step goes out.
     if (
       entry.beer_change === undefined &&
       latest &&

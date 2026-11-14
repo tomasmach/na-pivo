@@ -1359,7 +1359,6 @@ function VisibilityChoice({ title, sub, icon, on, onPress }: { title: string; su
   );
 }
 
-/** Asked once right after registration: the server makes new profiles public, so the person decides before anything else. */
 export function ViditelnostScreen() {
   const router = useRouter();
   const updateProfile = useAccountStore((st) => st.updateProfile);

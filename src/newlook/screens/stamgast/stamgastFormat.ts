@@ -35,7 +35,6 @@ export function nameStatesDegree(beerName: string): boolean {
   return /\d\s*°/.test(beerName);
 }
 
-/** A crown price as the amount a price field shows in the user's currency, the inverse of `parsePriceInputToCzk`. */
 export function priceInputOf(czk: number, currency: PriceCurrency): string {
   return String(Math.round((czk / (getCurrencyRate(currency) ?? 1)) * 100) / 100);
 }
