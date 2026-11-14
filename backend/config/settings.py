@@ -81,6 +81,7 @@ else:
 # Application definition
 # ---------------------------------------------------------------------------
 INSTALLED_APPS = [
+    "unfold",
     "django.contrib.admin",
     "django.contrib.auth",
     "django.contrib.contenttypes",
@@ -253,6 +254,28 @@ USE_TZ = True
 # ---------------------------------------------------------------------------
 STATIC_URL = "/static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
+
+UNFOLD = {
+    "SITE_TITLE": "Na pivo admin",
+    "SITE_HEADER": "Na pivo",
+    "SITE_SUBHEADER": "admin",
+    "SITE_SYMBOL": "sports_bar",
+    "THEME": "dark",
+    "DASHBOARD_CALLBACK": "pubs.admin_site.dashboard",
+    "SIDEBAR": {"show_search": True, "navigation": "pubs.admin_site.navigation"},
+    "COLORS": {
+        "base": {
+            "50": "#FAFAF8", "100": "#F7F7F2", "200": "#E4E4DE", "300": "#D4D4CE",
+            "400": "#8F8F8A", "500": "#6B6B67", "600": "#4A4A47", "700": "#323232",
+            "800": "#232323", "900": "#151515", "950": "#0A0A0A",
+        },
+        "primary": {
+            "50": "#FFFBEB", "100": "#FFF3C4", "200": "#FFE689", "300": "#FFD54D",
+            "400": "#FFC400", "500": "#E6AE00", "600": "#B88800", "700": "#8A6600",
+            "800": "#5C4400", "900": "#3D2D00", "950": "#261C00",
+        },
+    },
+}
 
 # Canonical public website used by shareable links and their Open Graph metadata.
 # Keep this separate from the API origin: production serves both hostnames through

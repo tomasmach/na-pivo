@@ -1,14 +1,14 @@
 {% extends "admin/base_site.html" %}
-{% block breadcrumbs %}
-<div class="breadcrumbs"><a href="{% url "admin:index" %}">Admin</a> › <a href="{% url "admin:pubs_pubreachdaily_changelist" %}">Pub reach</a> › Dosah hospod</div>
-{% endblock %}
+{% load static %}
+{% block extrastyle %}{{ block.super }}<link rel="stylesheet" href="{% static "pubs/admin/reports.css" %}">{% endblock %}
 {% block content %}
-<form method="get" action="{{ report_url }}" style="margin-bottom: 16px">
+<div class="np-report">
+<form method="get" action="{{ report_url }}">
   <label>Hospoda (název nebo cache key) <input type="text" name="pub" value="{{ query }}" size="32"></label>
   <label>od <input type="date" name="from" value="{{ start|date:"Y-m-d" }}"></label>
   <label>do <input type="date" name="to" value="{{ end|date:"Y-m-d" }}"></label>
   <input type="submit" value="Zobrazit">
-  {% for range in ranges %}<a href="?pub={{ query|urlencode }}&amp;from={{ range.from|date:"Y-m-d" }}&amp;to={{ range.to|date:"Y-m-d" }}" style="margin-left: 8px">posledních {{ range.days }} dní</a>{% endfor %}
+  <span class="np-ranges">{% for range in ranges %}<a{% if range.from == start and range.to == end %} class="np-active"{% endif %} href="?pub={{ query|urlencode }}&amp;from={{ range.from|date:"Y-m-d" }}&amp;to={{ range.to|date:"Y-m-d" }}">posledních {{ range.days }} dní</a>{% endfor %}</span>
 </form>
 <p>Období {{ start|date:"j. n. Y" }} až {{ end|date:"j. n. Y" }} včetně, dny podle pražského času.</p>
 
@@ -57,4 +57,5 @@
 {% for row in top %}<tr><td><a href="?pub={{ row.cache_key }}&amp;from={{ start|date:"Y-m-d" }}&amp;to={{ end|date:"Y-m-d" }}">{{ row.name|default:row.cache_key }}</a></td><td>{{ row.app_map_impression|default:0 }}</td><td>{{ row.app_detail_view|default:0 }}</td><td>{{ row.app_navigation|default:0 }}</td><td>{{ row.web_detail_view|default:0 }}</td><td>{{ row.web_navigation|default:0 }}</td></tr>{% endfor %}
 </tbody></table>
 {% elif not query %}<p>V tomhle období zatím žádná data.</p>{% endif %}
+</div>
 {% endblock %}

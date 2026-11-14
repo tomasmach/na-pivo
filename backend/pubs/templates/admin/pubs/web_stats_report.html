@@ -1,26 +1,13 @@
 {% extends "admin/base_site.html" %}
-{% block extrastyle %}{{ block.super }}
-<style>
-  .ws-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(420px, 1fr)); gap: 0 32px; }
-  .ws-num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
-  .ws-up { color: #2e7d32; }
-  .ws-down { color: #c62828; }
-  .ws-bar { background: var(--primary, #79aec8); height: 10px; }
-  .ws-day { white-space: nowrap; }
-  .ws-barcell { width: 160px; }
-  table.ws-table { width: 100%; margin-bottom: 24px; }
-  .ws-muted { color: var(--body-quiet-color, #666); }
-</style>
-{% endblock %}
-{% block breadcrumbs %}
-<div class="breadcrumbs"><a href="{% url "admin:index" %}">Admin</a> › Web analytika</div>
-{% endblock %}
+{% load static %}
+{% block extrastyle %}{{ block.super }}<link rel="stylesheet" href="{% static "pubs/admin/reports.css" %}">{% endblock %}
 {% block content %}
-<form method="get" style="margin-bottom: 16px">
+<div class="np-report">
+<form method="get">
   <label>od <input type="date" name="from" value="{{ start|date:"Y-m-d" }}"></label>
   <label>do <input type="date" name="to" value="{{ end|date:"Y-m-d" }}"></label>
   <input type="submit" value="Zobrazit">
-  {% for range in ranges %}<a href="?from={{ range.from|date:"Y-m-d" }}&amp;to={{ range.to|date:"Y-m-d" }}" style="margin-left: 8px">posledních {{ range.days }} dní</a>{% endfor %}
+  <span class="np-ranges">{% for range in ranges %}<a{% if range.from == start and range.to == end %} class="np-active"{% endif %} href="?from={{ range.from|date:"Y-m-d" }}&amp;to={{ range.to|date:"Y-m-d" }}">posledních {{ range.days }} dní</a>{% endfor %}</span>
 </form>
 <p>Období {{ start|date:"j. n. Y" }} až {{ end|date:"j. n. Y" }}. {% if report.first_day %}Web měřím od {{ report.first_day|date:"j. n. Y" }}.{% endif %}
 Web nic neukládá o návštěvníkovi (žádné cookies, IP adresa ani otisk prohlížeče), takže počítá návštěvy, ne lidi. Boti se nepočítají.</p>
@@ -111,4 +98,5 @@ Web nic neukládá o návštěvníkovi (žádné cookies, IP adresa ani otisk pr
 <td class="ws-num">{{ row.g_impressions|default_if_none:"–" }}</td><td class="ws-num">{{ row.g_clicks|default_if_none:"–" }}</td></tr>{% endfor %}
 </tbody></table>
 <p class="ws-muted">Pomlčka znamená, že za ten den data nejsou: web se tehdy ještě neměřil, nebo je Google zatím nedal.</p>
+</div>
 {% endblock %}

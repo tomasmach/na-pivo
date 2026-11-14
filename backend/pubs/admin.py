@@ -2,9 +2,14 @@ import hashlib
 from datetime import date, timedelta
 
 from django.contrib import admin
+from django.contrib.auth.admin import GroupAdmin as BaseGroupAdmin
+from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
+from django.contrib.auth.models import Group, User
 from django.template.response import TemplateResponse
 from django.urls import path, reverse
 from django.utils import timezone
+from unfold.admin import ModelAdmin, TabularInline
+from unfold.forms import AdminPasswordChangeForm, UserChangeForm, UserCreationForm
 
 from . import community_event_admin, pub_event_admin, pub_reach, web_stats  # noqa: F401
 from .enrichment import geohash8
@@ -52,6 +57,30 @@ def _truncate(value: str | None, limit: int) -> str:
     return text if len(text) <= limit else f"{text[:limit - 3]}..."
 
 
+admin.site.index_template = "admin/pubs/dashboard.html"
+admin.site.index_title = "Nástěnka"
+admin.site.unregister(User)
+admin.site.unregister(Group)
+
+
+@admin.register(User)
+class UserAdmin(BaseUserAdmin, ModelAdmin):
+    form = UserChangeForm
+    add_form = UserCreationForm
+    change_password_form = AdminPasswordChangeForm
+
+
+@admin.register(Group)
+class GroupAdmin(BaseGroupAdmin, ModelAdmin):
+    pass
+
+
+def _account_label(account: Account | None) -> str:
+    if account is None:
+        return "-"
+    return f"@{account.nickname}" if account.nickname else str(account.public_id)[:8]
+
+
 class _ReadOnlyAdmin:
     """Mixin for append-only / audit tables: forbid add and change in admin."""
 
@@ -70,7 +99,7 @@ class _ImmutableAdmin(_ReadOnlyAdmin):
 
 
 @admin.register(PubHours)
-class PubHoursAdmin(admin.ModelAdmin):
+class PubHoursAdmin(ModelAdmin):
     list_display = ("name", "cache_key", "status", "venue_kind", "confidence", "source", "fetched_at", "updated_at")
     list_filter = ("status", "venue_kind", "source")
     search_fields = ("name", "cache_key", "source_ref")
@@ -79,7 +108,7 @@ class PubHoursAdmin(admin.ModelAdmin):
 
 
 @admin.register(CanonicalPub)
-class CanonicalPubAdmin(_ImmutableAdmin, admin.ModelAdmin):
+class CanonicalPubAdmin(_ImmutableAdmin, ModelAdmin):
     list_display = ("name", "cache_key", "city", "country", "active", "updated_at")
     list_filter = ("active", "country")
     search_fields = ("name", "cache_key", "city", "external_id")
@@ -100,7 +129,7 @@ class CanonicalPubAdmin(_ImmutableAdmin, admin.ModelAdmin):
 
 
 @admin.register(PubAlias)
-class PubAliasAdmin(_ImmutableAdmin, admin.ModelAdmin):
+class PubAliasAdmin(_ImmutableAdmin, ModelAdmin):
     list_display = (
         "name",
         "cache_key",
@@ -127,7 +156,7 @@ class PubAliasAdmin(_ImmutableAdmin, admin.ModelAdmin):
 
 
 @admin.register(PubMergeAudit)
-class PubMergeAuditAdmin(_ImmutableAdmin, admin.ModelAdmin):
+class PubMergeAuditAdmin(_ImmutableAdmin, ModelAdmin):
     list_display = (
         "created_at",
         "source_name",
@@ -161,7 +190,7 @@ class PubMergeAuditAdmin(_ImmutableAdmin, admin.ModelAdmin):
 
 
 @admin.register(PubSearchCache)
-class PubSearchCacheAdmin(admin.ModelAdmin):
+class PubSearchCacheAdmin(ModelAdmin):
     list_display = ("cache_key", "radius_bucket", "fetched_at", "updated_at")
     list_filter = ("radius_bucket",)
     search_fields = ("cache_key",)
@@ -170,7 +199,7 @@ class PubSearchCacheAdmin(admin.ModelAdmin):
 
 
 @admin.register(UserAddedPub)
-class UserAddedPubAdmin(admin.ModelAdmin):
+class UserAddedPubAdmin(ModelAdmin):
     list_display = ("name", "active", "cache_key", "city", "address", "account", "updated_at")
     list_select_related = ("account",)
     list_filter = ("active",)
@@ -185,7 +214,7 @@ class UserAddedPubAdmin(admin.ModelAdmin):
 
 
 @admin.register(EnrichTask)
-class EnrichTaskAdmin(admin.ModelAdmin):
+class EnrichTaskAdmin(ModelAdmin):
     list_display = ("name", "cache_key", "attempts", "max_attempts", "done", "created_at", "last_attempt_at")
     list_filter = ("done",)
     search_fields = ("name", "cache_key")
@@ -194,7 +223,7 @@ class EnrichTaskAdmin(admin.ModelAdmin):
 
 
 @admin.register(Account)
-class AccountAdmin(admin.ModelAdmin):
+class AccountAdmin(ModelAdmin):
     list_display = (
         "public_id",
         "nickname",
@@ -222,7 +251,7 @@ class AccountAdmin(admin.ModelAdmin):
 
 
 @admin.register(PushDevice)
-class PushDeviceAdmin(admin.ModelAdmin):
+class PushDeviceAdmin(ModelAdmin):
     list_display = (
         "created_at",
         "account",
@@ -248,13 +277,13 @@ class PushDeviceAdmin(admin.ModelAdmin):
 
 
 @admin.register(ContentReport)
-class ContentReportAdmin(admin.ModelAdmin):
+class ContentReportAdmin(ModelAdmin):
     list_display = (
         "created_at",
         "reason",
         "status",
-        "target_account",
-        "reporter",
+        "target_nickname",
+        "reporter_nickname",
         "short_comment",
     )
     list_select_related = ("target_account", "reporter")
@@ -275,6 +304,14 @@ class ContentReportAdmin(admin.ModelAdmin):
     @admin.display(description="comment")
     def short_comment(self, obj: ContentReport) -> str:
         return _truncate(obj.comment, 60)
+
+    @admin.display(description="target account")
+    def target_nickname(self, obj: ContentReport) -> str:
+        return _account_label(obj.target_account)
+
+    @admin.display(description="reporter")
+    def reporter_nickname(self, obj: ContentReport) -> str:
+        return _account_label(obj.reporter)
 
     @admin.action(description="Hide target profiles")
     def hide_target_profiles(self, request, queryset) -> None:  # noqa: ARG002
@@ -318,7 +355,7 @@ class ContentReportAdmin(admin.ModelAdmin):
 
 
 @admin.register(PublishedNight)
-class PublishedNightAdmin(admin.ModelAdmin):
+class PublishedNightAdmin(ModelAdmin):
     """Moderation surface: published content is immutable except its kill switch."""
 
     list_display = (
@@ -361,7 +398,7 @@ class PublishedNightAdmin(admin.ModelAdmin):
 
 
 @admin.register(PublishedNightComment)
-class PublishedNightCommentAdmin(admin.ModelAdmin):
+class PublishedNightCommentAdmin(ModelAdmin):
     """Moderation surface for night comments: authored content is immutable,
     moderation only flips the soft-removed kill switch."""
 
@@ -399,7 +436,7 @@ class PublishedNightCommentAdmin(admin.ModelAdmin):
 
 
 @admin.register(PubReport)
-class PubReportAdmin(admin.ModelAdmin):
+class PubReportAdmin(ModelAdmin):
     list_display = ("name", "reason", "active", "cache_key", "external_id", "account", "created_at")
     list_select_related = ("account",)
     list_filter = ("reason", "active")
@@ -409,7 +446,7 @@ class PubReportAdmin(admin.ModelAdmin):
 
 
 @admin.register(PubNameCorrection)
-class PubNameCorrectionAdmin(admin.ModelAdmin):
+class PubNameCorrectionAdmin(ModelAdmin):
     list_display = (
         "suggested_name",
         "original_name",
@@ -427,7 +464,7 @@ class PubNameCorrectionAdmin(admin.ModelAdmin):
 
 
 @admin.register(FeedbackReport)
-class FeedbackReportAdmin(admin.ModelAdmin):
+class FeedbackReportAdmin(ModelAdmin):
     list_display = (
         "created_at",
         "category",
@@ -469,7 +506,7 @@ class FeedbackReportAdmin(admin.ModelAdmin):
 
 
 @admin.register(ClientEvent)
-class ClientEventAdmin(_ReadOnlyAdmin, admin.ModelAdmin):
+class ClientEventAdmin(_ReadOnlyAdmin, ModelAdmin):
     # Diagnostic telemetry is append-only. It is intentionally small and
     # sanitized by the API serializer, but still read-only in admin.
     list_display = (
@@ -503,7 +540,7 @@ class ClientEventAdmin(_ReadOnlyAdmin, admin.ModelAdmin):
 
 
 @admin.register(AccountUsageStats)
-class AccountUsageStatsAdmin(_ReadOnlyAdmin, admin.ModelAdmin):
+class AccountUsageStatsAdmin(_ReadOnlyAdmin, ModelAdmin):
     list_display = (
         "account_public_id",
         "app_open_count",
@@ -542,7 +579,7 @@ class AccountUsageStatsAdmin(_ReadOnlyAdmin, admin.ModelAdmin):
 
 
 @admin.register(PubCommunityData)
-class PubCommunityDataAdmin(admin.ModelAdmin):
+class PubCommunityDataAdmin(ModelAdmin):
     # Fully editable so the owner can fix or revert community data. cache_key and
     # the timestamps stay read-only (cache_key is identity; timestamps are
     # bookkeeping).
@@ -562,7 +599,7 @@ class PubCommunityDataAdmin(admin.ModelAdmin):
 
 
 @admin.register(PubExternalBeerMenu)
-class PubExternalBeerMenuAdmin(admin.ModelAdmin):
+class PubExternalBeerMenuAdmin(ModelAdmin):
     list_display = ("name", "source", "cache_key", "verified_at", "active", "updated_at")
     list_filter = ("source", "active")
     search_fields = ("name", "cache_key", "source_id", "city")
@@ -571,7 +608,7 @@ class PubExternalBeerMenuAdmin(admin.ModelAdmin):
 
 
 @admin.register(BeerBrand)
-class BeerBrandAdmin(admin.ModelAdmin):
+class BeerBrandAdmin(ModelAdmin):
     list_display = ("name", "key", "rank", "active", "updated_at")
     list_filter = ("active",)
     search_fields = ("name", "key", "aliases")
@@ -580,7 +617,7 @@ class BeerBrandAdmin(admin.ModelAdmin):
 
 
 @admin.register(BeerProduct)
-class BeerProductAdmin(admin.ModelAdmin):
+class BeerProductAdmin(ModelAdmin):
     list_display = ("name", "brand_name", "key", "rank", "active", "updated_at")
     list_filter = ("brand_key", "active")
     search_fields = ("name", "key", "brand_name", "aliases")
@@ -589,7 +626,7 @@ class BeerProductAdmin(admin.ModelAdmin):
 
 
 @admin.register(BeerProductMergeAudit)
-class BeerProductMergeAuditAdmin(_ReadOnlyAdmin, admin.ModelAdmin):
+class BeerProductMergeAuditAdmin(_ReadOnlyAdmin, ModelAdmin):
     list_display = ("source_key", "target_key", "actor", "created_at")
     search_fields = ("source_key", "source_name", "target_key", "target_name", "actor")
     readonly_fields = (
@@ -607,7 +644,7 @@ class BeerProductMergeAuditAdmin(_ReadOnlyAdmin, admin.ModelAdmin):
 
 
 @admin.register(PubBeerBrand)
-class PubBeerBrandAdmin(admin.ModelAdmin):
+class PubBeerBrandAdmin(ModelAdmin):
     list_display = ("brand_name", "name", "cache_key", "last_price_czk", "last_volume_ml", "source", "active", "last_seen_at")
     list_filter = ("brand_key", "source", "active", "last_seen_at")
     search_fields = ("brand_name", "name", "cache_key", "city", "external_id")
@@ -616,7 +653,7 @@ class PubBeerBrandAdmin(admin.ModelAdmin):
 
 
 @admin.register(PubBeerProduct)
-class PubBeerProductAdmin(admin.ModelAdmin):
+class PubBeerProductAdmin(ModelAdmin):
     list_display = ("product_name", "brand_name", "name", "cache_key", "last_price_czk", "last_volume_ml", "source", "active", "last_seen_at")
     list_filter = ("brand_key", "product_key", "source", "active", "last_seen_at")
     search_fields = ("product_name", "brand_name", "name", "cache_key", "city", "external_id")
@@ -625,7 +662,7 @@ class PubBeerProductAdmin(admin.ModelAdmin):
 
 
 @admin.register(PubContributionLog)
-class PubContributionLogAdmin(_ReadOnlyAdmin, admin.ModelAdmin):
+class PubContributionLogAdmin(_ReadOnlyAdmin, ModelAdmin):
     # Append-only audit history — fully read-only.
     list_display = ("created_at", "kind", "name", "cache_key", "account")
     list_select_related = ("account",)
@@ -646,7 +683,7 @@ class PubContributionLogAdmin(_ReadOnlyAdmin, admin.ModelAdmin):
 
 
 @admin.register(DrinkLog)
-class DrinkLogAdmin(_ReadOnlyAdmin, admin.ModelAdmin):
+class DrinkLogAdmin(_ReadOnlyAdmin, ModelAdmin):
     # Append-only per-user drink history — fully read-only, like the
     # contribution log.
     list_display = ("drank_at", "drink_type", "beer_name", "beer_brand_name", "beer_product_name", "price_czk", "volume_ml", "is_suspect", "suspect_reason", "name", "cache_key", "account")
@@ -690,7 +727,7 @@ class DrinkLogAdmin(_ReadOnlyAdmin, admin.ModelAdmin):
 
 
 @admin.register(PubRating)
-class PubRatingAdmin(_ReadOnlyAdmin, admin.ModelAdmin):
+class PubRatingAdmin(_ReadOnlyAdmin, ModelAdmin):
     # Per-user private ratings — read-only audit view (the user owns the data via
     # the API; admin is for inspection / moderation only).
     list_display = ("client_updated_at", "name", "cache_key", "verdict", "tag", "account", "updated_at")
@@ -715,7 +752,7 @@ class PubRatingAdmin(_ReadOnlyAdmin, admin.ModelAdmin):
 
 
 @admin.register(PubFavorite)
-class PubFavoriteAdmin(_ReadOnlyAdmin, admin.ModelAdmin):
+class PubFavoriteAdmin(_ReadOnlyAdmin, ModelAdmin):
     # Per-user private favourites — read-only audit view, like PubRatingAdmin.
     list_display = ("client_updated_at", "name", "cache_key", "account", "updated_at")
     list_select_related = ("account",)
@@ -735,7 +772,7 @@ class PubFavoriteAdmin(_ReadOnlyAdmin, admin.ModelAdmin):
 
 
 @admin.register(PubVisit)
-class PubVisitAdmin(_ReadOnlyAdmin, admin.ModelAdmin):
+class PubVisitAdmin(_ReadOnlyAdmin, ModelAdmin):
     # Per-user explicit visits — read-only audit view.
     list_display = ("started_at", "ended_at", "name", "cache_key", "city", "account", "updated_at")
     list_select_related = ("account",)
@@ -758,15 +795,16 @@ class PubVisitAdmin(_ReadOnlyAdmin, admin.ModelAdmin):
     ordering = ("-started_at",)
 
 
-class ReleaseNoteItemInline(admin.TabularInline):
+class ReleaseNoteItemInline(TabularInline):
     model = ReleaseNoteItem
+    show_title = False
     extra = 1
     fields = ("order", "icon", "text", "text_en")
     ordering = ("order",)
 
 
 @admin.register(ReleaseNote)
-class ReleaseNoteAdmin(admin.ModelAdmin):
+class ReleaseNoteAdmin(ModelAdmin):
     # Leave title_en and text_en empty to keep a note Czech-only; the app then
     # hides the popup for users running the app in English.
     list_display = ("version", "title", "is_published", "published_at", "updated_at")
@@ -778,7 +816,7 @@ class ReleaseNoteAdmin(admin.ModelAdmin):
 
 
 @admin.register(TourPublication)
-class TourPublicationAdmin(admin.ModelAdmin):
+class TourPublicationAdmin(ModelAdmin):
     """Public tours: a reported one hides itself, and only this admin brings it back."""
 
     list_display = ("title", "status", "hidden_reason", "city", "stop_count", "people_count", "published_at")
@@ -807,7 +845,7 @@ class TourPublicationAdmin(admin.ModelAdmin):
 
 
 @admin.register(PubReachDaily)
-class PubReachDailyAdmin(_ImmutableAdmin, admin.ModelAdmin):
+class PubReachDailyAdmin(_ImmutableAdmin, ModelAdmin):
     list_display = ("day", "cache_key", "channel", "metric", "source", "count", "visitors")
     list_filter = ("channel", "metric", "source", "day")
     search_fields = ("cache_key",)
@@ -847,7 +885,7 @@ class PubReachDailyAdmin(_ImmutableAdmin, admin.ModelAdmin):
 
 
 @admin.register(WebStatsDaily)
-class WebStatsDailyAdmin(_ImmutableAdmin, admin.ModelAdmin):
+class WebStatsDailyAdmin(_ImmutableAdmin, ModelAdmin):
     """The list is the report: page views, sources, store taps and Google search for a range."""
 
     def changelist_view(self, request, extra_context=None):  # noqa: ARG002

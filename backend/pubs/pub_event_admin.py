@@ -1,11 +1,12 @@
 from django.contrib import admin, messages
 from django.utils import timezone
+from unfold.admin import ModelAdmin
 
 from .pub_events import PubEvent
 
 
 @admin.register(PubEvent)
-class PubEventAdmin(admin.ModelAdmin):
+class PubEventAdmin(ModelAdmin):
     list_display = ("title", "name", "status", "starts_at", "ends_at", "verified_at", "created_at")
     list_filter = ("status", "starts_at", "ends_at")
     search_fields = ("title", "details", "name", "city", "cache_key")
