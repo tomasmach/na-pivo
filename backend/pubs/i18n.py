@@ -101,3 +101,13 @@ def render_localized(value: object, locale: str) -> str:
 
     with translation.override(locale):
         return str(value)
+
+
+def czech_admin_middleware(get_response):
+    def middleware(request):
+        if request.path.startswith("/admin/"):
+            translation.activate(DEFAULT_LOCALE)
+            request.LANGUAGE_CODE = DEFAULT_LOCALE
+        return get_response(request)
+
+    return middleware
