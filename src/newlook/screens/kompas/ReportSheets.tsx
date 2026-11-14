@@ -38,6 +38,10 @@ function report(pub: Pub, key: string, reason: PubReportReason) {
   );
 }
 
+function canReportNotPub(pub: Pub): boolean {
+  return Boolean(pub.id) && !isRestaurant(pub);
+}
+
 export function NesediSheet() {
   const router = useRouter();
   const L = t.nv.kompas;
@@ -67,9 +71,9 @@ export function NesediSheet() {
           }}
         />
         <Row leading={<Tile icon="door-closed" color={C.white} size={36} radius={18} />} title={L.reportClosed} chevron onPress={() => ask('closed')} />
-        {isRestaurant(pub) ? null : (
+        {canReportNotPub(pub) ? (
           <Row leading={<Tile icon="ban" color={C.white} size={36} radius={18} />} title={L.reportNotPub} chevron onPress={() => ask('not_pub')} />
-        )}
+        ) : null}
         <Row
           last
           leading={<Tile icon="plus" color={C.black} bg={C.yellow} size={36} radius={18} />}
