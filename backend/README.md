@@ -274,7 +274,7 @@ All settings are read from environment variables or a `.env` file. See `.env.exa
 |---|---|---|
 | `SECRET_KEY` | insecure dev key | Django secret key |
 | `DEBUG` | `True` | Enable debug mode |
-| `ENABLE_DJANGO_ADMIN` | `True` in dev, `False` in prod | Register `/admin/` routes |
+| `ENABLE_DJANGO_ADMIN` | `True` in dev, `False` in prod | Register `/admin/` routes and serve their CSS and JS from `STATIC_ROOT` |
 | `ALLOWED_HOSTS` | `*` in dev, env value in prod | Comma-separated allowed hosts |
 | `PUBLIC_WEB_ORIGIN` | `https://na-pivo.cz` | Canonical origin for invite links and Open Graph metadata |
 | `PUBLIC_API_ORIGIN` | `http://localhost:8012` (dev), `https://api.na-pivo.cz` (prod) | Bare API origin (`scheme://host`, no path/query) used when the backend links to itself |
