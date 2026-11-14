@@ -13,6 +13,7 @@ import { KamosScreen, PivoUNekohoScreen, PlanScreen, ZebrickyScreen } from '@/ne
 import { BeerScreen } from '@/newlook/screens/piva/BeerScreen';
 import { MojeHospodyScreen } from '@/newlook/screens/kompas/AddPubScreens';
 import { HlidanaPivaScreen } from '@/newlook/screens/piva/HlidanaPivaScreen';
+import { OhodnocenaPivaScreen } from '@/newlook/screens/piva/OhodnocenaPivaScreen';
 import { NastaveniScreen, OdznakyScreen, ProfilScreen } from '@/newlook/screens/profil/ProfilScreens';
 import { PivniFotkyScreen } from '@/newlook/screens/vycep/PhotoScreens';
 import { EveningDetailScreen } from '@/newlook/screens/stamgast/EveningSheets';
@@ -36,6 +37,7 @@ registerDetailScreens({
   'pivni-fotky': PivniFotkyScreen,
   'moje-hospody': MojeHospodyScreen,
   'hlidana-piva': HlidanaPivaScreen,
+  'ohodnocena-piva': OhodnocenaPivaScreen,
   fotopivar: FotoPivarScreen,
   tour: TourListScreen,
   cisla: StatsScreen,

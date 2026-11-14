@@ -171,6 +171,11 @@ export const pivaCs = {
     visibilityOptions: { private: 'Jen já', friends: 'Parta', public: 'Všichni u piva' },
   },
 
+  rated: {
+    title: 'Ohodnocená piva',
+    failed: 'Hodnocení se nedotáhla.',
+    empty: 'Zatím tu žádné hodnocení není. Najdi pivo a dej mu hvězdičky.',
+  },
   watches: {
     title: 'Hlídaná piva',
     alertsOff: 'Upozornění máš vypnutá, takže ti nedám vědět.',

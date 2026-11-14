@@ -196,7 +196,7 @@ export async function loadMyRatings(signal?: AbortSignal): Promise<MyRatings> {
   const account = useAccountStore.getState().session?.accountId ?? '';
   const cached = serverRatings.get(account);
   if (!cached || Date.now() - cached.at > SERVER_RATINGS_TTL_MS) {
-    const history = await fetchMyBeerCheckIns(signal);
+    const history = await fetchMyBeerCheckIns(signal, { rated: true });
     if (history) {
       const fromServer = new Map<string, number>();
       for (const c of history) {
@@ -216,6 +216,43 @@ export async function loadMyRatings(signal?: AbortSignal): Promise<MyRatings> {
     if (key.startsWith(`${account}|`) && typeof p.rating === 'number') ratings.set(beerKey(p.beerName), p.rating);
   }
   return ratings;
+}
+
+export interface MyRatedBeer {
+  beerName: string;
+  breweryName: string;
+  productKey: string | null;
+  rating: number;
+  ratedAt: string;
+}
+
+/**
+ * Every beer I rated with my latest stars, best first and newest first within
+ * the same stars. Null when the server history cannot be loaded.
+ */
+export async function loadMyRatedBeers(signal?: AbortSignal): Promise<MyRatedBeer[] | null> {
+  const history = await fetchMyBeerCheckIns(signal, { rated: true });
+  if (!history) return null;
+  const account = useAccountStore.getState().session?.accountId ?? '';
+  const beers = new Map<string, MyRatedBeer>();
+  for (const c of history) {
+    if (c.rating === null || beers.has(beerKey(c.beerName))) continue;
+    beers.set(beerKey(c.beerName), { beerName: c.beerName, breweryName: c.breweryName, productKey: c.productKey ?? null, rating: c.rating, ratedAt: c.updatedAt });
+  }
+  const now = new Date().toISOString();
+  const local = [...(await getPendingBeerCheckIns()), ...[...savedThisSession].filter(([key]) => key.startsWith(`${account}|`)).map(([, p]) => p)];
+  for (const p of local) {
+    if (typeof p.rating !== 'number') continue;
+    const known = beers.get(beerKey(p.beerName));
+    beers.set(beerKey(p.beerName), {
+      beerName: p.beerName,
+      breweryName: p.breweryName || known?.breweryName || '',
+      productKey: known?.productKey ?? null,
+      rating: p.rating,
+      ratedAt: now,
+    });
+  }
+  return [...beers.values()].sort((a, b) => b.rating - a.rating || Date.parse(b.ratedAt) - Date.parse(a.ratedAt));
 }
 
 export function myRating(ratings: MyRatings, beerName: string): number | null {

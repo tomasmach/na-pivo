@@ -88,6 +88,7 @@ import { useColumnActions, useColumnBack, type ColumnAction } from '../../duo/pa
 import { useBook, useWindowInsets } from '../../duo/layout';
 import { Dial } from '../kompas/Dial';
 import { setKompasView } from '../kompas/state';
+import { useMyRatings } from '../piva/useMyRatings';
 import { usePartaStore } from '../parta/partaStore';
 import { ProfilAvatar } from './ProfilAvatar';
 import {
@@ -185,6 +186,7 @@ export function ProfilScreen() {
   const recentBadges = useBadgeStore((st) => st.recent);
   const badges = useNvBadges();
   const [addedPubs, setAddedPubs] = useState<number | null>(null);
+  const ratedBeers = useMyRatings().size;
   const accountId = me.profile?.id ?? null;
   useRefreshBadgesOnFocus();
 
@@ -399,6 +401,13 @@ export function ProfilScreen() {
           trailing={addedPubs ? <T s={15} w={600}>{nf.format(addedPubs)}</T> : null}
           chevron
           onPress={() => router.push('/nv/moje-hospody')}
+        />
+        <Row
+          leading={<Tile icon="star" />}
+          title={P().profile.ratedBeers}
+          trailing={ratedBeers ? <T s={15} w={600}>{nf.format(ratedBeers)}</T> : null}
+          chevron
+          onPress={() => router.push('/nv/ohodnocena-piva')}
         />
         <Row leading={<Tile icon="route" />} title={P().profile.tours} chevron onPress={() => router.push('/nv/tour')} />
         <Row

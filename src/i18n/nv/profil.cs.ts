@@ -24,6 +24,7 @@ export const profilCs = {
     photos: 'Pivní fotky',
     favorites: 'Srdcovky',
     addedPubs: 'Moje přidané hospody',
+    ratedBeers: 'Ohodnocená piva',
     tours: 'Tour de pub',
     watched: 'Hlídaná piva',
   },
