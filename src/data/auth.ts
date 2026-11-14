@@ -1043,7 +1043,12 @@ export async function updateProfile(params: {
   if (params.isPublic !== undefined) body.is_public = params.isPublic;
   if (params.showAsPubRegular !== undefined) body.show_as_pub_regular = params.showAsPubRegular;
 
-  const res = await runAccountMeWrite(() => authFetch('/v1/account/me', { method: 'PATCH', bearer: 'current', body }));
+  const owner = await getSessionToken();
+  const res = await runAccountMeWrite(async () =>
+    (await getSessionToken()) === owner
+      ? authFetch('/v1/account/me', { method: 'PATCH', bearer: 'current', body })
+      : { networkError: true as const },
+  );
   return resolveProfileResult(res);
 }
 

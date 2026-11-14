@@ -30,6 +30,7 @@ jest.mock('@/data/backendConfig', () => ({
   getBackendEndpoint: jest.fn((path: string) => `https://api.test${path}`),
 }));
 
+let mockEarlierAccountWrite: Promise<void> = Promise.resolve();
 jest.mock('@/data/account', () => ({
   ensureAccount: jest.fn(async () => ({
     deviceId: 'd',
@@ -42,6 +43,7 @@ jest.mock('@/data/account', () => ({
   prepareAnonymousAccountMerge: jest.fn(async () => null),
   setSession: jest.fn(async () => undefined),
   revertToAnonymous: jest.fn(async () => null),
+  runAccountMeWrite: <T,>(task: () => Promise<T>) => mockEarlierAccountWrite.then(task),
 }));
 
 jest.mock('@/data/privateAccountData', () => ({
@@ -1089,4 +1091,26 @@ it('does not replace an unreadable existing credential after a successful login 
   });
   expect(mockSetSession).not.toHaveBeenCalled();
   expect(mockClearLocalPrivateAccountData).not.toHaveBeenCalled();
+});
+
+describe('updateProfile', () => {
+  it('does not send a profile change that was still waiting when the account changed', async () => {
+    mockGetBackendEndpoint.mockImplementation((path) => `http://127.0.0.1:8000${path}`);
+    mockGetSessionToken.mockResolvedValue('account-a');
+    const fetchSpy = jest.fn();
+    global.fetch = fetchSpy as unknown as typeof fetch;
+    let finishEarlierWrite!: () => void;
+    mockEarlierAccountWrite = new Promise<void>((resolve) => (finishEarlierWrite = resolve));
+
+    const saved = auth.updateProfile({ isPublic: false });
+    await new Promise((resolve) => setImmediate(resolve));
+    mockGetSessionToken.mockResolvedValue('account-b');
+    finishEarlierWrite();
+    const result = await saved;
+    mockEarlierAccountWrite = Promise.resolve();
+    mockGetSessionToken.mockResolvedValue('cur-tok');
+
+    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(result.ok).toBe(false);
+  });
 });
