@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { ScrollView, View } from 'react-native';
+import { RefreshControl, ScrollView, View } from 'react-native';
 import Animated from 'react-native-reanimated';
 import { useFocusEffect } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -33,6 +33,7 @@ import { CheerButton } from './cheer';
 import { usePartaStore } from './partaStore';
 import { endPing, respondToPlan } from './planActions';
 import { PartaPhotoStrip } from './PartaPhotos';
+import { useRefreshWhileOpen } from './useRefreshWhileOpen';
 
 const RSVP: { key: 'going' | 'maybe' | 'cant'; label: () => string; icon: IconName }[] = [
   { key: 'going', label: () => t.nv.parta.rsvpGoing, icon: 'check' },
@@ -176,16 +177,26 @@ export function PlanTicket({ plan, width, big, onEnded }: { plan: PartaPlan; wid
   );
 }
 
-function LiveRow({ profile, sub, last, cheer }: { profile: FriendProfile; sub: string; last?: boolean; cheer?: FriendPresence }) {
+function LiveRow({ profile, sub, last, cheer, onOpen }: { profile: FriendProfile; sub: string; last?: boolean; cheer?: FriendPresence; onOpen: () => void }) {
   const router = useNvRouter();
+  const name = personName(profile);
   return (
     <Row
       last={last}
       height={66}
-      leading={<Person initial={personInitial(profile)} uri={profile.avatarUrl} />}
-      title={personName(profile)}
-      titleWeight={700}
-      sub={sub}
+      title={
+        <Press onPress={onOpen} accessibilityRole="button" accessibilityLabel={`${name}, ${sub}`} style={[s.row, { gap: 12 }]}>
+          <Person initial={personInitial(profile)} uri={profile.avatarUrl} />
+          <View style={[s.fill, { gap: 2 }]}>
+            <T s={16} w={700} numberOfLines={1}>
+              {name}
+            </T>
+            <T s={13} w={500} c={C.muted}>
+              {sub}
+            </T>
+          </View>
+        </Press>
+      }
       trailing={
         cheer ? <CheerButton presence={cheer} /> : <Press
           haptic
@@ -225,6 +236,12 @@ export function PartaScreen() {
       void load();
     }, [load]),
   );
+  useRefreshWhileOpen();
+  const [pulling, setPulling] = useState(false);
+  const pullToRefresh = () => {
+    setPulling(true);
+    void load().finally(() => setPulling(false));
+  };
 
   // A push tap or invite claim asks for fresh data even when Parta is already open, and may name a plan to open.
   const pendingRefresh = usePartaSignalStore((st) => st.pendingRefresh);
@@ -246,7 +263,6 @@ export function PartaScreen() {
   const presence = dashboard?.presence ?? [];
   const homePresence = (dashboard?.homePresence ?? []).filter((row) => !presence.some((p) => p.account.id === row.account.id));
   const liveIds = new Set([...presence.map((p) => p.account.id), ...homePresence.map((p) => p.account.id)]);
-  const rest = friends.filter((f) => !liveIds.has(f.id));
   const outCount = liveIds.size + (me && me.visibleToParta ? 1 : 0);
 
   const setVisible = (value: boolean) => {
@@ -385,18 +401,16 @@ export function PartaScreen() {
                 trailing={<Toggle value={visible} onChange={setVisible} />}
               />
               {presence.map((p, i) => (
-                <LiveRow key={p.account.id} profile={p.account} cheer={p} last={i === presence.length - 1 && homePresence.length === 0} sub={t.nv.parta.liveSub(p.pubName, p.beers)} />
+                <LiveRow key={p.account.id} profile={p.account} cheer={p} onOpen={() => openFriend(p.account.id)} last={i === presence.length - 1 && homePresence.length === 0} sub={t.nv.parta.liveSub(p.pubName, p.beers)} />
               ))}
               {homePresence.map((p, i) => (
-                <LiveRow key={p.account.id} profile={p.account} last={i === homePresence.length - 1} sub={t.nv.parta.atSomeonesHome} />
+                <LiveRow key={p.account.id} profile={p.account} onOpen={() => openFriend(p.account.id)} last={i === homePresence.length - 1} sub={t.nv.parta.atSomeonesHome} />
               ))}
             </Card>
     </>
   );
   const wholeParty = (
     <>
-            {friends.length === 0 || rest.length ? (
-              <>
                 <SectionTitle
                   title={t.nv.parta.wholeParty}
                   action={String(friends.length)}
@@ -409,7 +423,7 @@ export function PartaScreen() {
                   {friends.length === 0 ? (
                     <Row last leading={<Tile icon="user-plus" />} title={t.nv.parta.inviteFirst} chevron onPress={() => router.push('/nv/sprava-party')} />
                   ) : (
-                    rest.map((f, i, arr) => {
+                    friends.map((f, i, arr) => {
                       const stats = dashboard?.friendStats[f.id];
                       return (
                         <Row
@@ -426,8 +440,6 @@ export function PartaScreen() {
                     })
                   )}
                 </Card>
-              </>
-            ) : null}
     </>
   );
   const home = (
@@ -466,6 +478,7 @@ export function PartaScreen() {
         onScroll={scrollKey === 'parta' ? onScroll : onPlansScroll}
         scrollEventThrottle={16}
         showsVerticalScrollIndicator={false}
+        refreshControl={<RefreshControl refreshing={pulling} onRefresh={pullToRefresh} tintColor={C.muted} progressViewOffset={insets.top + 64} />}
         contentContainerStyle={{ paddingTop: insets.top + 8, paddingHorizontal: SCREEN_X, gap: 20, paddingBottom: tabSpace + 30 }}
       >
         {content}

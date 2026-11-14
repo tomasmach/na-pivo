@@ -62,6 +62,7 @@ export const vycepEn: typeof vycepCs = {
   publishParta: 'Post to your crew',
   published: 'Your night is up in the Taproom!',
   publishQueued: "I'll post it once you're online.",
+  publishRefused: "I couldn't post your night to the Taproom.",
   preview: 'preview',
   addPhoto: 'Add a photo from the night',
   optional: 'optional',

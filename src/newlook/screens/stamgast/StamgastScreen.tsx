@@ -10,6 +10,7 @@ import { formatClock, formatPromile, useAlcoholEstimate } from '@/counter/useAlc
 import { placeKey, removeCountedDrink, type CountableDrink } from '@/counter/countDrink';
 import { fetchBeerPage, submitBeerStyle, type BeerDegree, type StyleAnswer } from '@/data/beersClient';
 import { trackCounterTabOpened } from '@/data/counterTelemetry';
+import { cancelQueuedPubBroadcasts } from '@/data/friendsQueue';
 import { trackClientEvent } from '@/data/telemetryClient';
 import { trackUiInteraction } from '@/data/uxTelemetry';
 import { normalizeDrinkType } from '@/drinks/drinkTypes';
@@ -353,7 +354,11 @@ function CounterView() {
       return;
     }
     const day = drinkingDayKey(new Date(live.startedAt));
+    const droppedPings = cancelQueuedPubBroadcasts(live.pubKey, new Date().toISOString());
     useTallyStore.getState().archiveCurrent('manual');
+    void droppedPings.then((count) => {
+      if (count > 0) toast({ kind: 'offline', title: t.nv.parta.pingDropped, sub: t.nv.parta.pingDroppedSub, icon: 'cloud-off' });
+    });
     leaveFriendHome();
     useCounterNudges.getState().set({ stickerFor: null, tourBanner: null, newBeer: null });
     void trackClientEvent({ event: 'counter_session_closed', context: { reason: 'manual' } });
@@ -426,6 +431,48 @@ function CounterView() {
           <QuickAction icon="bell-ring" label={copy.quickPing} onPress={() => router.push('/nv/cinknout')} />
           <QuickAction icon="camera" label={copy.quickPhoto} onPress={() => router.push('/nv/do-denicku')} />
           <QuickAction icon="circle-check" label={copy.quickDone} onPress={finish} />
+        </View>
+        {atFriend ? <FriendEveningCard /> : null}
+        {session && count > 0 && !atFriend ? <TransitCard session={session} /> : null}
+        <View style={{ backgroundColor: C.card, borderRadius: 24, paddingTop: 4, paddingHorizontal: 16, paddingBottom: 8 }}>
+          <View style={[s.row, { height: 50, justifyContent: 'space-between' }]}>
+            <T s={16} w={700}>
+              {copy.tonightList}
+            </T>
+            {session && drinks.length ? (
+              <Press testID="counter-undo-last" hitSlop={10} onPress={() => removeCountedDrink(session.drinks[session.drinks.length - 1].id)} style={[s.row, { gap: 6 }]}>
+                <Icon name="undo-2" size={15} color={C.yellow} />
+                <T s={14} w={700} c={C.yellow}>
+                  {copy.undoLast}
+                </T>
+              </Press>
+            ) : null}
+          </View>
+          {session && drinks.length ? (
+            drinks.map((d, i) => (
+              <Animated.View key={d.id} entering={i === 0 ? fadeIn : undefined}>
+                <Press onPress={() => drinkActions(router, nightsOf([session])[0].day, session.startedAt, d, { removeDrink: removeCountedDrink })} style={[s.row, { height: 62, gap: 12 }]}>
+                  <Tile icon={normalizeDrinkType(d.drinkType) === 'beer' ? 'beer' : 'circle-dot'} />
+                  <View style={[s.fill, { gap: 2 }]}>
+                    <T s={15} w={600} numberOfLines={1}>
+                      {d.beerName}
+                    </T>
+                    <T s={13} c={C.muted}>{servingLine(d, inPub)}</T>
+                  </View>
+                  <View style={{ alignItems: 'flex-end', gap: 2 }}>
+                    {typeof d.priceCzk === 'number' ? <T s={15} w={600}>{formatPrice(d.priceCzk, priceCurrency)}</T> : null}
+                    <T s={12} c={C.muted}>
+                      {formatClock(new Date(d.at))}
+                    </T>
+                  </View>
+                </Press>
+              </Animated.View>
+            ))
+          ) : (
+            <T s={14} c={C.muted} style={{ paddingVertical: 14 }}>
+              {copy.tonightEmpty}
+            </T>
+          )}
         </View>
         {nudges.newBeer && question ? (
           <Animated.View key={question.step} entering={riseIn} exiting={sinkOut}>
@@ -520,48 +567,6 @@ function CounterView() {
             </Press>
           </Animated.View>
         ) : null}
-        {atFriend ? <FriendEveningCard /> : null}
-        {session && count > 0 && !atFriend ? <TransitCard session={session} /> : null}
-        <View style={{ backgroundColor: C.card, borderRadius: 24, paddingTop: 4, paddingHorizontal: 16, paddingBottom: 8 }}>
-          <View style={[s.row, { height: 50, justifyContent: 'space-between' }]}>
-            <T s={16} w={700}>
-              {copy.tonightList}
-            </T>
-            {session && drinks.length ? (
-              <Press testID="counter-undo-last" hitSlop={10} onPress={() => removeCountedDrink(session.drinks[session.drinks.length - 1].id)} style={[s.row, { gap: 6 }]}>
-                <Icon name="undo-2" size={15} color={C.yellow} />
-                <T s={14} w={700} c={C.yellow}>
-                  {copy.undoLast}
-                </T>
-              </Press>
-            ) : null}
-          </View>
-          {session && drinks.length ? (
-            drinks.map((d, i) => (
-              <Animated.View key={d.id} entering={i === 0 ? fadeIn : undefined}>
-                <Press onPress={() => drinkActions(router, nightsOf([session])[0].day, session.startedAt, d, { removeDrink: removeCountedDrink })} style={[s.row, { height: 62, gap: 12 }]}>
-                  <Tile icon={normalizeDrinkType(d.drinkType) === 'beer' ? 'beer' : 'circle-dot'} />
-                  <View style={[s.fill, { gap: 2 }]}>
-                    <T s={15} w={600} numberOfLines={1}>
-                      {d.beerName}
-                    </T>
-                    <T s={13} c={C.muted}>{servingLine(d, inPub)}</T>
-                  </View>
-                  <View style={{ alignItems: 'flex-end', gap: 2 }}>
-                    {typeof d.priceCzk === 'number' ? <T s={15} w={600}>{formatPrice(d.priceCzk, priceCurrency)}</T> : null}
-                    <T s={12} c={C.muted}>
-                      {formatClock(new Date(d.at))}
-                    </T>
-                  </View>
-                </Press>
-              </Animated.View>
-            ))
-          ) : (
-            <T s={14} c={C.muted} style={{ paddingVertical: 14 }}>
-              {copy.tonightEmpty}
-            </T>
-          )}
-        </View>
       </ScrollView>
       <BottomFade height={tabSpace + 130} />
       <View style={{ position: 'absolute', left: SCREEN_X, right: SCREEN_X, bottom: tabSpace + 12 }}>

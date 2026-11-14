@@ -7,6 +7,9 @@ jest.mock('../account', () => ({
   ensureAccount: jest.fn(async () => ({ accountId: 'test', token: 'synthetic' })),
   generateUuidV4: () => 'session-test',
   setAnonymousSessionEvictionListener: jest.fn(),
+  setAccountPreferencesRefusedListener: jest.fn(),
+  pendingAccountPreferences: jest.fn(async () => ({})),
+  accountPreferencesDeliveries: jest.fn(() => 0),
 }));
 jest.mock('../backendConfig', () => ({ getBackendEndpoint: (path: string) => `http://127.0.0.1:18082${path}` }));
 const submitVisit = jest.fn<Promise<string>, unknown[]>(async () => 'ok');

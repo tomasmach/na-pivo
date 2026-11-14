@@ -35,6 +35,7 @@ type KompasState = {
   pin: { lat: number; lng: number } | null;
   /** Map or compass chosen on the tab itself or by a button that promises one; null follows Settings. */
   view: KompasView | null;
+  browsingWithoutLocation: boolean;
   set: (patch: Partial<Omit<KompasState, 'set' | 'setFilters' | 'clearFilters' | 'pick'>>) => void;
   setFilters: (patch: Partial<PubSearchFilters>) => void;
   clearFilters: () => void;
@@ -51,6 +52,7 @@ export const useKompasState = create<KompasState>((set, get) => ({
   cityPubs: null,
   pin: null,
   view: null,
+  browsingWithoutLocation: false,
   set: (patch) => set(patch),
   setFilters: (patch) => set({ filters: normalizePubSearchFilters({ ...get().filters, ...patch }) }),
   clearFilters: () => {
@@ -110,10 +112,9 @@ export function openNvPub(router: Router, pub: Pub, via?: 'card'): void {
   router.push({ pathname: '/nv/hospoda/[id]', params: via ? { ...nvPubParams(pub), via } : nvPubParams(pub) });
 }
 
-/** Point the compass at a pub and switch to the Kompas tab. */
-export function showOnKompas(router: Router, pub: Pub, view: MapView = 'okoli'): void {
+export function showOnKompas(router: Router, pub: Pub, view: KompasView, mapView: MapView = 'okoli'): void {
   useKompasState.getState().pick(pub);
-  useKompasState.getState().set({ mapView: view });
+  useKompasState.getState().set({ view, mapView });
   router.dismissTo('/nv/kompas');
 }
 

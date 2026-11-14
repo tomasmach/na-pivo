@@ -89,6 +89,7 @@ export const profilCs = {
     partyPushDenied: 'Bez notifikací ti cinky od party nepřijdou. Zapni je v Nastavení a zkus to znovu.',
     partyPushEnableError: 'Zapnutí se nepovedlo. Zkus to znovu.',
     partyPushDisableError: 'Upozornění se zatím nepovedlo vypnout. Zkusím to znovu, až se do appky vrátíš.',
+    savedSettingRefused: 'Nastavení se mi nepovedlo uložit, tak jsem ho vrátil zpátky.',
     phone: 'Telefon',
     haptics: 'Vibrace',
     hapticsSub: 'Při ťukání a když dojdeš k cíli',

@@ -15,7 +15,7 @@ import { pubIdentityKey } from '@/data/pubIdentity';
 import { getAllLoadedPubs, type Pub } from '@/data/pubs';
 import { currentTaps, inPubTime, isEventOfPub, isSamePubRecord, visibleEvents, withCatalogDetails } from '@/pubPage/pubPageModel';
 import { usePubVisitSummary } from '@/pubPage/usePubVisitSummary';
-import { isBeerListOverrideCurrent, useCommunityStore } from '@/stores/communityStore';
+import { isBeerListOverrideCurrent, isHoursOverrideCurrent, useCommunityStore } from '@/stores/communityStore';
 import { selectPubVotes, usePubAmenitiesStore } from '@/stores/pubAmenitiesStore';
 import { usePubPageStore } from '@/stores/pubPageStore';
 
@@ -203,10 +203,10 @@ export function usePubDetails(initial: Pub | null, key: string) {
     [override, pub],
   );
   // The page asks the server once, so hours filled in here show from the local edit until the next visit.
-  const localHours = useMemo(() => {
-    const serverAt = pub?.hoursUpdatedAt ? Date.parse(pub.hoursUpdatedAt) : 0;
-    return override?.hours && !(override.updatedAt <= serverAt) ? override.hours : null;
-  }, [override, pub]);
+  const localHours = useMemo(
+    () => (isHoursOverrideCurrent(override, pub?.hoursUpdatedAt) ? (override?.hours ?? null) : null),
+    [override, pub],
+  );
   const hours = useMemo(() => {
     if (localHours) {
       const open = computeOpenState(localHours, now);

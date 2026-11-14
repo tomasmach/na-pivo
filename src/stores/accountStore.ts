@@ -1,8 +1,11 @@
 import { create } from 'zustand';
 
 import {
+  accountPreferencesDeliveries,
   ensureAccount,
   fetchAccountPreferences,
+  pendingAccountPreferences,
+  setAccountPreferencesRefusedListener,
   setAnonymousSessionEvictionListener,
   type AccountSession,
 } from '@/data/account';
@@ -24,7 +27,9 @@ import {
 import { FALLBACK_LEVELS, FALLBACK_XP_RULES } from '@/data/mapperXp';
 import { reconcileDiarySnapshot, restoreAccountDiary, type DiarySnapshot } from '@/data/diarySync';
 import { tourBoundary } from '@/data/toursBoundary';
+import { t } from '@/i18n';
 import { useSettingsStore } from '@/stores/settingsStore';
+import { useToastStore } from '@/stores/toastStore';
 import { releaseToursToDevice } from '@/stores/toursStore';
 
 export type AccountStatus = 'idle' | 'loading' | 'ready' | 'reauth-required' | 'error';
@@ -198,22 +203,23 @@ function withoutRemoved(
   };
 }
 
-export const useAccountStore = create<AccountState>((set, get) => {
-  const applyAccountSettings = (settings?: AccountSettings | null) => {
-    if (!settings) return;
-    const store = useSettingsStore.getState();
-    if (settings.mode) store.setMode(settings.mode);
-    if (settings.maxDistanceKm !== undefined) store.setMaxDistanceKm(settings.maxDistanceKm);
-    if (settings.priceCurrency) store.setPriceCurrency(settings.priceCurrency);
-    if (typeof settings.hapticEnabled === 'boolean') store.setHapticEnabled(settings.hapticEnabled);
-    if (typeof settings.soundEnabled === 'boolean') store.setSoundEnabled(settings.soundEnabled);
-    if (typeof settings.hideClosedPubs === 'boolean') store.setHideClosedPubs(settings.hideClosedPubs);
-    if (typeof settings.hidePubNames === 'boolean') store.setHidePubNames(settings.hidePubNames);
-    if (typeof settings.marketingEmailsEnabled === 'boolean') {
-      store.setMarketingEmailsEnabled(settings.marketingEmailsEnabled);
-    }
-  };
+function writeServerSettings(settings: AccountSettings, pending: Partial<AccountSettings>): void {
+  const server = { ...settings };
+  for (const key of Object.keys(pending) as (keyof AccountSettings)[]) delete server[key];
+  const store = useSettingsStore.getState();
+  if (server.mode) store.setMode(server.mode);
+  if (server.maxDistanceKm !== undefined) store.setMaxDistanceKm(server.maxDistanceKm);
+  if (server.priceCurrency) store.setPriceCurrency(server.priceCurrency);
+  if (typeof server.hapticEnabled === 'boolean') store.setHapticEnabled(server.hapticEnabled);
+  if (typeof server.soundEnabled === 'boolean') store.setSoundEnabled(server.soundEnabled);
+  if (typeof server.hideClosedPubs === 'boolean') store.setHideClosedPubs(server.hideClosedPubs);
+  if (typeof server.hidePubNames === 'boolean') store.setHidePubNames(server.hidePubNames);
+  if (typeof server.marketingEmailsEnabled === 'boolean') {
+    store.setMarketingEmailsEnabled(server.marketingEmailsEnabled);
+  }
+}
 
+export const useAccountStore = create<AccountState>((set, get) => {
   // Profile answers arrive late and out of order. Every read and write takes a
   // ticket, and an answer to a read older than the last write (a newer read,
   // a sign-in, a logout or a deletion) is dropped. The store keeps the old
@@ -225,6 +231,16 @@ export const useAccountStore = create<AccountState>((set, get) => {
     if (ticket < writtenTicket) return false;
     writtenTicket = ticket;
     return true;
+  };
+
+  const applyAccountSettings = (settings?: AccountSettings | null, readStartedAt?: number) => {
+    if (!settings) return;
+    const ticket = writtenTicket;
+    void pendingAccountPreferences().then((pending) => {
+      if (ticket !== writtenTicket) return;
+      if (readStartedAt !== undefined && readStartedAt !== accountPreferencesDeliveries()) return;
+      writeServerSettings(settings, pending);
+    });
   };
 
   /** Re-read the (possibly rotated) session token into the store. */
@@ -303,6 +319,7 @@ export const useAccountStore = create<AccountState>((set, get) => {
         }));
         if (session) {
           const ticket = takeProfileTicket();
+          const readStartedAt = accountPreferencesDeliveries();
           const [profile] = await Promise.all([
             auth.fetchAccountProfile(),
             // A successful launch pull lets the first foreground skip it.
@@ -312,13 +329,14 @@ export const useAccountStore = create<AccountState>((set, get) => {
           if (profile) {
             if (!claimProfileWrite(ticket)) return;
             set({ profile });
-            applyAccountSettings(profile.settings);
+            applyAccountSettings(profile.settings, readStartedAt);
           } else {
             // The profile includes settings on current backends. Keep the
             // narrower read as a fallback when that request is unavailable.
+            const fallbackStartedAt = accountPreferencesDeliveries();
             const preferences = await fetchAccountPreferences();
             if (preferences && get().session?.token === session.token) {
-              applyAccountSettings(preferences);
+              applyAccountSettings(preferences, fallbackStartedAt);
             }
           }
         }
@@ -341,6 +359,7 @@ export const useAccountStore = create<AccountState>((set, get) => {
       if (!session.authenticated) return 'anonymous';
 
       const ticket = takeProfileTicket();
+      const readStartedAt = accountPreferencesDeliveries();
       const validation = await auth.validateAccountSession(session);
       // Ignore a response for a session that was replaced while validation was
       // in flight (for example by a manual login opened from another screen).
@@ -358,18 +377,19 @@ export const useAccountStore = create<AccountState>((set, get) => {
 
       set({ profile: validation.profile, status: 'ready' });
       setTelemetrySession(session);
-      applyAccountSettings(validation.profile.settings);
+      applyAccountSettings(validation.profile.settings, readStartedAt);
       return 'valid';
     },
 
     refreshProfile: async () => {
       const token = get().session?.token;
       const ticket = takeProfileTicket();
+      const readStartedAt = accountPreferencesDeliveries();
       const profile = await auth.fetchAccountProfile();
       if (get().session?.token !== token) return;
       if (profile && claimProfileWrite(ticket)) {
         set({ profile });
-        applyAccountSettings(profile.settings);
+        applyAccountSettings(profile.settings, readStartedAt);
       }
     },
 
@@ -487,6 +507,11 @@ export const useAccountStore = create<AccountState>((set, get) => {
       return result;
     },
   };
+});
+
+setAccountPreferencesRefusedListener((server) => {
+  if (server) void pendingAccountPreferences().then((pending) => writeServerSettings(server, pending));
+  useToastStore.getState().show(t.nv.profil.settings.savedSettingRefused);
 });
 
 setAnonymousSessionEvictionListener(async (evictedAccountId) => {

@@ -9,6 +9,9 @@ import {
 } from './nightsClient';
 import { createCoalescingFlush, createQueueLock, createQueueStorage } from './createQueue';
 import type { QueueSyncResult } from './apiFetch';
+import { t } from '@/i18n';
+import { useToastStore } from '@/stores/toastStore';
+import { useVycepStore } from '@/stores/vycepStore';
 
 const STORAGE_KEY = 'na-pivo-nights-queue';
 
@@ -99,12 +102,14 @@ async function flushUnlocked(signal: AbortSignal): Promise<void> {
 
   const attempted = new Map<string, string>();
   const settled = new Set<string>();
+  const refused: string[] = [];
   for (const item of queue) {
     if (signal.aborted) break;
     const key = dedupKey(item);
     attempted.set(key, signature(item));
     const result = await deliver(item);
     if (result !== 'retry') settled.add(key);
+    if (result === 'permanent-error' && item.op === 'publish') refused.push(item.payload.clientId);
   }
 
   await runMutation(async () => {
@@ -117,6 +122,13 @@ async function flushUnlocked(signal: AbortSignal): Promise<void> {
     });
     await saveQueue(remaining);
   });
+
+  const pendingNights = new Set((await runMutation(loadQueue)).map(dedupKey));
+  const gone = refused.filter((clientId) => !pendingNights.has(`night:${clientId}`));
+  if (gone.length === 0 || signal.aborted) return;
+  const vycep = useVycepStore.getState();
+  gone.forEach((clientId) => vycep.markUnpublished(clientId));
+  useToastStore.getState().show(t.nv.vycep.publishRefused);
 }
 
 const { flush: _flush, abortInFlight } = createCoalescingFlush(flushUnlocked);

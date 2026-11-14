@@ -375,15 +375,17 @@ export async function friendActivityState(clientId: string): Promise<'queued' | 
   return delivered.has(clientId) || (await readDelivered()).includes(clientId) ? 'sent' : 'gone';
 }
 
-/** Dopito also cancels broadcasts that have not reached the server yet. */
-export function cancelQueuedPubBroadcasts(pubKey: string, closedAt: string): Promise<void> {
+export function cancelQueuedPubBroadcasts(pubKey: string, closedAt: string): Promise<number> {
   return runMutation(async () => {
     const queue = await loadQueue();
-    await saveQueue(queue.filter((item) => {
+    const kept = queue.filter((item) => {
       if (item.op !== 'activity' || geohash8(item.payload.pub.lat, item.payload.pub.lng) !== pubKey) return true;
       const activityAt = item.payload.scheduledFor ?? item.payload.startedAt;
       return !!activityAt && Date.parse(activityAt) > Date.parse(closedAt);
-    }));
+    });
+    if (kept.length === queue.length) return 0;
+    await saveQueue(kept);
+    return queue.filter((item) => item.op === 'activity' && !item.payload.scheduledFor && !kept.includes(item)).length;
   });
 }
 

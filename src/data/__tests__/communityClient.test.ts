@@ -2,6 +2,7 @@ import {
   buildCommunityEntry,
   beerToWire,
   beerFromWire,
+  rebaseCommunityEntry,
   type CommunityInput,
 } from '../communityClient';
 import { emptyWeeklyHours } from '../communityHours';
@@ -120,5 +121,81 @@ describe('buildCommunityEntry', () => {
       'c',
     );
     expect(entry.external_id).toBeNull();
+  });
+});
+
+describe('rebaseCommunityEntry', () => {
+  const pilsner = { name: 'Pilsner Urquell 12°' };
+  const kozel65 = { name: 'Kozel 11°', priceCzk: 65 };
+  const kozel70 = { name: 'Kozel 11°', priceCzk: 70 };
+  const pub = { externalId: null, name: 'U Zlatého tygra', lat: 50.0855, lng: 14.4186 };
+  const server = (beers: CommunityInput['beers'] = [], hours: CommunityInput['hours'] = undefined) => ({
+    beers: beers ?? [],
+    communityHours: hours ?? null,
+    openingHours: null,
+  });
+
+  it('keeps a beer the offline editor never showed when it fixes another one', () => {
+    const entry = buildCommunityEntry({ ...pub, beers: [kozel70], beersBase: [kozel65] }, 'c1');
+    const sent = rebaseCommunityEntry(entry, server([pilsner, kozel65]));
+    expect(sent.beers).toEqual([{ name: 'Pilsner Urquell 12°' }, { name: 'Kozel 11°', price_czk: 70 }]);
+    expect(sent).not.toHaveProperty('beers_base');
+  });
+
+  it('adds beers to a menu the cold-started editor did not know', () => {
+    const entry = buildCommunityEntry({ ...pub, beers: [kozel65], beersBase: [] }, 'c1');
+    expect(rebaseCommunityEntry(entry, server([pilsner])).beers).toEqual([
+      { name: 'Kozel 11°', price_czk: 65 },
+      { name: 'Pilsner Urquell 12°' },
+    ]);
+  });
+
+  it('puts an edited beer the server names differently first, so the server keeps the new price', () => {
+    const entry = buildCommunityEntry({ ...pub, beers: [kozel70], beersBase: [kozel65] }, 'c1');
+    const catalogued = { name: 'Velkopopovický Kozel 11°', priceCzk: 65 };
+    expect(rebaseCommunityEntry(entry, server([pilsner, catalogued])).beers).toEqual([
+      { name: 'Kozel 11°', price_czk: 70 },
+      { name: 'Pilsner Urquell 12°' },
+      { name: 'Velkopopovický Kozel 11°', price_czk: 65 },
+    ]);
+  });
+
+  it('keeps a beer someone else added when the menu has no room left for both', () => {
+    const eleven = Array.from({ length: 11 }, (_, i) => ({ name: `Pivo ${i + 1}` }));
+    const entry = buildCommunityEntry({ ...pub, beers: [...eleven, { name: 'Moje nové' }], beersBase: eleven }, 'c1');
+    const names = rebaseCommunityEntry(entry, server([...eleven, { name: 'Cizí nové' }])).beers?.map((beer) => beer.name);
+    expect(names).toHaveLength(12);
+    expect(names).toContain('Cizí nové');
+    expect(names).not.toContain('Moje nové');
+  });
+
+  it('sends the edited list as it is when the server still has the menu the editor showed', () => {
+    const entry = buildCommunityEntry({ ...pub, beers: [pilsner, kozel65, { name: 'Gambrinus 10°' }], beersBase: [pilsner, kozel65] }, 'c1');
+    expect(rebaseCommunityEntry(entry, server([kozel65, pilsner])).beers).toEqual(entry.beers);
+  });
+
+  it('still removes a beer the person saw on the full menu and took off', () => {
+    const entry = buildCommunityEntry({ ...pub, beers: [kozel65], beersBase: [pilsner, kozel65] }, 'c1');
+    expect(rebaseCommunityEntry(entry, server([pilsner, kozel65])).beers).toEqual([{ name: 'Kozel 11°', price_czk: 65 }]);
+  });
+
+  it('gives the same payload when the same edit is applied twice', () => {
+    const entry = buildCommunityEntry({ ...pub, beers: [kozel70], beersBase: [kozel65] }, 'c1');
+    const first = rebaseCommunityEntry(entry, server([pilsner, kozel65]));
+    const second = rebaseCommunityEntry(entry, server(first.beers!.map(beerFromWire)));
+    expect(second).toEqual(first);
+  });
+
+  it('sends only the days the person changed and keeps the rest as the server has them', () => {
+    const known = { ...emptyWeeklyHours(), mo: [['16:00', '23:00'] as [string, string]], fr: [['16:00', '01:00'] as [string, string]] };
+    const edited = { ...emptyWeeklyHours(), sa: [['14:00', '23:00'] as [string, string]] };
+    const entry = buildCommunityEntry({ ...pub, hours: edited, hoursBase: emptyWeeklyHours() }, 'c1');
+    expect(rebaseCommunityEntry(entry, server([], known)).hours).toEqual({ ...known, sa: [['14:00', '23:00']] });
+    expect(rebaseCommunityEntry(entry, server([], known))).not.toHaveProperty('hours_base');
+  });
+
+  it('leaves an entry without a base, as released apps store it, unchanged', () => {
+    const entry = buildCommunityEntry({ ...pub, beers: [kozel70] }, 'c1');
+    expect(rebaseCommunityEntry(entry, server([pilsner]))).toEqual(entry);
   });
 });

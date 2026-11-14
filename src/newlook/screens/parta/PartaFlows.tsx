@@ -5,6 +5,7 @@ import { useNvParams, useNvRouter } from '../../duo/details';
 import type { ColumnAction } from '../../duo/paneContext';
 
 import { generateUuidV4 } from '@/data/account';
+import { reportProfileContent } from '@/data/auth';
 import {
   blockFriend,
   endFriendPubActivity,
@@ -19,6 +20,7 @@ import { fetchFriendDuel, fetchPlanDetail, remindPlan, type FriendDuel, type Pla
 import { fetchPubBoard, type PubBoard } from '@/data/pubBoardClient';
 import { t } from '@/i18n';
 import { badgeStates, PUBLIC_BADGE_KEYS } from '@/profile/badgeModel';
+import { useAccountStore } from '@/stores/accountStore';
 import { useHomeEveningStore } from '@/stores/homeEveningStore';
 
 import { BackHeader, Screen } from '../../components/chrome';
@@ -55,6 +57,7 @@ function Loading({ failed, onRetry, failedText }: { failed: boolean; onRetry: ()
 export function KamosScreen() {
   const router = useNvRouter();
   const { id = '' } = useNvParams<{ id: string }>();
+  const myId = useAccountStore((st) => st.profile?.id);
   const [detail, setDetail] = useState<FriendProfileDetail | null>(null);
   const [duel, setDuel] = useState<FriendDuel | null>(null);
   const [failed, setFailed] = useState(false);
@@ -79,6 +82,8 @@ export function KamosScreen() {
 
   const profile = detail?.profile;
   const name = personName(profile);
+  const isMe = !!profile && profile.id === myId;
+  const handle = profile?.nickname ? `@${profile.nickname}` : name;
   const stats = detail?.publicStats;
   const badges = detail?.badgeProgress
     ? badgeStates(detail.badgeProgress).filter((b) => PUBLIC_BADGE_KEYS.has(b.key) && b.tier > 0).length
@@ -188,56 +193,94 @@ export function KamosScreen() {
           </Card>
         </>
       ) : null}
-      <Card>
-        {detail.isFriend ? (
+      {isMe ? null : (
+        <Card>
+          {detail.isFriend ? (
+            <Row
+              leading={<Icon name="user-minus" size={18} color={C.text2} />}
+              title={t.nv.parta.removeFromParty}
+              titleColor={C.text2}
+              onPress={() =>
+                dialog({
+                  title: t.nv.parta.removeTitle(name),
+                  body: t.nv.parta.removeBody,
+                  actions: [
+                    { label: t.nv.parta.keep },
+                    {
+                      label: t.nv.parta.remove,
+                      kind: 'danger',
+                      onPress: () =>
+                        void removeFriend(profile.id).then((res) => {
+                          if (!res.ok) return toast({ kind: 'error', title: res.detail, icon: 'circle-alert' });
+                          void usePartaStore.getState().load();
+                          nvBack(router);
+                          toast({ kind: 'info', title: t.nv.parta.removed(name), icon: 'user-minus' });
+                        }),
+                    },
+                  ],
+                })
+              }
+            />
+          ) : null}
           <Row
-            leading={<Icon name="user-minus" size={18} color={C.text2} />}
-            title={t.nv.parta.removeFromParty}
+            leading={<Icon name="flag" size={18} color={C.text2} />}
+            title={t.nv.parta.report}
             titleColor={C.text2}
             onPress={() =>
               dialog({
-                title: t.nv.parta.removeTitle(name),
-                body: t.nv.parta.removeBody,
+                title: t.nv.parta.reportPersonTitle(handle),
+                body: t.nv.parta.reportPersonBody,
                 actions: [
-                  { label: t.nv.parta.keep },
+                  { label: t.nv.parta.back },
                   {
-                    label: t.nv.parta.remove,
+                    label: t.nv.parta.report,
                     kind: 'danger',
                     onPress: () =>
-                      void removeFriend(profile.id).then((res) => {
+                      void reportProfileContent({ targetAccountId: profile.id, reason: 'other', comment: handle }).then((res) =>
+                        res.ok
+                          ? toast({ kind: 'saved', title: t.nv.parta.reported, sub: t.nv.parta.reportedSub, icon: 'flag' })
+                          : toast({ kind: 'error', title: t.nv.parta.reportPersonError, icon: 'flag' }),
+                      ),
+                  },
+                ],
+              })
+            }
+          />
+          <Row
+            last
+            leading={<Icon name="ban" size={18} color={C.text2} />}
+            title={t.nv.parta.block}
+            titleColor={C.text2}
+            onPress={() =>
+              dialog({
+                title: t.nv.parta.blockTitle(handle),
+                body: t.nv.parta.blockBody,
+                actions: [
+                  { label: t.nv.parta.back },
+                  {
+                    label: t.nv.parta.block,
+                    kind: 'danger',
+                    onPress: () =>
+                      void blockFriend(profile.id).then((res) => {
                         if (!res.ok) return toast({ kind: 'error', title: res.detail, icon: 'circle-alert' });
                         void usePartaStore.getState().load();
                         nvBack(router);
-                        toast({ kind: 'info', title: t.nv.parta.removed(name), icon: 'user-minus' });
+                        toast({ kind: 'info', title: t.nv.parta.blocked, sub: t.nv.parta.blockedSub, icon: 'ban' });
                       }),
                   },
                 ],
               })
             }
           />
-        ) : null}
-        <Row
-          last
-          leading={<Icon name="ban" size={18} color={C.text2} />}
-          title={t.nv.parta.block}
-          titleColor={C.text2}
-          onPress={() =>
-            void blockFriend(profile.id).then((res) => {
-              if (!res.ok) return toast({ kind: 'error', title: res.detail, icon: 'circle-alert' });
-              void usePartaStore.getState().load();
-              nvBack(router);
-              toast({ kind: 'info', title: t.nv.parta.blocked, sub: t.nv.parta.blockedSub, icon: 'ban' });
-            })
-          }
-        />
-      </Card>
+        </Card>
+      )}
     </Screen>
   );
 }
 
 type BoardTab = 'piva' | 'objevitele' | 'maperi' | 'hospody';
 type BoardPeriodKey = Extract<BoardPeriod, 'week' | 'month' | 'all'>;
-type BoardRow = { key: string; initial: string; uri?: string | null; name: string; sub: string; score: string; me: boolean; rank: number };
+type BoardRow = { key: string; accountId?: string; initial: string; uri?: string | null; name: string; sub: string; score: string; me: boolean; rank: number };
 type BoardView = { rank: string; title: string; sub: string; rows: BoardRow[]; empty: boolean };
 
 function personBoard(tab: Exclude<BoardTab, 'hospody'>, board: Leaderboard, period: BoardPeriodKey): BoardView {
@@ -245,6 +288,7 @@ function personBoard(tab: Exclude<BoardTab, 'hospody'>, board: Leaderboard, peri
   const race = tab === 'maperi' ? '' : period === 'week' ? t.nv.parta.nextRaceWeek : period === 'month' ? t.nv.parta.nextRaceMonth : '';
   const rows: BoardRow[] = board.entries.slice(0, 10).map((e) => ({
     key: e.account.id,
+    accountId: e.isMe ? undefined : e.account.id,
     rank: e.rank,
     initial: personInitial(e.account),
     uri: e.account.avatarUrl,
@@ -287,6 +331,7 @@ function pubsBoard(board: PubBoard, period: BoardPeriodKey): BoardView {
 }
 
 export function ZebrickyScreen() {
+  const router = useNvRouter();
   const myAvatar = useMe().avatarUrl;
   const [tab, setTab] = useState<BoardTab>('piva');
   const [period, setPeriod] = useState<BoardPeriodKey>('week');
@@ -376,6 +421,7 @@ export function ZebrickyScreen() {
                   titleColor={r.me ? C.yellow : C.white}
                   titleWeight={700}
                   sub={r.sub || undefined}
+                  onPress={r.accountId ? () => router.push({ pathname: '/nv/kamos/[id]', params: { id: r.accountId ?? '' } }) : undefined}
                   trailing={
                     <D s={24} c={r.me ? C.yellow : C.white}>
                       {r.score}

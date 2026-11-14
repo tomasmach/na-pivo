@@ -28,7 +28,7 @@ import { enqueuePubCommunity } from '@/data/communityQueue';
 import { formatVolume, t } from '@/i18n';
 import { dayKeyOf, pubWallClock } from '@/pubPage/pubPageModel';
 import { useAccountStore } from '@/stores/accountStore';
-import { useCommunityStore } from '@/stores/communityStore';
+import { isHoursOverrideCurrent, useCommunityStore } from '@/stores/communityStore';
 import { selectPubVotes, usePubAmenitiesStore } from '@/stores/pubAmenitiesStore';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { formatPrice, getCurrencyRate, parsePriceInputToCzk } from '@/utils/currency';
@@ -117,8 +117,12 @@ export function DoplnitInfoScreen() {
   const [tab, setTab] = useState<'oteviracka' | 'piva' | 'vybaveni'>(initialTab === 'piva' ? 'piva' : 'oteviracka');
 
   const startHours = useMemo<WeeklyHours>(
-    () => override?.hours ?? pub?.communityHours ?? parseOsmOpeningHoursToWeeklyHours(pub?.openingHours) ?? emptyWeeklyHours(),
-    [override?.hours, pub?.communityHours, pub?.openingHours],
+    () =>
+      (isHoursOverrideCurrent(override, pub?.hoursUpdatedAt) ? override?.hours : undefined) ??
+      pub?.communityHours ??
+      parseOsmOpeningHoursToWeeklyHours(pub?.openingHours) ??
+      emptyWeeklyHours(),
+    [override, pub?.hoursUpdatedAt, pub?.communityHours, pub?.openingHours],
   );
   const draft = useKompasState((st) => (st.hoursDraft?.key === key ? st.hoursDraft.hours : null));
   const hours = draft ?? startHours;
@@ -245,8 +249,10 @@ export function DoplnitInfoScreen() {
         lng: pub.lng,
         city: pub.city,
         hours: sendHours,
+        hoursBase: startHours,
         beers: sendBeers,
-        beerMenuRotates: sendBeers ? menuRotates : undefined,
+        beersBase: currentBeers,
+        beerMenuRotates: sendBeers && rotating !== null ? rotating : undefined,
       },
       generateUuidV4(),
     );

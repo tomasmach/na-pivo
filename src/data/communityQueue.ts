@@ -16,8 +16,15 @@
  * client_id (minted at build time by the caller).
  */
 
-import { submitPubCommunity, type CommunityEntry, type CommunityResponse } from './communityClient';
+import {
+  rebaseCommunityEntry,
+  submitPubCommunity,
+  type CommunityEntry,
+  type CommunityResponse,
+} from './communityClient';
+import { isWeeklyHours } from './communityHours';
 import { geohash8 } from './geohash';
+import { fetchPubHours } from './hoursClient';
 import { createQueueStorage, createQueueLock } from './createQueue';
 
 const STORAGE_KEY = 'na-pivo-community-queue';
@@ -40,9 +47,25 @@ function isCommunityEntry(entry: unknown): entry is CommunityEntry {
     typeof e.lng === 'number' &&
     (e.external_id === null || typeof e.external_id === 'string') &&
     // At least one of hours/beers must be present for a valid contribution.
-    (e.hours !== undefined || e.beers !== undefined)
+    (e.hours !== undefined || e.beers !== undefined) &&
+    (e.beers_base === undefined ||
+      (Array.isArray(e.beers_base) && e.beers_base.every((b) => !!b && typeof b.name === 'string'))) &&
+    (e.hours_base === undefined || isWeeklyHours(e.hours_base))
   );
 }
+
+function hasBase(entry: CommunityEntry): boolean {
+  return entry.beers_base !== undefined || entry.hours_base !== undefined;
+}
+
+async function toSendable(entry: CommunityEntry): Promise<CommunityEntry | null> {
+  if (!hasBase(entry)) return entry;
+  const pub = { id: entry.client_id, name: entry.name, lat: entry.lat, lng: entry.lng, city: entry.city };
+  const now = (await fetchPubHours([pub])).get(pub.id);
+  return now ? rebaseCommunityEntry(entry, now) : null;
+}
+
+let clearGeneration = 0;
 
 const { load: loadQueue, save: saveQueue } = createQueueStorage<CommunityEntry>(
   STORAGE_KEY,
@@ -58,6 +81,7 @@ const enqueueTask = createQueueLock();
  *  backend envelope (the Mapér XP snapshot) for the entry it just enqueued. */
 async function flushLocked(): Promise<Map<string, CommunityResponse>> {
   const delivered = new Map<string, CommunityResponse>();
+  const generation = clearGeneration;
   const queue = await loadQueue();
   if (queue.length === 0) return delivered;
 
@@ -70,7 +94,9 @@ async function flushLocked(): Promise<Map<string, CommunityResponse>> {
       remaining.push(entry);
       continue;
     }
-    const result = await submitPubCommunity(entry);
+    const sendable = await toSendable(entry);
+    if (generation !== clearGeneration) return delivered;
+    const result = sendable ? await submitPubCommunity(sendable) : null;
     // 400/422: this payload can never succeed, so it is dropped for good.
     if (result === 'permanent-error') continue;
     if (result) {
@@ -104,7 +130,13 @@ export function enqueuePubCommunity(entry: CommunityEntry): Promise<CommunityRes
     // earlier one would move it past a one-beer change queued after it.
     const latest = queue.filter((queued) => entryCell(queued) === cell).at(-1);
     let next: CommunityEntry[];
-    if (entry.beer_change === undefined && latest && latest.beer_change === undefined) {
+    if (
+      entry.beer_change === undefined &&
+      latest &&
+      latest.beer_change === undefined &&
+      !hasBase(entry) &&
+      !hasBase(latest)
+    ) {
       next = queue.filter((queued) => queued !== latest);
       next.push({
         ...entry,
@@ -134,6 +166,7 @@ export function flushCommunityQueue(): Promise<void> {
 }
 
 export function clearCommunityQueue(): Promise<void> {
+  clearGeneration += 1;
   return enqueueTask(async () => {
     await saveQueue([]);
   });

@@ -1,6 +1,7 @@
 import { normalizeDrinkType } from '@/drinks/drinkTypes';
 import { formatVolume, t } from '@/i18n';
 import type { TallyDrink } from '@/stores/tallyStore';
+import { getCurrencyRate, type PriceCurrency } from '@/utils/currency';
 
 import { dateOfDay } from './eveningData';
 
@@ -32,4 +33,8 @@ export function nightDayLabel(day: string): string {
 /** "Pilsner Urquell 12°" already says its degrees, so nobody needs to be asked. */
 export function nameStatesDegree(beerName: string): boolean {
   return /\d\s*°/.test(beerName);
+}
+
+export function priceInputOf(czk: number, currency: PriceCurrency): string {
+  return String(Math.round((czk / (getCurrencyRate(currency) ?? 1)) * 100) / 100);
 }

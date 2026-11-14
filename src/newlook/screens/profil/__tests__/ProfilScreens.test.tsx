@@ -6,7 +6,8 @@ import { fetchFriendsDashboard, updateFriendSettings } from '@/data/friendsClien
 import { t } from '@/i18n';
 
 import { usePartaStore } from '../../parta/partaStore';
-import { PrihlaseniScreen, SpravaPartyScreen } from '../ProfilScreens';
+import { useAccountStore } from '@/stores/accountStore';
+import { PrihlaseniScreen, SpravaPartyScreen, ViditelnostScreen } from '../ProfilScreens';
 import { legalUrl } from '../profilModel';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -23,8 +24,9 @@ jest.mock('react-native-reanimated', () => {
   const extra = { Easing: { ...lean.Easing, bezier: () => (x: number) => x }, ReduceMotion: { System: 'system', Always: 'always', Never: 'never' } };
   return new Proxy({ ...lean, ...extra }, { get: (target, key) => (key in target ? target[key as keyof typeof target] : chain) });
 });
+const mockRouter = { push: jest.fn(), back: jest.fn(), replace: jest.fn(), canGoBack: () => true };
 jest.mock('expo-router', () => ({
-  useRouter: () => ({ push: jest.fn(), back: jest.fn(), replace: jest.fn(), canGoBack: () => true }),
+  useRouter: () => mockRouter,
   useLocalSearchParams: () => ({}),
   useFocusEffect: (run: () => void) => jest.requireActual('react').useEffect(run, [run]),
 }));
@@ -145,5 +147,92 @@ describe('ghost mode in Správa party', () => {
     await act(async () => ghostToggle(renderer).props.onChange(true));
     expect(ghostToggle(renderer).props.value).toBe(false);
     expect(usePartaStore.getState().dashboard?.settings.ghostMode).toBe(false);
+  });
+});
+
+describe('profile visibility after registration', () => {
+  const byTestId = (renderer: any, id: string) => renderer.root.find((n: any) => n.props.testID === id && (typeof n.props.onPress === 'function' || typeof n.props.onChangeText === 'function'));
+  const profile = { emailVerified: true, created: true, nickname: null };
+
+  beforeEach(() => jest.clearAllMocks());
+
+  async function signIn(mode: 'login' | 'register') {
+    const register = jest.fn(async () => ({ ok: true, profile }));
+    const login = jest.fn(async () => ({ ok: true, profile: { ...profile, created: false, nickname: 'tomas' } }));
+    useAccountStore.setState({ register, login } as any);
+    let renderer: any;
+    await act(async () => {
+      renderer = TestRenderer.create(<PrihlaseniScreen />);
+    });
+    if (mode === 'register') {
+      const tabs = renderer.root.find((n: any) => Array.isArray(n.props.options) && typeof n.props.onChange === 'function');
+      await act(async () => tabs.props.onChange('register'));
+    }
+    await act(async () => byTestId(renderer, 'auth-email').props.onChangeText('novy@example.com'));
+    await act(async () => byTestId(renderer, 'auth-password').props.onChangeText('heslo12345'));
+    await act(async () => byTestId(renderer, 'auth-submit').props.onPress());
+    return { register, login };
+  }
+
+  it('sends a new account to the visibility question first', async () => {
+    const { register } = await signIn('register');
+    expect(register).toHaveBeenCalled();
+    expect(mockRouter.replace).toHaveBeenCalledWith('/nv/viditelnost');
+    expect(mockRouter.replace).not.toHaveBeenCalledWith('/nv/upravit-profil');
+  });
+
+  it('does not ask when logging in to an existing account', async () => {
+    const { login } = await signIn('login');
+    expect(login).toHaveBeenCalled();
+    expect(mockRouter.replace).not.toHaveBeenCalledWith('/nv/viditelnost');
+  });
+
+  const backPress = jest.fn();
+  beforeAll(() => {
+    (jest.requireActual('react-native') as any).BackHandler = {
+      addEventListener: (event: string, handler: () => boolean) => {
+        backPress.mockImplementation(handler);
+        return { remove: () => {} };
+      },
+    };
+  });
+
+  async function renderQuestion(updateProfile: jest.Mock) {
+    useAccountStore.setState({ updateProfile } as any);
+    let renderer: any;
+    await act(async () => {
+      renderer = TestRenderer.create(<ViditelnostScreen />);
+    });
+    return renderer;
+  }
+  const choose = (renderer: any, title: string) => renderer.root.find((n: any) => n.props.accessibilityRole === 'radio' && typeof n.props.onPress === 'function' && n.props.accessibilityLabel.startsWith(title));
+
+  it('cannot go on without a choice and saves a private profile on the server before the profile edit', async () => {
+    const updateProfile = jest.fn(async () => ({ ok: true }));
+    const renderer = await renderQuestion(updateProfile);
+    expect(byTestId(renderer, 'visibility-confirm').props.disabled).toBe(true);
+    expect(renderer.root.findAll((n: any) => n.props.testID === 'visibility-skip')).toHaveLength(0);
+    expect(backPress()).toBe(true);
+
+    await act(async () => choose(renderer, t.profile.privacy.privateTitle).props.onPress());
+    await act(async () => byTestId(renderer, 'visibility-confirm').props.onPress());
+
+    expect(updateProfile).toHaveBeenCalledWith({ isPublic: false });
+    expect(mockRouter.replace).toHaveBeenCalledWith('/nv/upravit-profil');
+  });
+
+  it('says a failed save failed, stays, and saves on retry', async () => {
+    const updateProfile = jest.fn().mockResolvedValueOnce({ ok: false, code: 'network', detail: '' }).mockResolvedValueOnce({ ok: true });
+    const renderer = await renderQuestion(updateProfile);
+    await act(async () => choose(renderer, t.profile.privacy.publicTitle).props.onPress());
+    await act(async () => byTestId(renderer, 'visibility-confirm').props.onPress());
+
+    expect(mockRouter.replace).not.toHaveBeenCalled();
+    expect(renderer.root.findAll((n: any) => n.type === 'Text' && textOf(n) === t.profile.privacy.error).length).toBeGreaterThan(0);
+    expect(byTestId(renderer, 'visibility-skip')).toBeTruthy();
+
+    await act(async () => byTestId(renderer, 'visibility-confirm').props.onPress());
+    expect(updateProfile).toHaveBeenLastCalledWith({ isPublic: true });
+    expect(mockRouter.replace).toHaveBeenCalledWith('/nv/upravit-profil');
   });
 });
