@@ -1,6 +1,7 @@
 import {
   isBeerListOverrideCurrent,
   isBeerMenuTypeOverrideCurrent,
+  isHoursOverrideCurrent,
   type CommunityOverride,
   useCommunityStore,
 } from '@/stores/communityStore';
@@ -67,6 +68,18 @@ describe('community beer override precedence', () => {
     expect(override.beerMenuRotatesOverrideUpdatedAt).toBe(STALE_AT);
     expect(isBeerListOverrideCurrent(override, SERVER_AT)).toBe(false);
     expect(isBeerMenuTypeOverrideCurrent(override, SERVER_AT)).toBe(false);
+  });
+
+  it('does not revive stale hours after a beer-only patch', () => {
+    const week = { mo: [], tu: [], we: [], th: [], fr: [], sa: [], su: [] };
+    useCommunityStore.setState({ overrides: { [CELL]: { hours: week, updatedAt: STALE_AT } } });
+    useCommunityStore.getState().setOverride(CELL, { beers: [{ name: 'Nové pivo' }] });
+
+    const override = useCommunityStore.getState().overrides[CELL];
+    expect(override.updatedAt).toBe(LOCAL_AT);
+    expect(override.hoursOverrideUpdatedAt).toBe(STALE_AT);
+    expect(isHoursOverrideCurrent(override, SERVER_AT)).toBe(false);
+    expect(isHoursOverrideCurrent(override, '2026-07-22T11:59:59.000Z')).toBe(true);
   });
 
   it('refreshes an edited beer list without reviving a stale menu type', () => {
