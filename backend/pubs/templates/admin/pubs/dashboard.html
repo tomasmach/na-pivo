@@ -5,6 +5,7 @@
 
 {% block content %}
 <div class="flex flex-col gap-8">
+    {% if waiting %}
     <section>
         {% component "unfold/components/title.html" with class="mb-4" %}Čeká na tebe{% endcomponent %}
         <div class="grid grid-cols-1 gap-4 md:grid-cols-3">
@@ -17,6 +18,9 @@
         </div>
     </section>
 
+    {% endif %}
+
+    {% if week %}
     <section>
         {% component "unfold/components/title.html" with class="mb-4" %}Posledních 7 dní{% endcomponent %}
         <div class="grid grid-cols-1 gap-4 md:grid-cols-3">
@@ -30,6 +34,9 @@
         </div>
     </section>
 
+    {% endif %}
+
+    {% if feedback is not None %}
     <section>
         {% component "unfold/components/title.html" with class="mb-4" %}Nová zpětná vazba{% endcomponent %}
         <div class="border border-base-200 rounded-default divide-y divide-base-200 dark:border-base-800 dark:divide-base-800 dark:bg-base-900">
@@ -44,5 +51,6 @@
             {% endfor %}
         </div>
     </section>
+    {% endif %}
 </div>
 {% endblock %}

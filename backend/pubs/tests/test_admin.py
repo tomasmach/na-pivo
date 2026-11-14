@@ -4,7 +4,7 @@ from types import SimpleNamespace
 
 import pytest
 from django.contrib import admin
-from django.contrib.auth.models import User
+from django.contrib.auth.models import Permission, User
 
 from pubs.enrichment import geohash8
 from pubs.models import (
@@ -140,3 +140,23 @@ def test_dashboard_shows_what_waits_for_moderation(client):
     page = response.content.decode()
     assert "Počítadlo se vrátí na nulu" in page
     assert "Vyřešeno" not in page
+
+
+@pytest.mark.django_db
+def test_dashboard_shows_staff_only_the_models_they_may_view(client):
+    now = datetime.now(UTC)
+    FeedbackReport.objects.create(client_id=uuid.uuid4(), category="bug", message="Soukromá zpráva", updated_at=now)
+    staff = User.objects.create_user("staff", "staff@example.com", "x", is_staff=True)
+    client.force_login(staff)
+
+    page = client.get("/admin/").content.decode()
+
+    assert "Soukromá zpráva" not in page
+    assert "/admin/pubs/feedbackreport/" not in page
+
+    staff.user_permissions.add(Permission.objects.get(codename="view_feedbackreport"))
+    response = client.get("/admin/")
+
+    assert [label for label, _, _ in response.context["waiting"]] == ["Zpětná vazba"]
+    assert response.context["week"] == []
+    assert "Soukromá zpráva" in response.content.decode()

@@ -72,17 +72,22 @@ def _changelist(model_name: str) -> str:
     return reverse(f"admin:{app}_{model_name}_changelist")
 
 
-def navigation(request):  # noqa: ARG001
+def _can_view(request, model_name: str) -> bool:
+    app = "auth" if model_name in ("user", "group") else "pubs"
+    user = request.user
+    return user.has_perm(f"{app}.view_{model_name}") or user.has_perm(f"{app}.change_{model_name}")
+
+
+def navigation(request):
     groups = [{"items": [{"title": "Nástěnka", "icon": "dashboard", "link": reverse("admin:index")}]}]
     for title, items in SECTIONS:
-        groups.append({
-            "title": title,
-            "collapsible": title in ("Hospody", "Pivo", "Deník", "Systém"),
-            "items": [
-                {"title": label, "icon": icon, "link": _changelist(model), **({"badge": badge} if badge else {})}
-                for model, label, icon, badge in items
-            ],
-        })
+        visible = [
+            {"title": label, "icon": icon, "link": _changelist(model), **({"badge": badge} if badge else {})}
+            for model, label, icon, badge in items
+            if _can_view(request, model)
+        ]
+        if visible:
+            groups.append({"title": title, "collapsible": title in ("Hospody", "Pivo", "Deník", "Systém"), "items": visible})
     return groups
 
 
@@ -114,20 +119,29 @@ def reported_tours(request):  # noqa: ARG001
     return _badge(_waiting_tours().count())
 
 
-def dashboard(request, context):  # noqa: ARG001
+def dashboard(request, context):
     week_ago = timezone.now() - timedelta(days=7)
-    changelist = _changelist
+    waiting = [
+        ("contentreport", "Nahlášený obsah", _waiting_content_reports, "?status__exact=new"),
+        ("feedbackreport", "Zpětná vazba", _waiting_feedback, "?status__exact=new"),
+        ("tourpublication", "Túry skryté nahlášením", _waiting_tours, "?status__exact=hidden&hidden_reason=reports"),
+    ]
+    week = [
+        ("account", "Nové účty", Account.objects, "created_at"),
+        ("drinklog", "Vypitá piva", DrinkLog.objects, "drank_at"),
+        ("publishednight", "Večery", PublishedNight.objects, "created_at"),
+    ]
     context.update({
         "waiting": [
-            ("Nahlášený obsah", _waiting_content_reports().count(), changelist("contentreport") + "?status__exact=new"),
-            ("Zpětná vazba", _waiting_feedback().count(), changelist("feedbackreport") + "?status__exact=new"),
-            ("Túry skryté nahlášením", _waiting_tours().count(), changelist("tourpublication") + "?status__exact=hidden&hidden_reason=reports"),
+            (label, rows().count(), _changelist(model) + query)
+            for model, label, rows, query in waiting
+            if _can_view(request, model)
         ],
         "week": [
-            ("Nové účty", Account.objects.filter(created_at__gte=week_ago).count(), f"{Account.objects.count()} celkem"),
-            ("Vypitá piva", DrinkLog.objects.filter(drank_at__gte=week_ago).count(), f"{DrinkLog.objects.count()} celkem"),
-            ("Večery", PublishedNight.objects.filter(created_at__gte=week_ago).count(), f"{PublishedNight.objects.count()} celkem"),
+            (label, rows.filter(**{f"{field}__gte": week_ago}).count(), f"{rows.count()} celkem")
+            for model, label, rows, field in week
+            if _can_view(request, model)
         ],
-        "feedback": _waiting_feedback().order_by("-created_at")[:6],
+        "feedback": _waiting_feedback().order_by("-created_at")[:6] if _can_view(request, "feedbackreport") else None,
     })
     return context
