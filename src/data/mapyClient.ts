@@ -115,6 +115,8 @@ interface MapyGeocodeItem {
   regionalStructure?: { name: string; type: string }[];
   /** Additive backend classification for opt-in non-pub tap places. */
   discoveryKind?: 'pub' | 'seasonal_stand' | 'campsite' | 'sports_venue';
+  /** Additive backend classification: 'restaurant' for a restaurant that pours beer. */
+  placeKind?: string;
   /** Additive backend-only field: Google Place ID, attached by our backend's
    *  nearby endpoint when known. Never present on raw Mapy.cz responses. */
   googlePlaceId?: string | null;
@@ -626,6 +628,7 @@ function itemToPub(
     venueKind: hasStrongPubSignal(item.name, item.label) ? 'pub' : 'maybe',
     discoveryKind: item.discoveryKind ?? 'pub',
   };
+  if (item.placeKind === 'restaurant') pub.placeKind = 'restaurant';
   const address = pickAddress(item);
   if (address) pub.address = address;
   const city = pickCity(item);

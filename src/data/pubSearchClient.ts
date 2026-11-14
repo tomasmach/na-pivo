@@ -1,6 +1,6 @@
 import { getBackendEndpoint } from './backendConfig';
 import { chainAbortSignal } from './apiFetch';
-import { getAllLoadedPubs, hydratePubsSnapshot, type Pub } from './pubs';
+import { getAllLoadedPubs, hydratePubsSnapshot, type PlaceKind, type Pub } from './pubs';
 
 const MAX_RESULTS = 20;
 const REQUEST_TIMEOUT_MS = 8_000;
@@ -14,6 +14,7 @@ export type PubSearchResult = {
   city?: string;
   location?: string;
   providerPlaceId?: string;
+  placeKind?: PlaceKind;
   /** Present for catalogue results so resolving keeps hours, beers and other data. */
   pub?: Pub;
 };
@@ -30,6 +31,7 @@ type WireSearchItem = {
   location?: unknown;
   address?: unknown;
   city?: unknown;
+  placeKind?: unknown;
   position?: { lat?: unknown; lon?: unknown };
   regionalStructure?: { name?: unknown; type?: unknown }[];
 };
@@ -88,13 +90,14 @@ function resultFromPub(pub: Pub): PubSearchResult {
     city: pub.city,
     location: [pub.address, pub.city].filter(Boolean).join(', ') || undefined,
     providerPlaceId: pub.googlePlaceId,
+    placeKind: pub.placeKind,
     pub,
   };
 }
 
 function resultFromWire(
   value: unknown,
-  fallback?: Pick<PubSearchResult, 'id' | 'name' | 'providerPlaceId'>,
+  fallback?: Pick<PubSearchResult, 'id' | 'name' | 'providerPlaceId' | 'placeKind'>,
 ): PubSearchResult | null {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
   const item = value as WireSearchItem;
@@ -131,6 +134,7 @@ function resultFromWire(
     city,
     location: text(item.location),
     providerPlaceId,
+    ...(item.placeKind === 'restaurant' || fallback?.placeKind === 'restaurant' ? { placeKind: 'restaurant' as const } : {}),
   };
 }
 
@@ -257,6 +261,7 @@ export async function resolvePubSearchResult(
       address: result.address,
       city: result.city,
       googlePlaceId: result.providerPlaceId,
+      placeKind: result.placeKind,
     };
   }
   if (!result.providerPlaceId) return null;
@@ -281,5 +286,6 @@ export async function resolvePubSearchResult(
     address: resolved.address ?? result.address ?? result.location,
     city: resolved.city ?? result.city,
     googlePlaceId: resolved.providerPlaceId ?? result.providerPlaceId,
+    placeKind: resolved.placeKind,
   };
 }

@@ -7,7 +7,7 @@ import { suggestBeerBrands, type BeerBrandSuggestion } from '@/data/beerSuggesti
 import { normalizeBeerName } from '@/data/communityHours';
 import { fetchFriendsLive } from '@/data/friendsClient';
 import { geohash8 } from '@/data/geohash';
-import type { Pub } from '@/data/pubs';
+import type { PlaceKind, Pub } from '@/data/pubs';
 import { localPubSearch, resolvePubSearchResult, searchPubNames, type PubSearchResult } from '@/data/pubSearchClient';
 import { BEER_NAME_FILTER_PREFIX } from '@/data/pubSearchFilters';
 import { t } from '@/i18n';
@@ -42,6 +42,10 @@ function areaLine(pub: { city?: string; address?: string; hoursStatus?: string; 
   const hours = hoursNow(pub);
   if (hours.tone === 'open' && hours.until) return area ? L().areaOpenUntil(area, hours.until) : L().openUntil(hours.until);
   return area || undefined;
+}
+
+function withPlaceKind(kind: PlaceKind | undefined, line: string | undefined): string | undefined {
+  return kind === 'restaurant' ? [t.nv.common.restaurant, line].filter(Boolean).join(' · ') : line;
 }
 
 /** Friends sitting at a pub right now, from the same live feed as the map's "Parta teď". */
@@ -269,9 +273,9 @@ export function HledaniScreen() {
                 <Row
                   key={r.id}
                   last={i === results.length - 1}
-                  leading={<Tile icon="beer" />}
+                  leading={<Tile icon={r.placeKind === 'restaurant' ? 'utensils' : 'beer'} />}
                   title={r.name}
-                  sub={r.pub ? areaLine(r.pub) : r.location || [r.address, r.city].filter(Boolean).join(', ') || undefined}
+                  sub={withPlaceKind(r.placeKind, r.pub ? areaLine(r.pub) : r.location || [r.address, r.city].filter(Boolean).join(', ') || undefined)}
                   trailing={openingId === r.id ? <Spinner /> : null}
                   onPress={() => void openResult(r)}
                 />
@@ -322,7 +326,7 @@ export function HledaniScreen() {
                 {L().inView}
               </T>
               <T s={13} c={C.muted}>
-                {L().inViewCount(nearbyRows.length)}
+                {nearbyRows.some(({ pub }) => pub.placeKind === 'restaurant') ? L().inViewPlacesCount(nearbyRows.length) : L().inViewCount(nearbyRows.length)}
               </T>
             </View>
             <Card>
@@ -333,9 +337,9 @@ export function HledaniScreen() {
                   <Row
                     key={`${pub.id}-${pub.lat}`}
                     last={i === nearbyRows.length - 1}
-                    leading={<Tile icon="beer" />}
+                    leading={<Tile icon={pub.placeKind === 'restaurant' ? 'utensils' : 'beer'} />}
                     title={pub.name}
-                    sub={tap ? (czk ? L().beerPrice(tap.name, formatPrice(czk, currency)) : tap.name) : L().unknownMenu}
+                    sub={withPlaceKind(pub.placeKind, tap ? (czk ? L().beerPrice(tap.name, formatPrice(czk, currency)) : tap.name) : L().unknownMenu)}
                     trailing={<Distance meters={distanceMeters} />}
                     onPress={() => openPub(pub)}
                   />

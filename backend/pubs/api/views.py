@@ -128,6 +128,7 @@ from pubs.beer_photo_gallery import BEER_PHOTO_SHARED_VISIBILITIES, beer_photo_k
 from pubs.beer_ranking import classify_styles
 from pubs.beer_watch import pub_product_ids, record_new_tap_events
 from pubs.community_trust import trusted_account_q
+from pubs.discovery import PLACE_RESTAURANT, place_kind_for
 from pubs.enrichment import (
     GoogleGeocodingSource,
     GoogleGeocodingUnavailableError,
@@ -10902,6 +10903,13 @@ def _with_pub_signal_items(signal_items: list[dict], provider_items: list[dict])
 
     signal_index = _PubMatchIndex(signal_items)
     remaining_provider_items = [item for item in provider_items if not signal_index.matches(item)]
+    restaurant_index = _PubMatchIndex(
+        [item for item in provider_items if item.get("placeKind") == PLACE_RESTAURANT]
+    )
+    signal_items = [
+        {**signal, "placeKind": PLACE_RESTAURANT} if restaurant_index.matches(signal) else signal
+        for signal in signal_items
+    ]
     return [*signal_items, *remaining_provider_items]
 
 
@@ -11022,6 +11030,8 @@ def _pub_directory_item(row: PubDirectory) -> dict:
     if row.discovery_kind != PubDirectory.DiscoveryKind.PUB:
         item["label"] = "Bar"
         item["discoveryKind"] = row.discovery_kind
+    elif place_kind_for(name=row.name, venue_kind=row.venue_kind) == PLACE_RESTAURANT:
+        item["placeKind"] = PLACE_RESTAURANT
     return item
 
 

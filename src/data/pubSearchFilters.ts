@@ -40,6 +40,8 @@ export interface PubSearchFilters {
    * with an explicit tap/beer/bar/pub signal. Default false keeps the compass
    * catalogue identical to released versions. */
   includeOtherPlaces?: boolean;
+  /** Restaurants that pour beer also count for the compass and the map. Client-side only. */
+  includeRestaurants?: boolean;
   /**
    * Reference beer price range in CZK. A null boundary is open. Unlike
    * beerBrand/amenityKeys this filter is applied CLIENT-SIDE over the prices
@@ -53,6 +55,7 @@ export const EMPTY_PUB_SEARCH_FILTERS: PubSearchFilters = {
   beerBrand: null,
   amenityKeys: [],
   includeOtherPlaces: false,
+  includeRestaurants: false,
   priceMinCzk: null,
   priceMaxCzk: null,
 };
@@ -94,6 +97,7 @@ export function normalizePubSearchFilters(filters: PubSearchFilters): PubSearchF
     beerBrand: beerKey && beerLabel ? { key: beerKey, label: beerLabel } : null,
     amenityKeys: normalizeAmenityFilterKeys(filters.amenityKeys),
     includeOtherPlaces: filters.includeOtherPlaces === true,
+    includeRestaurants: filters.includeRestaurants === true,
     priceMinCzk,
     priceMaxCzk,
   };
@@ -101,16 +105,16 @@ export function normalizePubSearchFilters(filters: PubSearchFilters): PubSearchF
 
 export function pubSearchFilterKey(filters: PubSearchFilters): string {
   const normalized = normalizePubSearchFilters(filters);
-  return `${normalized.beerBrand?.key ?? ''}|${normalized.amenityKeys.join(',')}|${normalized.includeOtherPlaces ? 'other' : ''}|${normalized.priceMinCzk ?? ''}:${normalized.priceMaxCzk ?? ''}`;
+  return `${normalized.beerBrand?.key ?? ''}|${normalized.amenityKeys.join(',')}|${normalized.includeOtherPlaces ? 'other' : ''}|${normalized.priceMinCzk ?? ''}:${normalized.priceMaxCzk ?? ''}${normalized.includeRestaurants ? '|restaurants' : ''}`;
 }
 
 /**
  * Cache/request identity of the filters that actually go to the backend. The
- * price filter is client-side only, so two filter states differing only in
- * price must share one backend fetch.
+ * price and restaurant filters are client-side only, so two filter states
+ * differing only in them must share one backend fetch.
  */
 export function backendPubSearchFilterKey(filters: PubSearchFilters): string {
-  return pubSearchFilterKey({ ...filters, priceMinCzk: null, priceMaxCzk: null });
+  return pubSearchFilterKey({ ...filters, priceMinCzk: null, priceMaxCzk: null, includeRestaurants: false });
 }
 
 export function activePubSearchFilterCount(filters: PubSearchFilters): number {
@@ -119,6 +123,7 @@ export function activePubSearchFilterCount(filters: PubSearchFilters): number {
     normalized.amenityKeys.length +
     (normalized.beerBrand ? 1 : 0) +
     (normalized.includeOtherPlaces ? 1 : 0) +
+    (normalized.includeRestaurants ? 1 : 0) +
     (normalized.priceMinCzk !== null || normalized.priceMaxCzk !== null ? 1 : 0)
   );
 }

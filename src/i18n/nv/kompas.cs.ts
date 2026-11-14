@@ -3,6 +3,7 @@ import { czechPlural } from '../plural';
 
 const pubs = (n: number) => czechPlural(n, { one: `${n} hospoda`, few: `${n} hospody`, many: `${n} hospod` });
 const beers = (n: number) => czechPlural(n, { one: `${n} pivo`, few: `${n} piva`, many: `${n} piv` });
+const places = (n: number) => czechPlural(n, { one: `${n} místo`, few: `${n} místa`, many: `${n} míst` });
 
 export const kompasCs = {
   // — Kompas tab: map and compass —
@@ -74,6 +75,7 @@ export const kompasCs = {
   cancel: 'Zrušit',
   showPubs: (n: number) => `Ukázat ${pubs(n)}`,
   showPubsUnknown: 'Ukázat hospody',
+  showPlaces: (n: number) => `Ukázat ${places(n)}`,
   nothingFits: 'Nic nesedí',
   openOnly: 'Jen otevřené',
   openOnlySub: 'a ty s neznámou dobou',
@@ -87,6 +89,7 @@ export const kompasCs = {
   billiards: 'Kulečník',
   foosball: 'Fotbálek',
   standsAndCamps: 'Stánky a kempy',
+  restaurantsWithBeer: 'Restaurace s pivem',
   practicalGroup: 'Praktické',
   amenityLimit: (count: number) =>
     `Vyber nejvýš ${count} ${czechPlural(count, { one: 'vlastnost', few: 'vlastnosti', many: 'vlastností' })}, ať má kompas kde hledat.`,
@@ -121,6 +124,7 @@ export const kompasCs = {
   findPouringSub: 'Ukážu je na mapě',
   inView: 'Nejblíž k tobě',
   inViewCount: pubs,
+  inViewPlacesCount: places,
   unknownMenu: 'Nabídku neznám',
   areaOpenUntil: (area: string, time: string) => `${area} · otevřeno do ${time}`,
   notFound: (query: string) => `Na „${query}“ jsem nic nenašel.`,

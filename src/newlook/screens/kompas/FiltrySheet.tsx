@@ -6,7 +6,7 @@ import { nvBack } from '@/newlook/navigation';
 import { AMENITIES, type AmenityKey } from '@/data/amenities';
 import { POPULAR_BEER_BRANDS } from '@/data/beerSuggestionsClient';
 import { geohash8 } from '@/data/geohash';
-import { getAllLoadedPubs } from '@/data/pubs';
+import { getAllLoadedPubs, isRestaurant } from '@/data/pubs';
 import { MAX_AMENITY_FILTERS, backendPubSearchFilterKey, pubMatchesPriceFilter } from '@/data/pubSearchFilters';
 import { trackUiInteraction } from '@/data/uxTelemetry';
 import { t } from '@/i18n';
@@ -73,6 +73,7 @@ export function FiltrySheet() {
         !reportedIds.includes(pub.id) &&
         !reportedKeys.includes(geohash8(pub.lat, pub.lng)) &&
         (filters.includeOtherPlaces || pub.discoveryKind === undefined || pub.discoveryKind === 'pub') &&
+        (filters.includeRestaurants || !isRestaurant(pub)) &&
         !(openOnly && pubOpeningVerdict(pub) === false) &&
         pubMatchesPriceFilter(pub, filters.priceMinCzk, filters.priceMaxCzk),
     ).length;
@@ -91,13 +92,14 @@ export function FiltrySheet() {
   };
   const garden = filters.amenityKeys.includes('seating_garden');
   const stands = filters.includeOtherPlaces === true;
+  const restaurants = filters.includeRestaurants === true;
   return (
     <Sheet
       title={L.filtersTitle}
       footer={
         <ButtonPair
           left={L.cancel}
-          right={count === null ? L.showPubsUnknown : count ? L.showPubs(count) : L.nothingFits}
+          right={count === null ? L.showPubsUnknown : !count ? L.nothingFits : restaurants ? L.showPlaces(count) : L.showPubs(count)}
           onLeft={() => nvBack(router)}
           onRight={() => {
             trackUiInteraction('compass_filters_apply', 'submit');
@@ -169,6 +171,7 @@ export function FiltrySheet() {
       <Group title={L.placesGroup}>
         <Chip label={L.categories.garden} icon={garden ? 'check' : 'trees'} active={garden} onPress={() => toggleAmenity('seating_garden')} />
         <Chip label={L.standsAndCamps} icon={stands ? 'check' : 'tent'} active={stands} onPress={() => st.setFilters({ includeOtherPlaces: !stands })} />
+        <Chip label={L.restaurantsWithBeer} icon={restaurants ? 'check' : 'utensils'} active={restaurants} onPress={() => st.setFilters({ includeRestaurants: !restaurants })} />
       </Group>
       <Group title={L.practicalGroup}>
         {PRACTICAL.map(({ key, icon, label }) => {

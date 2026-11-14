@@ -16,6 +16,7 @@ import {
   findNearestPub,
   findRandomPubInRadius,
   isLoaded,
+  isRestaurant,
   renameLocalPub,
 } from '@/data/pubs';
 import type { HoursStatus, Pub, VenueKind } from '@/data/pubs';
@@ -165,6 +166,7 @@ export function useCompass(
   priceMaxCzk: number | null = null,
   sensorsEnabled: boolean = true,
   includeOtherPlaces: boolean = false,
+  includeRestaurants: boolean = false,
 ): UseCompassResult {
   // — Settings from store —
   const mode = useSettingsStore((s) => s.mode);
@@ -440,6 +442,7 @@ export function useCompass(
   const lastBeerBrandKeyRef = useRef<string>(activeBeerBrandKey);
   const lastAmenityKeyRef = useRef<string>(activeAmenityKey);
   const lastIncludeOtherPlacesRef = useRef(includeOtherPlaces);
+  const lastIncludeRestaurantsRef = useRef(includeRestaurants);
   // The price range is applied locally at selection time (no backend request), so
   // it only needs to drive a re-selection — not a refetch — when it changes.
   const lastPriceMinRef = useRef<number | null>(priceMinCzk);
@@ -497,8 +500,10 @@ export function useCompass(
     const beerBrandChanged = activeBeerBrandKey !== lastBeerBrandKeyRef.current;
     const amenityFilterChanged = activeAmenityKey !== lastAmenityKeyRef.current;
     const otherPlacesChanged = includeOtherPlaces !== lastIncludeOtherPlacesRef.current;
-    const priceFilterChanged =
-      priceMinCzk !== lastPriceMinRef.current || priceMaxCzk !== lastPriceMaxRef.current;
+    const localFilterChanged =
+      priceMinCzk !== lastPriceMinRef.current ||
+      priceMaxCzk !== lastPriceMaxRef.current ||
+      includeRestaurants !== lastIncludeRestaurantsRef.current;
     const pubDataChanged =
       (beerBrandChanged || amenityFilterChanged || otherPlacesChanged) &&
       pubDataRevision !== lastPubDataRevisionRef.current;
@@ -509,7 +514,7 @@ export function useCompass(
     // the next selection starts from a clean slate. seed/excludeRevision changes
     // are NOT context changes — they intentionally keep accumulating.
     const contextChanged =
-      modeChanged || maxKmChanged || positionMoved || pubDataChanged || priceFilterChanged;
+      modeChanged || maxKmChanged || positionMoved || pubDataChanged || localFilterChanged;
     if (contextChanged) {
       resetExclusions();
     }
@@ -523,7 +528,7 @@ export function useCompass(
       reportedChanged ||
       catalogChanged ||
       pubDataChanged ||
-      priceFilterChanged
+      localFilterChanged
     ) {
       lastTargetPosRef.current = currentPos;
       setHasSelectedTarget(true);
@@ -538,6 +543,7 @@ export function useCompass(
       lastIncludeOtherPlacesRef.current = includeOtherPlaces;
       lastPriceMinRef.current = priceMinCzk;
       lastPriceMaxRef.current = priceMaxCzk;
+      lastIncludeRestaurantsRef.current = includeRestaurants;
       lastPubDataRevisionRef.current = pubDataRevision;
       lastExcludeRevisionRef.current = excludeRevision;
 
@@ -553,12 +559,9 @@ export function useCompass(
       // derived Mapy.cz ids change between fetches, the cell does not.
       const excludeCacheKeys = reportedCacheKeys;
 
-      // Price range is a hard local filter: pubs with no known price are skipped
-      // too — the compass must not present an unknown price as affordable.
-      const filterPub =
-        priceMinCzk !== null || priceMaxCzk !== null
-          ? (candidate: Pub) => pubMatchesPriceFilter(candidate, priceMinCzk, priceMaxCzk)
-          : undefined;
+      const filterPub = (candidate: Pub) =>
+        (includeRestaurants || !isRestaurant(candidate)) &&
+        pubMatchesPriceFilter(candidate, priceMinCzk, priceMaxCzk);
 
       const pub =
         mode === 'nearest'
@@ -606,6 +609,7 @@ export function useCompass(
     activeBeerBrandKey,
     activeAmenityKey,
     includeOtherPlaces,
+    includeRestaurants,
     priceMinCzk,
     priceMaxCzk,
     activeFilterKey,
