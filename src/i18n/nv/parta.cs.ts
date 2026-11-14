@@ -175,6 +175,11 @@ export const partaCs = {
   block: 'Zablokovat',
   blocked: 'Zablokováno.',
   blockedSub: 'Odblokuješ ve Správě party.',
+  blockTitle: (name: string) => `Zablokovat ${name}?`,
+  blockBody: 'Zmizí ti z party, neuvidí tě a nepozve tě. Když ho pak odblokuješ, do party se tím nevrátí.',
+  reportPersonTitle: (name: string) => `Nahlásit ${name}?`,
+  reportPersonBody: 'Projdu si to. Hodí se na nevhodnou přezdívku, fotku nebo spam.',
+  reportPersonError: 'Nahlášení nedošlo. Zkus to znovu.',
   profileFailed: 'Profil se nedotáhl.',
 
   boards: 'Žebříčky',

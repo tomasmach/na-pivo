@@ -176,6 +176,11 @@ export const partaEn: Strings['nv']['parta'] = {
   block: 'Block',
   blocked: 'Blocked.',
   blockedSub: 'Unblock them in Crew settings.',
+  blockTitle: (name: string) => `Block ${name}?`,
+  blockBody: "They leave your crew, can't see you and can't invite you. Unblocking them later won't put them back in your crew.",
+  reportPersonTitle: (name: string) => `Report ${name}?`,
+  reportPersonBody: "I'll take a look. Use it for a rude nickname, photo or spam.",
+  reportPersonError: "The report didn't go through. Try again.",
   profileFailed: 'The profile did not come through.',
 
   boards: 'Leaderboards',
