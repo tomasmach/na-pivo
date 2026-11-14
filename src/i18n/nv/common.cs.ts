@@ -13,6 +13,7 @@ export const commonCs = {
   stepDown: 'Ubrat',
   duration: (hours: number, minutes: number) =>
     hours > 0 ? (minutes > 0 ? `${hours} h ${minutes} min` : `${hours} h`) : `${minutes} min`,
+  restaurant: 'restaurace',
   secretPub: 'Tajná hospoda',
   secretPubs: (n: number) => (n === 1 ? 'Tajná hospoda' : czechPlural(n, { one: `${n} tajná hospoda`, few: `${n} tajné hospody`, many: `${n} tajných hospod` })),
   secretReveal: 'Ťukni a prozradím kam',

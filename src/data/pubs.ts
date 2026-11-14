@@ -36,6 +36,7 @@ export type HoursStatus = 'ok' | 'unknown' | 'pending' | 'error' | 'loading';
  */
 export type VenueKind = 'pub' | 'maybe' | 'not_pub' | 'unknown';
 export type PubDiscoveryKind = 'pub' | 'seasonal_stand' | 'campsite' | 'sports_venue';
+export type PlaceKind = 'pub' | 'restaurant';
 
 /**
  * Reference beer price of a pub — the cheapest large beer (≥ 0.4 l) known for
@@ -107,6 +108,8 @@ export type Pub = {
   venueKind?: VenueKind;
   /** Primary pub or a reviewed opt-in place with an explicit beer signal. */
   discoveryKind?: PubDiscoveryKind;
+  /** A restaurant that pours beer: offered where you log a beer, left out of the evening compass. */
+  placeKind?: PlaceKind;
   /**
    * "Zmapuj hospodu" community amenity truth (spec §4.6). Server-owned + cached,
    * NEVER written by the client. `undefined` = unresolved / backend dormant. These
@@ -757,6 +760,10 @@ function buildExcludePredicate(
   return (i: number) =>
     !(idSet?.has(_pubs[i].id) || keySet?.has(_cacheKeys[i])) &&
     (filterPub ? filterPub(_pubs[i]) : true);
+}
+
+export function isRestaurant(pub: Pick<Pub, 'placeKind'>): boolean {
+  return pub.placeKind === 'restaurant';
 }
 
 function isPrimaryDiscoveryPub(pub: Pub): boolean {

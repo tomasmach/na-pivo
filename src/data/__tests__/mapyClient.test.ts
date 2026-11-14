@@ -199,6 +199,27 @@ describe('searchPubsNear — backend proxy only', () => {
     expect(pubs[0].discoveryKind).toBe('campsite');
   });
 
+  it('keeps the restaurant mark from the nearby endpoint and ignores unknown kinds', async () => {
+    setBackend('https://api.example.com');
+    global.fetch = jest.fn(async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        items: [
+          { ...PUB_ITEM, name: 'Restaurace Na Rohu', placeKind: 'restaurant' },
+          { ...PUB_ITEM, name: 'Hospoda U Lípy', position: { lat: 50.0805, lon: 14.4205 }, placeKind: 'canteen' },
+        ],
+      }),
+    })) as unknown as typeof fetch;
+
+    const pubs = await searchPubsNear(50.08, 14.42, 25);
+
+    expect(pubs.map((pub) => [pub.name, pub.placeKind])).toEqual([
+      ['Restaurace Na Rohu', 'restaurant'],
+      ['Hospoda U Lípy', undefined],
+    ]);
+  });
+
   it('maps cache-only nearby details onto the pub', async () => {
     setBackend('https://api.example.com');
     const fetchMock = jest.fn(async () => ({

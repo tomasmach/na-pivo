@@ -19,6 +19,7 @@ import BeerIcon from 'lucide-react-native/icons/beer';
 import ListOrderedIcon from 'lucide-react-native/icons/list-ordered';
 import MapPinIcon from 'lucide-react-native/icons/map-pin';
 import HandPlatterIcon from 'lucide-react-native/icons/hand-platter';
+import UtensilsIcon from 'lucide-react-native/icons/utensils';
 import ShuffleIcon from 'lucide-react-native/icons/shuffle';
 import CheckIcon from 'lucide-react-native/icons/check';
 import BellIcon from 'lucide-react-native/icons/bell';
@@ -162,6 +163,7 @@ const ICONS = {
   'list-ordered': ListOrderedIcon,
   'map-pin': MapPinIcon,
   'hand-platter': HandPlatterIcon,
+  'utensils': UtensilsIcon,
   'shuffle': ShuffleIcon,
   'check': CheckIcon,
   'bell': BellIcon,

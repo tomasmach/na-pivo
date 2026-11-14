@@ -3,6 +3,7 @@ import { englishPlural } from '../enHelpers';
 
 const pubs = (n: number) => englishPlural(n, { one: `${n} pub`, other: `${n} pubs` });
 const beers = (n: number) => englishPlural(n, { one: `${n} beer`, other: `${n} beers` });
+const places = (n: number) => englishPlural(n, { one: `${n} place`, other: `${n} places` });
 
 export const kompasEn: Strings['nv']['kompas'] = {
   categories: {
@@ -71,6 +72,7 @@ export const kompasEn: Strings['nv']['kompas'] = {
   cancel: 'Cancel',
   showPubs: (n) => `Show ${pubs(n)}`,
   showPubsUnknown: 'Show pubs',
+  showPlaces: (n) => `Show ${places(n)}`,
   nothingFits: 'Nothing fits',
   openOnly: 'Open only',
   openOnlySub: 'and those with unknown hours',
@@ -84,6 +86,7 @@ export const kompasEn: Strings['nv']['kompas'] = {
   billiards: 'Pool',
   foosball: 'Foosball',
   standsAndCamps: 'Stands and campsites',
+  restaurantsWithBeer: 'Restaurants with beer',
   practicalGroup: 'Practical',
   amenityLimit: (count) => `Pick ${count} things at most, so the compass has somewhere to look.`,
   navigateHome: 'Navigate home',

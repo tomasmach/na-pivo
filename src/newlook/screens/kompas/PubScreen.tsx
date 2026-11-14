@@ -10,6 +10,7 @@ import { usePaneWidth } from '../../duo/pane';
 import { haversineMeters } from '@/compass/distance';
 import { geohash8 } from '@/data/geohash';
 import { buildPubShareUrl } from '@/data/pubShareLink';
+import { isRestaurant } from '@/data/pubs';
 import { trackPubReach } from '@/data/pubReachClient';
 import { trackUiInteraction } from '@/data/uxTelemetry';
 import { formatVolume, t } from '@/i18n';
@@ -251,6 +252,11 @@ export function PubScreen() {
             <T s={15} w={600} c={hours.tone === 'open' ? C.open : C.muted}>
               {hours.tone === 'open' ? (hours.until ? L().openUntil(hours.until) : L().openNow) : hours.tone === 'closed' ? L().closedNow : L().hoursUnknown}
             </T>
+            {isRestaurant(pub) ? (
+              <T s={15} c={C.muted}>
+                {`· ${t.nv.common.restaurant}`}
+              </T>
+            ) : null}
             {distance != null || area ? (
               <T s={15} c={C.muted}>
                 {L().distanceArea(distance != null ? distanceLabel(distance) : '', area)}

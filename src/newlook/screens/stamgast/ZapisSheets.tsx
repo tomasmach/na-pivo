@@ -11,7 +11,7 @@ import { fetchNearbyBeers, type NearbyBeer } from '@/data/beersNearbyClient';
 import { suggestBeerBrands, type BeerBrandSuggestion } from '@/data/beerSuggestionsClient';
 import { pickAndPrepareMenuPhoto } from '@/data/menuPhotoPicker';
 import { scanMenuPhoto } from '@/data/menuScanClient';
-import type { Pub } from '@/data/pubs';
+import { isRestaurant, type Pub } from '@/data/pubs';
 import { trackUiInteraction } from '@/data/uxTelemetry';
 import { isContextPubKey, type DrinkType, type ServingType } from '@/drinks/drinkTypes';
 import { formatVolume, intlLocale, t } from '@/i18n';
@@ -942,13 +942,14 @@ export function ZmenitMistoSheet() {
         ) : (
           near.map((c, i) => {
             const on = !outside && selectedKey === c.pubKey;
+            const restaurant = isRestaurant(c.pub);
             return (
               <Row
                 key={c.pubKey}
                 last={i === near.length - 1}
-                leading={<Tile icon="map-pin" color={on ? C.black : C.yellow} bg={on ? C.yellow : C.control} />}
+                leading={<Tile icon={restaurant ? 'utensils' : 'map-pin'} color={on ? C.black : C.yellow} bg={on ? C.yellow : C.control} />}
                 title={c.pub.name}
-                sub={[c.pub.city ?? c.pub.address, distanceLabel(c.distanceMeters)].filter(Boolean).join(' · ')}
+                sub={[restaurant ? t.nv.common.restaurant : null, c.pub.city ?? c.pub.address, distanceLabel(c.distanceMeters)].filter(Boolean).join(' · ')}
                 trailing={on ? <Icon name="check" size={18} color={C.yellow} /> : null}
                 onPress={() => choose(c.pub)}
               />

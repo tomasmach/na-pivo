@@ -9,7 +9,7 @@ import { haversineMeters } from '@/compass/distance';
 import type { AmenityKey } from '@/data/amenities';
 import { CRAFT_BEER_FILTER_KEY, MAX_AMENITY_FILTERS } from '@/data/pubSearchFilters';
 import { geohash8 } from '@/data/geohash';
-import type { Pub } from '@/data/pubs';
+import { isRestaurant, type Pub } from '@/data/pubs';
 import { trackUiInteraction } from '@/data/uxTelemetry';
 import { buildVisitedCities } from '@/map/mapModel';
 import { t } from '@/i18n';
@@ -69,6 +69,11 @@ function subLine(target: KompasTarget): string {
   if (target.kind === 'friend') return L().partyHere;
   if (target.kind === 'tour') return L().tourStop(target.stopNumber ?? 1);
   const pub = target.pub;
+  const line = tapLine(pub);
+  return pub && isRestaurant(pub) ? `${t.nv.common.restaurant} · ${line}` : line;
+}
+
+function tapLine(pub: Pub | null): string {
   const currency = useSettingsStore.getState().priceCurrency;
   const beer = pub?.beers?.[0];
   const czk = beer?.priceCzk ?? pub?.price?.czk;
@@ -185,11 +190,17 @@ function MapMode({ k, name, onCompass, beside = false }: { k: Kompas; name: Name
   const city = k.map.visitedCities.find((c) => c.key === cityKey) ?? k.map.visitedCities[0];
 
   const beerFilter = st.filters.beerBrand;
-  const activeChip = st.mapView === 'stopy' ? L().chipTraces : st.onlyDrunk ? L().chipOnlyDrunk : beerFilter?.label ?? null;
+  const activeChip =
+    st.mapView === 'stopy'
+      ? L().chipTraces
+      : st.onlyDrunk
+        ? L().chipOnlyDrunk
+        : beerFilter?.label ?? (st.filters.includeRestaurants ? L().restaurantsWithBeer : null);
   const clearActive = () => {
     if (st.mapView === 'stopy') st.set({ mapView: 'okoli' });
     else if (st.onlyDrunk) st.set({ onlyDrunk: false });
-    else st.setFilters({ beerBrand: null });
+    else if (beerFilter) st.setFilters({ beerBrand: null });
+    else st.setFilters({ includeRestaurants: false });
   };
 
   const onPub = (id: string) => {

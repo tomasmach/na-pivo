@@ -595,6 +595,59 @@ def test_local_directory_keeps_distance_authoritative_across_relevance_bands(cli
 
 
 @pytest.mark.django_db
+def test_directory_marks_restaurants_additively_without_dropping_them(client):
+    rows = [
+        ("Restaurace Na Náměstí", PubHours.VenueKind.PUB),
+        ("Pizzeria Bella", PubHours.VenueKind.PUB),
+        ("U Nováků", PubHours.VenueKind.MAYBE),
+        ("Restaurace a pivnice U Kapra", PubHours.VenueKind.MAYBE),
+        ("Pivovarská restaurace Kotva", PubHours.VenueKind.PUB),
+        ("U Zeleného sudu", PubHours.VenueKind.PUB),
+        ("U Lípy", PubHours.VenueKind.UNKNOWN),
+    ]
+    for index, (name, venue_kind) in enumerate(rows):
+        _directory_pub(name, lat=_LAT + 0.0001 * index, venue_kind=venue_kind)
+
+    resp = client.get("/v1/pubs/near", data={"lat": _LAT, "lng": _LNG, "radius_km": 1})
+
+    items = {item["name"]: item for item in resp.json()["items"]}
+    assert set(items) == {name for name, _ in rows}
+    assert {name for name, item in items.items() if item.get("placeKind") == "restaurant"} == {
+        "Restaurace Na Náměstí",
+        "Pizzeria Bella",
+        "U Nováků",
+    }
+    assert {item.get("placeKind") for item in items.values()} == {"restaurant", None}
+    assert items["Restaurace Na Náměstí"]["label"] == "Hospoda"
+
+
+@pytest.mark.django_db
+def test_beer_and_amenity_filters_keep_the_restaurant_mark(client):
+    restaurant = _directory_pub("Restaurace Na Rohu")
+    pub = _directory_pub("U Zeleného sudu", lat=_LAT + 0.001)
+    brand, _ = BeerBrand.objects.get_or_create(key="pilsner-urquell", defaults={"name": "Pilsner Urquell"})
+    for row in (restaurant, pub):
+        PubBeerBrand.objects.create(
+            cache_key=row.cache_key,
+            name=row.name,
+            lat=row.lat,
+            lng=row.lng,
+            brand=brand,
+            brand_key=brand.key,
+            brand_name=brand.name,
+            source=PubBeerBrand.Source.COMMUNITY,
+        )
+        _amenity("payment_card", name=row.name, lat=row.lat, lng=row.lng)
+
+    for filters in ({"beer_brand": "pilsner-urquell"}, {"amenities": "payment_card"}):
+        resp = client.get("/v1/pubs/near", data={"lat": _LAT, "lng": _LNG, "radius_km": 1, **filters})
+
+        kinds = {item["name"]: item.get("placeKind") for item in resp.json()["items"]}
+        assert kinds == {"Restaurace Na Rohu": "restaurant", "U Zeleného sudu": None}, filters
+    default_cache.clear()
+
+
+@pytest.mark.django_db
 def test_other_tap_places_are_opt_in_signal_gated_and_ranked_after_pubs(client):
     _directory_pub(
         "Potvrzená hospoda",

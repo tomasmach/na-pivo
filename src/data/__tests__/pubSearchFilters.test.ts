@@ -55,6 +55,14 @@ describe('pub search filters', () => {
     expect(backendPubSearchFilterKey(ranged)).toBe(backendPubSearchFilterKey(open));
   });
 
+  it('counts restaurants as an active filter that never reaches the backend', () => {
+    const open = { beerBrand: null, amenityKeys: [], priceMinCzk: null, priceMaxCzk: null };
+    const withRestaurants = { ...open, includeRestaurants: true };
+    expect(activePubSearchFilterCount(withRestaurants)).toBe(1);
+    expect(pubSearchFilterKey(withRestaurants)).not.toBe(pubSearchFilterKey(open));
+    expect(backendPubSearchFilterKey(withRestaurants)).toBe(backendPubSearchFilterKey(open));
+  });
+
   it('treats other tap places as one explicit backend filter', () => {
     const filters = {
       beerBrand: null,

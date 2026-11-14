@@ -19,6 +19,7 @@ import {
   fetchPubsNear,
   getAllLoadedPubs,
   hydratePubsSnapshot,
+  isRestaurant,
   type Pub,
 } from '@/data/pubs';
 import { fetchVisits, type WireVisit } from '@/data/visitsClient';
@@ -140,6 +141,7 @@ export function useBeerMap(
   const includeOtherPlaces = filters.includeOtherPlaces === true;
   const priceMinCzk = filters.priceMinCzk;
   const priceMaxCzk = filters.priceMaxCzk;
+  const includeRestaurants = filters.includeRestaurants === true;
   const hasFilters = Boolean(beerBrandKey || amenityKeys.length > 0);
   const [focused, setFocused] = useState(false);
   const [permissionState, setPermissionState] = useState<PermissionState>('undetermined');
@@ -380,17 +382,14 @@ export function useBeerMap(
     forceNextPubFetch.current = true;
     setRefreshNonce((value) => value + 1);
   }, []);
-  // Hide the previous catalogue while a different filter request is pending;
-  // unfiltered pubs must never masquerade as confirmed matches. Locally
-  // reported pubs disappear immediately (and stay hidden offline) by both
-  // signals — id and geohash-8 cell — matching the compass exclusions.
   const visiblePubs = useMemo(() => {
     const loaded = loadedFiltersKey === filtersKey ? pubs : [];
-    if (reportedPubIds.length === 0 && reportedCacheKeys.length === 0) return loaded;
+    const discoverable = includeRestaurants ? loaded : loaded.filter((pub) => !isRestaurant(pub));
+    if (reportedPubIds.length === 0 && reportedCacheKeys.length === 0) return discoverable;
     const ids = new Set(reportedPubIds);
     const cells = new Set(reportedCacheKeys);
-    return loaded.filter((pub) => !ids.has(pub.id) && !cells.has(geohash8(pub.lat, pub.lng)));
-  }, [loadedFiltersKey, filtersKey, pubs, reportedPubIds, reportedCacheKeys]);
+    return discoverable.filter((pub) => !ids.has(pub.id) && !cells.has(geohash8(pub.lat, pub.lng)));
+  }, [loadedFiltersKey, filtersKey, pubs, includeRestaurants, reportedPubIds, reportedCacheKeys]);
   const nearbyPrices = useMemo(() => freshPriceCzks(visiblePubs), [visiblePubs]);
   const pricedPubs = useMemo(
     () =>

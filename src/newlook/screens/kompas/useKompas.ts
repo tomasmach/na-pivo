@@ -4,7 +4,7 @@ import { haversineMeters } from '@/compass/distance';
 import { useArrivalDetector } from '@/compass/useArrivalDetector';
 import { geohash8 } from '@/data/geohash';
 import { fetchPubBeersLastWeek, type PubBeersByKey } from '@/data/pubBeersClient';
-import { findNearbyPubs, findNearestPub, type Pub } from '@/data/pubs';
+import { findNearbyPubs, findNearestPub, isRestaurant, type Pub } from '@/data/pubs';
 import { activePubSearchFilterCount, pubMatchesPriceFilter } from '@/data/pubSearchFilters';
 import { trackRepeatedUiInteraction, trackUiInteraction } from '@/data/uxTelemetry';
 import { UNLIMITED_SEARCH_RADIUS_KM, useCompass } from '@/hooks/useCompass';
@@ -60,6 +60,7 @@ export function useKompas() {
     filters.priceMaxCzk,
     true,
     filters.includeOtherPlaces === true,
+    filters.includeRestaurants === true,
   );
   const map = useBeerMap(filters, mapView === 'parta');
   const position = compass.currentPosition ?? map.position;
@@ -133,9 +134,10 @@ export function useKompas() {
   const excluded = useCallback(
     (pub: Pub) =>
       pub.venueKind === 'not_pub' ||
+      (!filters.includeRestaurants && isRestaurant(pub)) ||
       (hideClosed && pubOpeningVerdict(pub) === false) ||
       !pubMatchesPriceFilter(pub, filters.priceMinCzk, filters.priceMaxCzk),
-    [filters.priceMaxCzk, filters.priceMinCzk, hideClosed],
+    [filters.includeRestaurants, filters.priceMaxCzk, filters.priceMinCzk, hideClosed],
   );
 
   const nearest = useMemo(() => {

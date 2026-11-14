@@ -51,6 +51,7 @@ jest.mock('@/data/pubs', () => ({
   findNearestPub: jest.fn(),
   findRandomPubInRadius: jest.fn(),
   isLoaded: jest.fn(() => true),
+  isRestaurant: jest.requireActual('@/data/pubs').isRestaurant,
   fetchPubsNear: jest.fn(async () => undefined),
 }));
 
@@ -549,6 +550,51 @@ describe('useCompass — hours-aware selection (Skrýt zavřené hospody)', () =
  * pub, but independent of the "hide closed" preference. Once the user is
  * already inspecting a revealed pub, the target stays stable.
  */
+describe('useCompass — restaurants that pour beer', () => {
+  const RESTAURANT: Pub = { id: 'mapy:restaurant', name: 'Restaurace Na Rohu', lat: 50.0801, lng: 14.4201, placeKind: 'restaurant' };
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    (useDevicePosition as jest.Mock).mockReturnValue({
+      position: { lat: 50.08, lng: 14.42, accuracyMeters: 8 },
+    });
+    useSettingsStore.setState({ mode: 'nearest', maxDistanceKm: null, hideClosedPubs: false, surpriseSeed: 17 });
+    usePubStore.setState({ revealedPub: null, reportedPubIds: [], reportedCacheKeys: [], isDataLoaded: false });
+    wireHours({});
+    (findNearestPub as jest.Mock).mockImplementation(
+      ({ filterPub }: { filterPub?: (pub: Pub) => boolean }) =>
+        [RESTAURANT, OPEN].find((pub) => !filterPub || filterPub(pub)) ?? null,
+    );
+  });
+
+  afterEach(() => {
+    for (const cleanup of hookCleanups.splice(0)) cleanup();
+  });
+
+  it('points at the nearest pub past a nearer restaurant until restaurants are included', async () => {
+    let includeRestaurants = false;
+    let latest: ReturnType<typeof useCompass> | undefined;
+    function Harness() {
+      latest = useCompass(null, [], null, null, true, false, includeRestaurants);
+      return null;
+    }
+    let renderer: { update: (element: React.ReactElement) => void; unmount: () => void } | undefined;
+    act(() => {
+      renderer = TestRenderer.create(React.createElement(Harness));
+    });
+    hookCleanups.push(() => act(() => renderer?.unmount()));
+    await flush();
+
+    expect(latest?.pub?.id).toBe(OPEN.id);
+
+    includeRestaurants = true;
+    act(() => renderer?.update(React.createElement(Harness)));
+    await flush();
+
+    expect(latest?.pub?.id).toBe(RESTAURANT.id);
+  });
+});
+
 describe('useCompass — venueKind not_pub hiding', () => {
   beforeEach(() => {
     jest.clearAllMocks();
