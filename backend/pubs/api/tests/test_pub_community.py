@@ -14,6 +14,7 @@ from django.conf import settings
 from django.core.cache import cache
 from django.db import connection
 from django.test.utils import CaptureQueriesContext
+from django.utils.timezone import now as dj_now
 from rest_framework import status
 from rest_framework.test import APIClient
 
@@ -1578,3 +1579,54 @@ def test_beer_change_at_second_pub_in_cell_leaves_the_first_menu(client):
     assert resp.json()["beers"] == neighbour_menu[1:]
     assert PubCommunityData.objects.get(name=_NAME).beers == _MENU_NOW
     assert _read_pub(client, _NAME, _LAT, _LNG)["beers"] == _MENU_NOW
+
+
+@pytest.mark.django_db
+def test_write_picks_the_row_with_the_exact_name_when_two_rows_score_the_same(client):
+    token = _register(client)
+    for name in ("Restaurace U Fleků", "U Fleků Restaurace"):
+        PubCommunityData.objects.create(cache_key=_KEY, name=name, lat=_LAT, lng=_LNG)
+
+    payload = _payload(name="U Fleků Restaurace")
+    payload.pop("beers")
+    resp = client.post("/v1/pub-community", data=payload, format="json", **_auth(token))
+
+    assert resp.status_code == status.HTTP_200_OK, resp.content
+    assert PubCommunityData.objects.get(name="U Fleků Restaurace").hours_json == _FULL_HOURS
+    assert PubCommunityData.objects.get(name="Restaurace U Fleků").hours_json is None
+
+
+@pytest.mark.django_db
+def test_beer_change_also_removes_the_beer_from_a_merged_duplicate_in_the_same_cell(client):
+    from pubs.identity import normalize_pub_name
+    from pubs.models import CanonicalPub, PubAlias
+
+    token = _register(client)
+    canonical = CanonicalPub.objects.create(
+        cache_key=_KEY, name=_NAME, name_key=normalize_pub_name(_NAME), lat=_LAT, lng=_LNG, city="Praha"
+    )
+    PubAlias.objects.create(
+        canonical_pub=canonical, cache_key=_KEY, name=_NAME,
+        name_key=normalize_pub_name(_NAME), lat=_LAT, lng=_LNG, is_primary=True,
+    )
+    PubAlias.objects.create(
+        canonical_pub=canonical, cache_key=_KEY, name="Stará hospoda",
+        name_key=normalize_pub_name("Stará hospoda"), lat=_LAT, lng=_LNG,
+    )
+    PubCommunityData.objects.create(
+        cache_key=_KEY, name="Stará hospoda", lat=_LAT, lng=_LNG,
+        beers=_MENU_NOW[:2], beers_updated_at=dj_now(),
+    )
+    _seed_menu(client, token, _MENU_NOW)
+
+    resp = _change(
+        client,
+        token,
+        "aaaaaaaa-0000-0000-0000-0000000000e1",
+        _MENU_NOW[1:],
+        {"action": "remove", "name": "Pilsner Urquell", "volume_ml": 500},
+    )
+
+    assert resp.status_code == status.HTTP_200_OK, resp.content
+    assert PubCommunityData.objects.get(name="Stará hospoda").beers == [_MENU_NOW[1]]
+    assert "Pilsner Urquell" not in [beer["name"] for beer in _read_pub(client, _NAME, _LAT, _LNG)["beers"]]

@@ -2055,7 +2055,7 @@ def _community_row_for_update(
         return row, False
 
 
-def _alias_menu_rows_for_update(identity) -> list[PubCommunityData]:
+def _alias_menu_rows_for_update(identity, own_row: PubCommunityData | None) -> list[PubCommunityData]:
     """Menus kept under this pub's older identities, locked.
 
     /v1/pub-hours shows their beers merged with the current one, so a beer
@@ -2065,14 +2065,13 @@ def _alias_menu_rows_for_update(identity) -> list[PubCommunityData]:
         return []
     names_by_key: dict[str, set[str]] = {}
     for alias_key, name_key in identity.aliases:
-        if alias_key != identity.cache_key:
-            names_by_key.setdefault(alias_key, set()).add(name_key)
-    if not names_by_key:
-        return []
+        names_by_key.setdefault(alias_key, set()).add(name_key)
     rows = PubCommunityData.objects.select_for_update().filter(
         cache_key__in=list(names_by_key)
     ).order_by("pk")
-    return [row for row in rows if normalize_pub_name(row.name) in names_by_key[row.cache_key]]
+    if own_row is not None:
+        rows = rows.exclude(pk=own_row.pk)
+    return [row for row in rows if row.name_key in names_by_key[row.cache_key]]
 
 
 def _shown_menu(data: dict) -> dict:
@@ -2241,7 +2240,7 @@ class PubCommunityView(APIView):
                         )
                         index_rows = [
                             row
-                            for row in [previous, *_alias_menu_rows_for_update(identity)]
+                            for row in [previous, *_alias_menu_rows_for_update(identity, previous)]
                             if row is not None
                         ]
                     else:
@@ -2260,7 +2259,7 @@ class PubCommunityView(APIView):
                                 "account": request.user,
                             },
                         )
-                        alias_rows = _alias_menu_rows_for_update(identity)
+                        alias_rows = _alias_menu_rows_for_update(identity, previous)
                         # The change applies to the menu people see for this pub.
                         shown = _shown_menu(data)
                         current_beers = list(shown.get("beers") or [])
@@ -2296,7 +2295,7 @@ class PubCommunityView(APIView):
                                 PubContributionLog.objects.create(
                                     account=request.user,
                                     client_id=uuid.uuid5(
-                                        data["client_id"], f"alias:{alias_row.cache_key}"
+                                        data["client_id"], f"alias:{alias_row.cache_key}:{alias_row.name_key}"
                                     ),
                                     kind=PubContributionLog.Kind.BEERS,
                                     cache_key=alias_row.cache_key,

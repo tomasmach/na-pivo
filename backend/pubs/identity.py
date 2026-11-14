@@ -28,8 +28,16 @@ def matching_pub_row(rows, name: str):
     def row_name(row) -> str:
         return row["name"] if isinstance(row, dict) else row.name
 
+    name_key = normalize_pub_name(name)
     matching = [row for row in rows or () if names_match(name, row_name(row))]
-    return max(matching, key=lambda row: name_similarity(name, row_name(row)), default=None)
+    return max(
+        matching,
+        key=lambda row: (
+            normalize_pub_name(row_name(row)) == name_key,
+            name_similarity(name, row_name(row)),
+        ),
+        default=None,
+    )
 
 
 @dataclass(frozen=True, slots=True)
