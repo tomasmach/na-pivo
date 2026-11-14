@@ -64,6 +64,7 @@ ENABLE_DJANGO_ADMIN = os.environ.get(
     "ENABLE_DJANGO_ADMIN",
     "True" if DEBUG else "False",
 ).lower() in ("1", "true", "yes")
+CSRF_FAILURE_VIEW = "config.csrf.csrf_failure"
 
 if DEBUG:
     # Expo on a physical device reaches the dev server via the Mac's LAN IP,
