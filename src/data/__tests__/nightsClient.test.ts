@@ -80,6 +80,32 @@ describe('night wire and parser', () => {
     });
   });
 
+  it('fits every text and number of a night into the server limits', () => {
+    const longPub = `Hospoda ${'Dlouhá '.repeat(14)}na konci`;
+    const wire = nightPublishWire({
+      ...payload,
+      pubNames: [longPub, '   ', 'A', 'B', 'C', 'D', 'E'],
+      city: 'Ř'.repeat(130),
+      durationMinutes: 0,
+      beerCount: 70_000,
+    });
+    const names = wire.pub_names as string[];
+    expect(longPub.length).toBeGreaterThan(80);
+    expect(names).toHaveLength(5);
+    expect(names[0]).toBe(`${Array.from(longPub).slice(0, 79).join('').trimEnd()}…`);
+    expect(Array.from(names[0]).length).toBeLessThanOrEqual(80);
+    expect(names.slice(1)).toEqual(['A', 'B', 'C', 'D']);
+    expect(Array.from(wire.city as string)).toHaveLength(120);
+    expect(wire.duration_minutes).toBe(1);
+    expect(wire.beer_count).toBe(65_535);
+  });
+
+  it('never splits an emoji when it shortens a pub name', () => {
+    const name = `${'x'.repeat(78)}🍺🍺🍺`;
+    const [short] = nightPublishWire({ ...payload, pubNames: [name] }).pub_names as string[];
+    expect(short).toBe(`${'x'.repeat(78)}🍺…`);
+  });
+
   it('survives missing additive fields and null author fields', () => {
     expect(
       parsePublishedNight({

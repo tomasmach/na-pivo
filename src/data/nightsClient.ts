@@ -174,20 +174,41 @@ export function parsePublishedNight(raw: RawPublishedNight): PublishedNight {
   };
 }
 
+const NIGHT_PUB_NAME_MAX = 80;
+const NIGHT_PUB_NAMES_MAX = 5;
+const NIGHT_CITY_MAX = 120;
+const NIGHT_COUNT_MAX = 65_535;
+
+function fitNightText(value: string, max: number): string {
+  const text = value.trim();
+  const chars = Array.from(text);
+  if (chars.length <= max) return text;
+  return `${chars.slice(0, max - 1).join('').trimEnd()}…`;
+}
+
+function wireCount(value: number): number {
+  return Math.min(NIGHT_COUNT_MAX, Math.max(0, Math.floor(value)));
+}
+
 export function nightPublishWire(payload: NightPublishPayload): Record<string, unknown> {
+  const pubNames = payload.pubNames
+    .map((name) => fitNightText(name, NIGHT_PUB_NAME_MAX))
+    .filter(Boolean)
+    .slice(0, NIGHT_PUB_NAMES_MAX);
+  const duration = payload.durationMinutes;
   return {
     client_id: payload.clientId,
     drinking_day: payload.drinkingDay,
     started_at: payload.startedAt,
     ended_at: payload.endedAt,
-    beer_count: payload.beerCount,
-    wine_count: payload.wineCount,
-    soft_drink_count: payload.softDrinkCount,
-    shot_count: payload.shotCount,
-    pub_names: payload.pubNames,
-    ...(payload.city !== undefined ? { city: payload.city } : {}),
-    ...(payload.durationMinutes !== undefined
-      ? { duration_minutes: payload.durationMinutes }
+    beer_count: wireCount(payload.beerCount),
+    wine_count: wireCount(payload.wineCount),
+    soft_drink_count: wireCount(payload.softDrinkCount),
+    shot_count: wireCount(payload.shotCount),
+    pub_names: pubNames,
+    ...(payload.city !== undefined ? { city: fitNightText(payload.city, NIGHT_CITY_MAX) } : {}),
+    ...(duration !== undefined && Number.isFinite(duration)
+      ? { duration_minutes: Math.max(1, Math.round(duration)) }
       : {}),
     visibility: payload.visibility,
     updated_at: payload.updatedAt,

@@ -63,6 +63,7 @@ export const vycepCs = {
   publishParta: 'Vyvěsit partě',
   published: 'Noc visí na Výčepu!',
   publishQueued: 'Vyvěsím ji, až budeš online.',
+  publishRefused: 'Noc se mi nepovedlo vyvěsit na Výčep.',
   preview: 'náhled',
   addPhoto: 'Přidat fotku z večera',
   optional: 'nepovinné',
