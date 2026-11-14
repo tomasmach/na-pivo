@@ -163,7 +163,8 @@ jest.mock('@/data/productTelemetry', () => ({
   trackScreenViewed: jest.fn(),
 }));
 jest.mock('@/data/walkingTelemetry', () => ({ flushWalkingDistance: jest.fn() }));
-jest.mock('@/data/account', () => mockResolved('getCachedAuthenticationState'));
+jest.mock('@/data/account', () => mockResolved('getCachedAuthenticationState', 'flushAccountPreferences'));
+jest.mock('@/data/sharingPrefsClient', () => mockResolved('flushSharingPrefs'));
 jest.mock('@/data/localeHeader', () => ({ installBackendLocaleHeader: jest.fn() }));
 jest.mock('@/stores/accountStore', () => {
   const state = {

@@ -68,14 +68,12 @@ function summaryLine(k: Kompas): string {
 
 export type MapNotice = 'askLocation' | 'deniedLocation' | 'noResults' | 'empty';
 
-/** Why the map shows no pubs, when it shows none and no pub card says otherwise. */
 export function mapNotice(k: Kompas, browsingWithoutLocation: boolean): MapNotice | null {
   if (k.target) return null;
   if (!k.position && k.map.permissionState !== 'granted') {
     if (browsingWithoutLocation) return null;
     return k.map.permissionState === 'denied' ? 'deniedLocation' : 'askLocation';
   }
-  // Zoomed out past where the map searches, or still loading: no pins is no answer yet.
   const area = k.map.searchArea;
   if (k.pins.length > 0 || !area || k.map.loadingPubs) return null;
   const { beerBrand, amenityKeys } = useKompasState.getState().filters;

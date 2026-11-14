@@ -121,7 +121,6 @@ export async function syncSharingPrefs(): Promise<void> {
   await syncSharingPrefs();
 }
 
-/** Send a sharing change made without signal; runs on launch and foreground. */
 export async function flushSharingPrefs(): Promise<void> {
   if (!useVycepStore.persist.hasHydrated()) {
     await new Promise<void>((resolve) => {

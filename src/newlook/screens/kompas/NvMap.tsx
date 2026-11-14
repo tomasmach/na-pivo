@@ -60,7 +60,6 @@ type Props = {
   onPub?: (id: string) => void;
   onCity?: (key: string) => void;
   onRegion?: (region: Region) => void;
-  /** The person moved the map with a finger, not the app. */
   onPan?: () => void;
   showRoute?: boolean;
   bottomPadding?: number;

@@ -793,11 +793,6 @@ function isPendingAccountPreferences(value: unknown): value is PendingAccountPre
 const preferencesQueue = createQueueStorage('na-pivo-account-settings-queue', isPendingAccountPreferences);
 const runPreferencesLocked = createQueueLock();
 
-/**
- * The server saves the whole account row on PATCH /v1/account/me, so two
- * writes in flight together can put back each other's fields. Every settings
- * write from this device waits for the previous one.
- */
 export const runAccountMeWrite = createQueueLock();
 
 async function loadPendingPreferences(): Promise<PendingAccountPreferences | null> {
@@ -811,7 +806,6 @@ function samePending(a: PendingAccountPreferences | null, b: PendingAccountPrefe
 
 let preferencesRefusedListener: ((server: AccountPreferences | null) => void) | null = null;
 
-/** Called when the server refuses a queued settings change for good, with the server's values. */
 export function setAccountPreferencesRefusedListener(
   listener: ((server: AccountPreferences | null) => void) | null,
 ): void {
@@ -874,7 +868,6 @@ async function dropPendingIfUnchanged(sent: PendingAccountPreferences): Promise<
 
 let preferencesDeliveries = 0;
 
-/** Grows with every delivered settings change; a read that started before one carries older values. */
 export function accountPreferencesDeliveries(): number {
   return preferencesDeliveries;
 }
@@ -901,16 +894,10 @@ async function flushPendingPreferences(signal: AbortSignal): Promise<void> {
 
 const preferencesFlush = createCoalescingFlush(flushPendingPreferences);
 
-/** Deliver a settings change made without signal; runs on launch and foreground. */
 export function flushAccountPreferences(): Promise<void> {
   return preferencesFlush.flush();
 }
 
-/**
- * Remember a settings change on this device and send it to the account. A
- * change made without signal waits in storage and goes out on the next launch
- * or foreground; two changes of one setting keep the newer one.
- */
 export function updateAccountPreferences(preferences: Partial<AccountPreferences>): Promise<void> {
   const patch = validPreferencesPatch(preferences);
   if (Object.keys(patch).length === 0) return Promise.resolve();
@@ -924,7 +911,6 @@ export function updateAccountPreferences(preferences: Partial<AccountPreferences
   return queued.then(flushAccountPreferences);
 }
 
-/** Settings changed on this device that the current account has not received yet. */
 export function pendingAccountPreferences(): Promise<Partial<AccountPreferences>> {
   return runPreferencesLocked(async () => {
     const pending = await loadPendingPreferences();
