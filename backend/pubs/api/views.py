@@ -8021,8 +8021,11 @@ class BeerCheckInView(APIView):
             "-checked_in_at", "created_at", "id"
         )
         latest: dict[str, int] = {}
-        for checkin_id, beer_name in rated.values_list("id", "beer_name"):
-            latest.setdefault(" ".join(beer_name.lower().split()), checkin_id)
+        for checkin_id, beer_name, product_id in rated.values_list(
+            "id", "beer_name", "beer_product_id"
+        ):
+            beer = f"product:{product_id}" if product_id else " ".join(beer_name.lower().split())
+            latest.setdefault(beer, checkin_id)
         rows = _beer_checkin_queryset().in_bulk(list(latest.values()))
         return [rows[checkin_id] for checkin_id in latest.values()]
 

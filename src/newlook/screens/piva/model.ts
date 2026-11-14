@@ -235,16 +235,21 @@ export async function loadMyRatedBeers(signal?: AbortSignal): Promise<MyRatedBee
   if (!history) return null;
   const account = useAccountStore.getState().session?.accountId ?? '';
   const beers = new Map<string, MyRatedBeer>();
+  const byName = new Map<string, string>();
   for (const c of history) {
-    if (c.rating === null || beers.has(beerKey(c.beerName))) continue;
-    beers.set(beerKey(c.beerName), { beerName: c.beerName, breweryName: c.breweryName, productKey: c.productKey ?? null, rating: c.rating, ratedAt: c.updatedAt });
+    if (c.rating === null) continue;
+    const key = c.productKey ? `product:${c.productKey}` : beerKey(c.beerName);
+    if (!byName.has(beerKey(c.beerName))) byName.set(beerKey(c.beerName), key);
+    if (beers.has(key)) continue;
+    beers.set(key, { beerName: c.beerName, breweryName: c.breweryName, productKey: c.productKey ?? null, rating: c.rating, ratedAt: c.updatedAt });
   }
   const now = new Date().toISOString();
   const local = [...(await getPendingBeerCheckIns()), ...[...savedThisSession].filter(([key]) => key.startsWith(`${account}|`)).map(([, p]) => p)];
   for (const p of local) {
     if (typeof p.rating !== 'number') continue;
-    const known = beers.get(beerKey(p.beerName));
-    beers.set(beerKey(p.beerName), {
+    const key = byName.get(beerKey(p.beerName)) ?? beerKey(p.beerName);
+    const known = beers.get(key);
+    beers.set(key, {
       beerName: p.beerName,
       breweryName: p.breweryName || known?.breweryName || '',
       productKey: known?.productKey ?? null,

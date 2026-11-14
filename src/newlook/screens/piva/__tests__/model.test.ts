@@ -160,10 +160,11 @@ describe('loadMyRatedBeers', () => {
       checkIn({ beerName: 'Chodovar 11', breweryName: 'Chodovar', productKey: null, rating: 4, updatedAt: '2026-04-01T20:00:00.000Z' }),
       checkIn({ beerName: 'Bez hvězd', rating: null }),
       checkIn({ beerName: 'Rychtář 12', breweryName: 'Rychtář', productKey: 'rychtar-12', rating: 3 }),
+      checkIn({ beerName: 'Rychtář Premium', breweryName: 'Rychtář', productKey: 'rychtar-12', rating: 1 }),
     ];
     pending = [{ clientId: 'q', beerName: 'Rychtář 12', rating: 5, visibility: 'private' }];
 
-    const mine = new Set(['Únětická 12', 'Chodovar 11', 'Rychtář 12', 'Bez hvězd']);
+    const mine = new Set(['Únětická 12', 'Chodovar 11', 'Rychtář 12', 'Rychtář Premium', 'Bez hvězd']);
     const beers = (await loadMyRatedBeers())?.filter((b) => mine.has(b.beerName));
 
     expect(beers?.map((b) => [b.beerName, b.rating, b.productKey])).toEqual([

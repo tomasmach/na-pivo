@@ -968,11 +968,19 @@ def test_rated_list_keeps_latest_rating_per_beer_beyond_recent_history(client):
     token, _ = _register(client, "hodnotitel")
     other_token, _ = _register(client, "cizi")
     start = timezone.now() - timedelta(days=200)
-    _post_checkin(client, token, beer_name="Kozel 11", rating="2", checked_in_at=start.isoformat())
+    _post_checkin(
+        client,
+        token,
+        beer_name="Kozel 11",
+        brewery_name="Velkopopovický Kozel",
+        rating="2",
+        checked_in_at=start.isoformat(),
+    )
     _post_checkin(
         client,
         token,
         beer_name="kozel  11",
+        brewery_name="Velkopopovický Kozel",
         rating="4",
         checked_in_at=(start + timedelta(days=1)).isoformat(),
     )
@@ -984,6 +992,18 @@ def test_rated_list_keeps_latest_rating_per_beer_beyond_recent_history(client):
             rating=None,
             checked_in_at=(start + timedelta(days=day)).isoformat(),
         )
+    alias = _post_checkin(
+        client,
+        token,
+        beer_name="12",
+        brewery_name="Radegast",
+        rating="1",
+        checked_in_at=(start + timedelta(days=150)).isoformat(),
+    ).json()
+    canonical = _post_checkin(
+        client, token, beer_name="Radegast Ryze hořká 12", brewery_name="Radegast", rating="3"
+    ).json()
+    assert alias["beer_product_key"] == canonical["beer_product_key"] == "radegast-ryze-horka-12"
     _post_checkin(client, token, beer_name="Plzeň 12", rating="5")
     _post_checkin(client, other_token, beer_name="Cizí pivo", rating="1")
 
@@ -997,5 +1017,6 @@ def test_rated_list_keeps_latest_rating_per_beer_beyond_recent_history(client):
     rows = response.json()["checkins"]
     assert [(row["beer_name"], row["rating"]) for row in rows] == [
         ("Plzeň 12", "5.0"),
+        ("Radegast Ryze hořká 12", "3.0"),
         ("kozel  11", "4.0"),
     ]

@@ -88,7 +88,7 @@ import { useColumnActions, useColumnBack, type ColumnAction } from '../../duo/pa
 import { useBook, useWindowInsets } from '../../duo/layout';
 import { Dial } from '../kompas/Dial';
 import { setKompasView } from '../kompas/state';
-import { useMyRatings } from '../piva/useMyRatings';
+import { loadMyRatedBeers } from '../piva/model';
 import { usePartaStore } from '../parta/partaStore';
 import { ProfilAvatar } from './ProfilAvatar';
 import {
@@ -186,18 +186,23 @@ export function ProfilScreen() {
   const recentBadges = useBadgeStore((st) => st.recent);
   const badges = useNvBadges();
   const [addedPubs, setAddedPubs] = useState<number | null>(null);
-  const ratedBeers = useMyRatings().size;
+  const [ratedBeers, setRatedBeers] = useState<number | null>(null);
   const accountId = me.profile?.id ?? null;
   useRefreshBadgesOnFocus();
 
   useFocusEffect(
     useCallback(() => {
       let alive = true;
+      const controller = new AbortController();
       void loadAddedPubSubmissions().then((list) => {
         if (alive) setAddedPubs(list.length);
       });
+      void loadMyRatedBeers(controller.signal).then((beers) => {
+        if (beers && !controller.signal.aborted) setRatedBeers(beers.length);
+      });
       return () => {
         alive = false;
+        controller.abort();
       };
     }, []),
   );
