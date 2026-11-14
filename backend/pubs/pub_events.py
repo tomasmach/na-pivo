@@ -44,8 +44,8 @@ class PubEvent(models.Model):
     updated_at = models.DateTimeField(auto_now=True, verbose_name="Upraveno")
 
     class Meta:
-        verbose_name = "Akce hospody"
-        verbose_name_plural = "Akce hospod"
+        verbose_name = "akce hospody"
+        verbose_name_plural = "akce hospod"
         ordering = ["starts_at", "created_at"]
         constraints = [
             models.UniqueConstraint(

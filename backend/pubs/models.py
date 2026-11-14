@@ -178,8 +178,8 @@ class PubHours(models.Model):
     updated_at = models.DateTimeField(auto_now=True, verbose_name="Upraveno")
 
     class Meta:
-        verbose_name = "Otevírací doba"
-        verbose_name_plural = "Otevírací doby"
+        verbose_name = "otevírací doba"
+        verbose_name_plural = "otevírací doby"
         ordering = ["-updated_at"]
 
     def __str__(self) -> str:
@@ -301,8 +301,8 @@ class CanonicalPub(models.Model):
                 name="unique_canonical_pub_identity",
             )
         ]
-        verbose_name = "Hospoda"
-        verbose_name_plural = "Hospody"
+        verbose_name = "hospoda"
+        verbose_name_plural = "hospody"
 
     def save(self, *args, **kwargs) -> None:
         self.name_key = normalize_pub_name(self.name)
@@ -349,8 +349,8 @@ class PubAlias(models.Model):
                 name="pubalias_cache_active_idx",
             )
         ]
-        verbose_name = "Alias hospody"
-        verbose_name_plural = "Aliasy hospod"
+        verbose_name = "alias hospody"
+        verbose_name_plural = "aliasy hospod"
 
     def save(self, *args, **kwargs) -> None:
         self.name_key = normalize_pub_name(self.name)
@@ -384,8 +384,8 @@ class PubMergeAudit(models.Model):
 
     class Meta:
         ordering = ["-created_at", "-id"]
-        verbose_name = "Sloučení hospod"
-        verbose_name_plural = "Sloučení hospod"
+        verbose_name = "sloučení hospod"
+        verbose_name_plural = "sloučení hospod"
 
     def __str__(self) -> str:
         return f"{self.source_name} → {self.target_name}"
@@ -434,8 +434,8 @@ class EnrichTask(models.Model):
     last_attempt_at = models.DateTimeField(null=True, blank=True, verbose_name="Poslední pokus")
 
     class Meta:
-        verbose_name = "Úloha obohacení"
-        verbose_name_plural = "Obohacování"
+        verbose_name = "úloha obohacení"
+        verbose_name_plural = "obohacování"
         ordering = ["created_at"]
 
     def __str__(self) -> str:
@@ -994,8 +994,8 @@ class Account(models.Model):
     last_seen_at = models.DateTimeField(auto_now=True, verbose_name="Naposledy v appce")
 
     class Meta:
-        verbose_name = "Účet"
-        verbose_name_plural = "Účty"
+        verbose_name = "účet"
+        verbose_name_plural = "účty"
         ordering = ["-created_at"]
         constraints = [
             # Case-insensitive unique handle as a functional PARTIAL index on
@@ -1271,8 +1271,8 @@ class PushDevice(models.Model):
     last_registered_at = models.DateTimeField(auto_now=True, db_index=True, verbose_name="Naposledy registrováno")
 
     class Meta:
-        verbose_name = "Push zařízení"
-        verbose_name_plural = "Push zařízení"
+        verbose_name = "push zařízení"
+        verbose_name_plural = "push zařízení"
         ordering = ["-last_registered_at"]
         indexes = [
             models.Index(fields=["account", "enabled"]),
@@ -2175,8 +2175,8 @@ class PublishedNight(models.Model):
     is_removed = models.BooleanField(default=False, verbose_name="Skryto")
 
     class Meta:
-        verbose_name = "Večer"
-        verbose_name_plural = "Večery"
+        verbose_name = "večer"
+        verbose_name_plural = "večery"
         ordering = ["-created_at", "-id"]
         constraints = [
             models.UniqueConstraint(
@@ -2289,8 +2289,8 @@ class PublishedNightComment(models.Model):
     updated_at = models.DateTimeField(auto_now=True, verbose_name="Upraveno")
 
     class Meta:
-        verbose_name = "Komentář"
-        verbose_name_plural = "Komentáře"
+        verbose_name = "komentář"
+        verbose_name_plural = "komentáře"
         ordering = ["created_at", "id"]
         constraints = [
             models.UniqueConstraint(
@@ -2815,8 +2815,8 @@ class PubReport(models.Model):
     updated_at = models.DateTimeField(auto_now=True, verbose_name="Upraveno")
 
     class Meta:
-        verbose_name = "Nahlášená hospoda"
-        verbose_name_plural = "Nahlášené hospody"
+        verbose_name = "nahlášená hospoda"
+        verbose_name_plural = "nahlášené hospody"
         ordering = ["-created_at"]
         indexes = [
             models.Index(fields=["active", "lat", "lng"], name="pub_report_geo_idx"),
@@ -2890,8 +2890,8 @@ class PubNameCorrection(models.Model):
     updated_at = models.DateTimeField(auto_now=True, verbose_name="Upraveno")
 
     class Meta:
-        verbose_name = "Oprava názvu"
-        verbose_name_plural = "Opravy názvů"
+        verbose_name = "oprava názvu"
+        verbose_name_plural = "opravy názvů"
         ordering = ["-updated_at"]
         indexes = [
             models.Index(
@@ -2980,8 +2980,8 @@ class UserAddedPub(models.Model):
     updated_at = models.DateTimeField(auto_now=True, verbose_name="Upraveno")
 
     class Meta:
-        verbose_name = "Přidaná hospoda"
-        verbose_name_plural = "Přidané hospody"
+        verbose_name = "přidaná hospoda"
+        verbose_name_plural = "přidané hospody"
         ordering = ["-updated_at"]
         indexes = [
             # /v1/pubs/near filters active rows by a lat/lng bounding box; without
@@ -3053,8 +3053,8 @@ class ReleaseNote(models.Model):
     updated_at = models.DateTimeField(auto_now=True, verbose_name="Upraveno")
 
     class Meta:
-        verbose_name = "Co je nového"
-        verbose_name_plural = "Co je nového"
+        verbose_name = "co je nového"
+        verbose_name_plural = "co je nového"
         ordering = ["-created_at"]
 
     def save(self, *args, **kwargs):
@@ -3104,8 +3104,8 @@ class ReleaseNoteItem(models.Model):
     )
 
     class Meta:
-        verbose_name = "Novinka"
-        verbose_name_plural = "Novinky"
+        verbose_name = "novinka"
+        verbose_name_plural = "novinky"
         ordering = ["order", "id"]
 
     def __str__(self) -> str:
@@ -3203,8 +3203,8 @@ class FeedbackReport(models.Model):
     updated_at = models.DateTimeField(auto_now=True, verbose_name="Upraveno")
 
     class Meta:
-        verbose_name = "Zpětná vazba"
-        verbose_name_plural = "Zpětná vazba"
+        verbose_name = "zpětná vazba"
+        verbose_name_plural = "zpětná vazba"
         ordering = ["-created_at"]
         indexes = [
             models.Index(fields=["created_at"], name="feedbackrep_created_idx"),
@@ -3284,8 +3284,8 @@ class ContentReport(models.Model):
     updated_at = models.DateTimeField(auto_now=True, verbose_name="Upraveno")
 
     class Meta:
-        verbose_name = "Nahlášený obsah"
-        verbose_name_plural = "Nahlášený obsah"
+        verbose_name = "nahlášený obsah"
+        verbose_name_plural = "nahlášený obsah"
         ordering = ["-created_at"]
         indexes = [
             models.Index(fields=["created_at"], name="contentrep_created_idx"),
@@ -3374,8 +3374,8 @@ class ClientEvent(models.Model):
     created_at = models.DateTimeField(auto_now_add=True, db_index=True, verbose_name="Vytvořeno")
 
     class Meta:
-        verbose_name = "Událost z appky"
-        verbose_name_plural = "Události z appky"
+        verbose_name = "událost z appky"
+        verbose_name_plural = "události z appky"
         ordering = ["-created_at"]
         indexes = [
             models.Index(fields=["event", "created_at"]),
@@ -3448,8 +3448,8 @@ class AccountUsageStats(models.Model):
     updated_at = models.DateTimeField(auto_now=True, verbose_name="Upraveno")
 
     class Meta:
-        verbose_name = "Používání appky"
-        verbose_name_plural = "Používání appky"
+        verbose_name = "používání appky"
+        verbose_name_plural = "používání appky"
         ordering = ["-walked_distance_m", "-app_open_count"]
 
     @property
@@ -3570,8 +3570,8 @@ class PubCommunityData(models.Model):
     updated_at = models.DateTimeField(auto_now=True, verbose_name="Upraveno")
 
     class Meta:
-        verbose_name = "Komunitní data hospody"
-        verbose_name_plural = "Komunitní data"
+        verbose_name = "komunitní data hospody"
+        verbose_name_plural = "komunitní data"
         ordering = ["-updated_at"]
         constraints = [
             models.UniqueConstraint(
@@ -3632,8 +3632,8 @@ class PubExternalBeerMenu(models.Model):
             )
         ]
         indexes = [models.Index(fields=["cache_key", "active"])]
-        verbose_name = "Nápojový lístek"
-        verbose_name_plural = "Nápojové lístky"
+        verbose_name = "nápojový lístek"
+        verbose_name_plural = "nápojové lístky"
 
     def __str__(self) -> str:
         return with_city(self.name, self.city)
@@ -3776,8 +3776,8 @@ class BeerBrand(models.Model):
     updated_at = models.DateTimeField(auto_now=True, verbose_name="Upraveno")
 
     class Meta:
-        verbose_name = "Pivovar"
-        verbose_name_plural = "Pivovary"
+        verbose_name = "pivovar"
+        verbose_name_plural = "pivovary"
         ordering = ["rank", "name"]
 
     def __str__(self) -> str:
@@ -3828,8 +3828,8 @@ class BeerProduct(models.Model):
     updated_at = models.DateTimeField(auto_now=True, verbose_name="Upraveno")
 
     class Meta:
-        verbose_name = "Pivo"
-        verbose_name_plural = "Piva"
+        verbose_name = "pivo"
+        verbose_name_plural = "piva"
         ordering = ["rank", "name"]
         indexes = [
             models.Index(fields=["brand_key", "active"]),
@@ -3853,8 +3853,8 @@ class BeerProductMergeAudit(models.Model):
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="Vytvořeno")
 
     class Meta:
-        verbose_name = "Sloučení piv"
-        verbose_name_plural = "Sloučení piv"
+        verbose_name = "sloučení piv"
+        verbose_name_plural = "sloučení piv"
         ordering = ["-created_at"]
 
     def __str__(self) -> str:
@@ -3910,8 +3910,8 @@ class PubBeerBrand(models.Model):
     updated_at = models.DateTimeField(auto_now=True, verbose_name="Upraveno")
 
     class Meta:
-        verbose_name = "Pivovar v hospodě"
-        verbose_name_plural = "Pivovary v hospodách"
+        verbose_name = "pivovar v hospodě"
+        verbose_name_plural = "pivovary v hospodách"
         ordering = ["-last_seen_at"]
         constraints = [
             models.UniqueConstraint(
@@ -3984,8 +3984,8 @@ class PubBeerProduct(models.Model):
     updated_at = models.DateTimeField(auto_now=True, verbose_name="Upraveno")
 
     class Meta:
-        verbose_name = "Pivo v hospodě"
-        verbose_name_plural = "Piva v hospodách"
+        verbose_name = "pivo v hospodě"
+        verbose_name_plural = "piva v hospodách"
         ordering = ["-last_seen_at"]
         constraints = [
             models.UniqueConstraint(
@@ -4381,8 +4381,8 @@ class DrinkLog(models.Model):
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="Vytvořeno")
 
     class Meta:
-        verbose_name = "Vypité pivo"
-        verbose_name_plural = "Vypitá piva"
+        verbose_name = "vypité pivo"
+        verbose_name_plural = "vypitá piva"
         ordering = ["-drank_at"]
         indexes = [
             models.Index(fields=["account", "drank_at"]),
@@ -4504,8 +4504,8 @@ class PubRating(models.Model):
     updated_at = models.DateTimeField(auto_now=True, verbose_name="Upraveno")
 
     class Meta:
-        verbose_name = "Hodnocení"
-        verbose_name_plural = "Hodnocení"
+        verbose_name = "hodnocení"
+        verbose_name_plural = "hodnocení"
         ordering = ["-client_updated_at"]
         constraints = [
             models.UniqueConstraint(
@@ -4598,8 +4598,8 @@ class PubFavorite(models.Model):
     updated_at = models.DateTimeField(auto_now=True, verbose_name="Upraveno")
 
     class Meta:
-        verbose_name = "Oblíbená hospoda"
-        verbose_name_plural = "Oblíbené hospody"
+        verbose_name = "oblíbená hospoda"
+        verbose_name_plural = "oblíbené hospody"
         ordering = ["-client_updated_at"]
         constraints = [
             models.UniqueConstraint(
@@ -4723,8 +4723,8 @@ class PubVisit(models.Model):
     updated_at = models.DateTimeField(auto_now=True, verbose_name="Upraveno")
 
     class Meta:
-        verbose_name = "Návštěva"
-        verbose_name_plural = "Návštěvy"
+        verbose_name = "návštěva"
+        verbose_name_plural = "návštěvy"
         ordering = ["-started_at"]
         indexes = [
             models.Index(fields=["account", "started_at"]),
@@ -4862,8 +4862,8 @@ class PubSearchCache(models.Model):
     updated_at = models.DateTimeField(auto_now=True, verbose_name="Upraveno")
 
     class Meta:
-        verbose_name = "Cache hledání"
-        verbose_name_plural = "Cache hledání"
+        verbose_name = "cache hledání"
+        verbose_name_plural = "cache hledání"
         ordering = ["-updated_at"]
         constraints = [
             models.UniqueConstraint(
@@ -4921,8 +4921,8 @@ class PubContributionLog(models.Model):
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="Vytvořeno")
 
     class Meta:
-        verbose_name = "Příspěvek"
-        verbose_name_plural = "Příspěvky"
+        verbose_name = "příspěvek"
+        verbose_name_plural = "příspěvky"
         ordering = ["-created_at"]
         constraints = [
             models.UniqueConstraint(
@@ -5777,8 +5777,8 @@ class TourPublication(models.Model):
     updated_at = models.DateTimeField(auto_now=True, verbose_name="Upraveno")
 
     class Meta:
-        verbose_name = "Túra"
-        verbose_name_plural = "Túry"
+        verbose_name = "túra"
+        verbose_name_plural = "túry"
         indexes = [models.Index(fields=["status", "start_lat", "start_lon"], name="tour_publication_geo")]
 
     def __str__(self) -> str:
@@ -5982,8 +5982,8 @@ class PubReachDaily(models.Model):
     visitors = models.PositiveIntegerField(default=0, verbose_name="Návštěvníci")
 
     class Meta:
-        verbose_name = "Dosah hospody za den"
-        verbose_name_plural = "Dosah hospod"
+        verbose_name = "dosah hospody za den"
+        verbose_name_plural = "dosah hospod"
         constraints = [
             models.UniqueConstraint(
                 fields=["cache_key", "day", "channel", "metric", "source"],

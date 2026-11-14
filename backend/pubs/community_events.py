@@ -49,8 +49,8 @@ class CommunityEvent(models.Model):
     updated_at = models.DateTimeField(auto_now=True, verbose_name="Upraveno")
 
     class Meta:
-        verbose_name = "Komunitní akce"
-        verbose_name_plural = "Komunitní akce"
+        verbose_name = "komunitní akce"
+        verbose_name_plural = "komunitní akce"
         ordering = ["starts_at", "created_at"]
         constraints = [
             models.UniqueConstraint(
@@ -121,8 +121,8 @@ class CommunityEventMembership(models.Model):
     updated_at = models.DateTimeField(auto_now=True, verbose_name="Upraveno")
 
     class Meta:
-        verbose_name = "Účast na akci"
-        verbose_name_plural = "Účasti na akci"
+        verbose_name = "účast na akci"
+        verbose_name_plural = "účasti na akci"
         ordering = ["requested_at"]
         constraints = [
             models.UniqueConstraint(

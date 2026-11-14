@@ -55,11 +55,7 @@ class Item:
 
 
 def account_name(account: Account | None) -> str:
-    if account is None:
-        return "smazaný účet"
-    if account.nickname:
-        return f"@{account.nickname}"
-    return account.display_name or "anonym"
+    return "smazaný účet" if account is None else str(account)
 
 
 def account_link(account: Account | None) -> tuple[str, str] | None:
@@ -432,7 +428,7 @@ def account_profile(account: Account) -> dict:
             "tag": "Nahlášen(a)" if reported_self else "Nahlásil(a)",
             "tone": "red" if reported_self else "",
             "text": (
-                f"{report.get_reason_display()} · od {account_name(report.reporter)}"
+                f"{report.get_reason_display()} · nahlásil(a): {account_name(report.reporter)}"
                 if reported_self
                 else f"{account_name(report.target_account)} · {report.get_reason_display()}"
             ),

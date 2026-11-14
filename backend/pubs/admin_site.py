@@ -8,7 +8,7 @@ from .models import Account, DrinkLog, PublishedNight
 
 SECTIONS = [
     ("Lidé", [
-        ("account", "Lidé", "person"),
+        ("account", "Účty", "person"),
         ("publishednight", "Večery", "nightlife"),
         ("publishednightcomment", "Komentáře", "comment"),
     ]),

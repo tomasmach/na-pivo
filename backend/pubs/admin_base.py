@@ -45,6 +45,11 @@ def short(value: str | None, limit: int) -> str:
 
 
 class PubsAdmin(ModelAdmin):
+    def get_form(self, request, obj=None, change=False, **kwargs):
+        names = [field.name for field in self.model._meta.get_fields()]
+        kwargs["help_texts"] = dict.fromkeys([*names, *self.get_readonly_fields(request, obj)], "")
+        return super().get_form(request, obj, change, **kwargs)
+
     def get_fieldsets(self, request, obj=None):
         if self.fieldsets:
             return super().get_fieldsets(request, obj)
