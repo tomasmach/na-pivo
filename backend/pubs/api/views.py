@@ -7998,11 +7998,14 @@ class BeerCheckInView(APIView):
     throttle_scope = "friends"
 
     def get(self, request: Request) -> Response:
-        rows = _beer_checkin_queryset().filter(account=request.user)
-        limit = 100
         if request.query_params.get("rated") == "1":
-            rows, limit = rows.filter(rating__isnull=False), 1000
-        rows = rows.order_by("-checked_in_at", "created_at", "id")[:limit]
+            rows = self._latest_rating_per_name(request.user)
+        else:
+            rows = (
+                _beer_checkin_queryset()
+                .filter(account=request.user)
+                .order_by("-checked_in_at", "created_at", "id")[:100]
+            )
         return Response(
             {
                 "checkins": BeerCheckInSerializer(
@@ -8011,6 +8014,18 @@ class BeerCheckInView(APIView):
             },
             status=status.HTTP_200_OK,
         )
+
+    @staticmethod
+    def _latest_rating_per_name(account: Account) -> list[BeerCheckIn]:
+        rated = account.beer_checkins.filter(rating__isnull=False).order_by(
+            "-checked_in_at", "created_at", "id"
+        )
+        latest: dict[str, int] = {}
+        for checkin_id, beer_name in rated.values_list("id", "beer_name"):
+            latest.setdefault(" ".join(beer_name.lower().split()), checkin_id)
+        ids = list(latest.values())[:1000]
+        rows = _beer_checkin_queryset().in_bulk(ids)
+        return [rows[checkin_id] for checkin_id in ids]
 
     def post(self, request: Request) -> Response:
         serializer = BeerCheckInRequestSerializer(data=request.data)
