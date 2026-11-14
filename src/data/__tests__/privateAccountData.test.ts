@@ -246,6 +246,14 @@ it('removes retired 2.0 private data and settings while retaining public caches 
   });
 });
 
+it('forgets a settings change still waiting for the outgoing account', async () => {
+  await AsyncStorage.setItem('na-pivo-account-settings-queue', JSON.stringify([{ ownerId: 'old-account', patch: { hidePubNames: true } }]));
+
+  await clearLocalPrivateAccountData();
+
+  expect(await AsyncStorage.getItem('na-pivo-account-settings-queue')).toBeNull();
+});
+
 it('forgets recent server pulls so a re-login restores the wiped data', async () => {
   await trackForegroundPull('ratings', async () => true, () => 'acc-1');
   expect(pulledRecently('ratings', 'acc-1')).toBe(true);

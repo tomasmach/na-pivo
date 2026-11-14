@@ -89,6 +89,7 @@ export const profilEn: Strings['nv']['profil'] = {
     partyPushDenied: "Without notifications, pings from your crew won't reach you. Turn them on in Settings and try again.",
     partyPushEnableError: "Couldn't turn it on. Try again.",
     partyPushDisableError: "Couldn't turn notifications off yet. I'll try again when you're back in the app.",
+    savedSettingRefused: "I couldn't save that setting, so I switched it back.",
     phone: 'Phone',
     haptics: 'Haptics',
     hapticsSub: 'On taps and when you reach the pub',

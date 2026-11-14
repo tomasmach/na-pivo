@@ -8,9 +8,11 @@
  * a clean device adopts the server value. Never throws.
  */
 
+import { t } from '@/i18n';
+import { useToastStore } from '@/stores/toastStore';
 import { useVycepStore, type NightAutopublish, type SharingPrefs } from '@/stores/vycepStore';
 
-import { ensureAccount, getSessionToken } from './account';
+import { ensureAccount, getSessionToken, runAccountMeWrite } from './account';
 import { chainAbortSignal, classifyQueueHttpFailure } from './apiFetch';
 import { getBackendEndpoint } from './backendConfig';
 import type { NightVisibility } from './nightsClient';
@@ -37,7 +39,11 @@ function parse(data: Record<string, unknown>): RemoteSharing | null {
   return { shareDefault: share, nightAutopublish: auto };
 }
 
-async function request(body?: Record<string, unknown>): Promise<RemoteSharing | null> {
+function request(body?: Record<string, unknown>): Promise<RemoteSharing | 'refused' | null> {
+  return body ? runAccountMeWrite(() => send(body)) : send();
+}
+
+async function send(body?: Record<string, unknown>): Promise<RemoteSharing | 'refused' | null> {
   const endpoint = getBackendEndpoint(PATH);
   if (!endpoint) return null;
   const session = await ensureAccount();
@@ -57,7 +63,10 @@ async function request(body?: Record<string, unknown>): Promise<RemoteSharing | 
       await classifyQueueHttpFailure(401, session, { source: 'sharing_prefs', endpoint: PATH });
       return null;
     }
-    if (!resp.ok) return null;
+    if (!resp.ok) {
+      const refused = (await classifyQueueHttpFailure(resp.status, session, { source: 'sharing_prefs', endpoint: PATH })) === 'permanent-error';
+      return refused && (await getSessionToken()) === session.token ? 'refused' : null;
+    }
     const remote = parse((await resp.json()) as Record<string, unknown>);
     // A sign-in or claim while this was in flight swapped the account; the reply describes the previous one.
     return (await getSessionToken()) === session.token ? remote : null;
@@ -95,14 +104,38 @@ export async function syncSharingPrefs(): Promise<void> {
   const local = useVycepStore.getState();
   if (!local.sharingDirty) {
     const remote = await request();
-    if (remote && generation === boundaryGeneration && !useVycepStore.getState().sharingDirty) adopt(remote);
+    if (remote && remote !== 'refused' && generation === boundaryGeneration && !useVycepStore.getState().sharingDirty) adopt(remote);
     return;
   }
   const sent = wire(local);
   const remote = await request(sent);
   const now = useVycepStore.getState();
   // A newer local change made while this PATCH was in flight stays dirty.
-  if (remote && generation === boundaryGeneration && JSON.stringify(wire(now)) === JSON.stringify(sent)) adopt(remote);
+  if (!remote || generation !== boundaryGeneration || JSON.stringify(wire(now)) !== JSON.stringify(sent)) return;
+  if (remote !== 'refused') {
+    adopt(remote);
+    return;
+  }
+  useVycepStore.getState().setSharing({ sharingDirty: false });
+  useToastStore.getState().show(t.nv.profil.settings.savedSettingRefused);
+  await syncSharingPrefs();
+}
+
+/** Send a sharing change made without signal; runs on launch and foreground. */
+export async function flushSharingPrefs(): Promise<void> {
+  if (!useVycepStore.persist.hasHydrated()) {
+    await new Promise<void>((resolve) => {
+      const stop = useVycepStore.persist.onFinishHydration(() => {
+        stop();
+        resolve();
+      });
+      if (useVycepStore.persist.hasHydrated()) {
+        stop();
+        resolve();
+      }
+    });
+  }
+  if (useVycepStore.getState().sharingDirty) await syncSharingPrefs();
 }
 
 /** Change the defaults on this device right away and tell the server. */

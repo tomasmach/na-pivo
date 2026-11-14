@@ -42,6 +42,7 @@ import {
 } from '@/data/friendInviteLink';
 import { flushBeerCheckinsQueue } from '@/data/beerCheckinsQueue';
 import { flushNightsQueue } from '@/data/nightsQueue';
+import { flushSharingPrefs } from '@/data/sharingPrefsClient';
 import { flushTourRunQueue } from '@/data/tourRunQueue';
 import { flushBeerPhotosQueue } from '@/data/beerPhotosQueue';
 import { seedDrinksFromHistory } from '@/data/drinksHistorySync';
@@ -52,7 +53,7 @@ import {
   trackClientEvent,
 } from '@/data/telemetryClient';
 import { flushWalkingDistance } from '@/data/walkingTelemetry';
-import { getCachedAuthenticationState } from '@/data/account';
+import { flushAccountPreferences, getCachedAuthenticationState } from '@/data/account';
 import { installBackendLocaleHeader } from '@/data/localeHeader';
 import { useAccountStore, selectIsSignedIn } from '@/stores/accountStore';
 import { useOnboardingStore } from '@/stores/onboardingStore';
@@ -434,6 +435,8 @@ export default function RootLayout() {
     // Výčep: retry queued night publishes/unpublishes and round reactions.
     void flushNightsQueue();
     void flushTourRunQueue();
+    void flushAccountPreferences();
+    void flushSharingPrefs();
     void ensureFriendPushRegisteredIfGranted();
     // Live Activity initialization and every foreground/focus sweep reconcile
     // lock-screen additions before applying the tally's idle cutoff.
@@ -481,6 +484,8 @@ export default function RootLayout() {
         void flushBeerPhotosQueue();
         void flushNightsQueue();
         void flushTourRunQueue();
+        void flushAccountPreferences();
+        void flushSharingPrefs();
         if (pull('diary')) {
           void trackPull('diary', () => useAccountStore.getState().refreshDiarySnapshot());
         }

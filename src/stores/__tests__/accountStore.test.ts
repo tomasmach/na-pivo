@@ -15,7 +15,8 @@ import {
 } from '@/stores/accountStore';
 import * as auth from '@/data/auth';
 import type { AccountMapper, AccountProfile, AuthResult } from '@/data/auth';
-import { ensureAccount, fetchAccountPreferences, setAnonymousSessionEvictionListener } from '@/data/account';
+import { accountPreferencesDeliveries, ensureAccount, fetchAccountPreferences, pendingAccountPreferences, setAccountPreferencesRefusedListener, setAnonymousSessionEvictionListener } from '@/data/account';
+import { useToastStore } from '@/stores/toastStore';
 import { setTelemetrySession, trackApiFailure } from '@/data/telemetryClient';
 import { reconcileDiarySnapshot, type DiarySnapshot } from '@/data/diarySync';
 import { beginTourAccountChange, endTourAccountChange } from '@/data/toursBoundary';
@@ -31,6 +32,9 @@ jest.mock('@/data/account', () => ({
   })),
   fetchAccountPreferences: jest.fn(async () => null),
   setAnonymousSessionEvictionListener: jest.fn(),
+  setAccountPreferencesRefusedListener: jest.fn(),
+  pendingAccountPreferences: jest.fn(async () => ({})),
+  accountPreferencesDeliveries: jest.fn(() => 0),
 }));
 jest.mock('@/data/telemetryClient', () => ({
   setTelemetrySession: jest.fn(),
@@ -55,6 +59,7 @@ const mockEnsureAccount = ensureAccount as jest.MockedFunction<typeof ensureAcco
 const mockFetchAccountPreferences = fetchAccountPreferences as jest.MockedFunction<
   typeof fetchAccountPreferences
 >;
+const registeredPreferencesRefusedListener = jest.mocked(setAccountPreferencesRefusedListener).mock.calls[0]?.[0];
 const registeredAnonymousSessionEvictionListener = jest.mocked(setAnonymousSessionEvictionListener)
   .mock.calls[0]?.[0] as (() => Promise<void>) | undefined;
 const mockSetTelemetrySession = setTelemetrySession as jest.MockedFunction<typeof setTelemetrySession>;
@@ -151,6 +156,41 @@ describe('initAccount', () => {
     expect(mockFetchAccountPreferences).not.toHaveBeenCalled();
     expect(useAccountStore.getState().profile).toEqual(profile);
     expect(mockSetHidePubNames).toHaveBeenCalledWith(true);
+  });
+
+  it('keeps a setting that still waits to be sent instead of the older server value', async () => {
+    jest.mocked(pendingAccountPreferences).mockResolvedValueOnce({ hidePubNames: true });
+    mockedAuth.fetchAccountProfile.mockResolvedValueOnce(signedInProfile({ settings: { hidePubNames: false } }));
+
+    await useAccountStore.getState().initAccount();
+    await new Promise((resolve) => setImmediate(resolve));
+
+    expect(mockSetHidePubNames).not.toHaveBeenCalled();
+  });
+
+  it('ignores a profile read that started before a pending setting was delivered', async () => {
+    let answer: (profile: AccountProfile) => void = () => undefined;
+    mockedAuth.fetchAccountProfile.mockReturnValueOnce(new Promise((resolve) => (answer = resolve)));
+    jest.mocked(accountPreferencesDeliveries).mockReturnValueOnce(0).mockReturnValue(1);
+
+    const init = useAccountStore.getState().initAccount();
+    await new Promise((resolve) => setImmediate(resolve));
+    answer(signedInProfile({ settings: { hidePubNames: false } }));
+    await init;
+    await new Promise((resolve) => setImmediate(resolve));
+
+    expect(mockSetHidePubNames).not.toHaveBeenCalled();
+    jest.mocked(accountPreferencesDeliveries).mockReturnValue(0);
+  });
+
+  it('switches a refused setting back to the server value and says so', async () => {
+    useToastStore.getState().hide();
+
+    registeredPreferencesRefusedListener?.({ hidePubNames: false });
+    await new Promise((resolve) => setImmediate(resolve));
+
+    expect(mockSetHidePubNames).toHaveBeenCalledWith(false);
+    expect(useToastStore.getState().message).toBe('Nastavení se mi nepovedlo uložit, tak jsem ho vrátil zpátky.');
   });
 
   it('falls back to the preferences request when the profile is unavailable', async () => {

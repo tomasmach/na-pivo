@@ -13,7 +13,13 @@ import {
   setSession,
   setAnonymousSessionEvictionListener,
   updateAccountPreferences,
+  clearAccountPreferencesQueue,
+  flushAccountPreferences,
+  pendingAccountPreferences,
+  runAccountMeWrite,
+  setAccountPreferencesRefusedListener,
 } from '../account';
+import { clearAccountMerge, prepareAccountMerge } from '../accountMerge';
 import { setTelemetrySession, trackApiFailure } from '../telemetryClient';
 import { getDrinkRateLimitGeneration, noteDrinkThrottled, shouldPauseDrinkSync } from '../drinksRateLimit';
 import { fetchDrinks } from '../drinksClient';
@@ -70,6 +76,7 @@ const ORIGINAL_FETCH = global.fetch;
 const ORIGINAL_URL = process.env.EXPO_PUBLIC_BACKEND_URL;
 
 const DEVICE_ID_KEY = 'na-pivo-device-id';
+const SETTINGS_QUEUE_KEY = 'na-pivo-account-settings-queue';
 const ACCOUNT_KEY = 'na-pivo-account';
 
 const UUID_RE =
@@ -814,7 +821,7 @@ it('finishes an account claim when removing the previous drink cooldown fails', 
     saved = await AsyncStorage.getItem('na-pivo-drinks-retry-after');
     expect(saved).not.toBeNull();
   } finally {
-    removeSpy.mockRestore();
+    removeSpy.mockImplementation(originalRemove);
   }
 
   // The secure session was already saved when cooldown removal failed.
@@ -848,7 +855,7 @@ it('finishes reverting to an anonymous account when removing the old drink coold
     expect((await ensureAccount())?.accountId).toBe('anon-2');
     expect(await shouldPauseDrinkSync()).toBe(false);
   } finally {
-    removeSpy.mockRestore();
+    removeSpy.mockImplementation(originalRemove);
   }
 });
 
@@ -999,9 +1006,9 @@ describe('account preferences', () => {
     const fetchSpy = mockFetchOk({ id: 'acc-1', device_id: 'dev-1', hide_pub_names: false });
     global.fetch = fetchSpy as unknown as typeof fetch;
 
-    const preferences = await updateAccountPreferences({ hidePubNames: false });
+    await updateAccountPreferences({ hidePubNames: false });
 
-    expect(preferences).toEqual({ hidePubNames: false });
+    expect(await AsyncStorage.getItem(SETTINGS_QUEUE_KEY)).toBeNull();
     expect(fetchSpy).toHaveBeenCalledTimes(1);
     const [url, init] = fetchSpy.mock.calls[0] as unknown as [string, RequestInit];
     expect(url).toBe('https://api.example.com/v1/account/me');
@@ -1030,7 +1037,7 @@ describe('account preferences', () => {
     });
     global.fetch = fetchSpy as unknown as typeof fetch;
 
-    const preferences = await updateAccountPreferences({
+    await updateAccountPreferences({
       mode: 'nearest',
       maxDistanceKm: null,
       priceCurrency: 'CZK',
@@ -1040,15 +1047,6 @@ describe('account preferences', () => {
       hidePubNames: false,
     });
 
-    expect(preferences).toEqual({
-      mode: 'nearest',
-      maxDistanceKm: null,
-      priceCurrency: 'CZK',
-      hapticEnabled: true,
-      soundEnabled: false,
-      hideClosedPubs: true,
-      hidePubNames: false,
-    });
     const [, init] = fetchSpy.mock.calls[0] as unknown as [string, RequestInit];
     expect(JSON.parse(init.body as string)).toEqual({
       compass_mode: 'nearest',
@@ -1092,5 +1090,173 @@ describe('account preferences', () => {
 
     await expect(fetchAccountPreferences()).resolves.toBeNull();
     expect(await SecureStore.getItemAsync(ACCOUNT_KEY)).not.toBeNull();
+  });
+});
+
+describe('settings changed without signal', () => {
+  const offline = () => jest.fn(async () => {
+    throw new TypeError('Network request failed');
+  });
+  const answering = (patchStatus = 200) => jest.fn(async (_url: string, init?: RequestInit) => {
+    const status = init?.method === 'GET' ? 200 : patchStatus;
+    return {
+    ok: status >= 200 && status < 300,
+    status,
+    json: async () => (init?.method === 'GET' ? { settings: { hide_pub_names: false, haptic_enabled: true } } : {}),
+    };
+  });
+  const patches = (spy: jest.Mock) =>
+    spy.mock.calls
+      .filter(([, init]) => (init as RequestInit | undefined)?.method === 'PATCH')
+      .map(([, init]) => JSON.parse((init as RequestInit).body as string));
+
+  beforeEach(async () => {
+    await AsyncStorage.setItem(DEVICE_ID_KEY, 'dev-1');
+    await seedAccount({ deviceId: 'dev-1', accountId: 'acc-1', token: 'tok-1' });
+    setBackend('https://api.example.com');
+    setAccountPreferencesRefusedListener(null);
+  });
+
+  it('keeps a change made offline and sends it once the signal is back', async () => {
+    global.fetch = offline() as unknown as typeof fetch;
+    await updateAccountPreferences({ hidePubNames: true });
+    await updateAccountPreferences({ hapticEnabled: false });
+
+    expect(await pendingAccountPreferences()).toEqual({ hidePubNames: true, hapticEnabled: false });
+
+    const online = answering();
+    global.fetch = online as unknown as typeof fetch;
+    await flushAccountPreferences();
+
+    expect(patches(online)).toEqual([{ hide_pub_names: true, haptic_enabled: false }]);
+    expect(await pendingAccountPreferences()).toEqual({});
+    expect(await AsyncStorage.getItem(SETTINGS_QUEUE_KEY)).toBeNull();
+  });
+
+  it('sends only the last of two offline changes of one switch', async () => {
+    global.fetch = offline() as unknown as typeof fetch;
+    await updateAccountPreferences({ soundEnabled: true });
+    await updateAccountPreferences({ soundEnabled: false });
+
+    const online = answering();
+    global.fetch = online as unknown as typeof fetch;
+    await flushAccountPreferences();
+
+    expect(patches(online)).toEqual([{ sound_enabled: false }]);
+  });
+
+  it('sends a pending change once when two flushes run together, and not again afterwards', async () => {
+    global.fetch = offline() as unknown as typeof fetch;
+    await updateAccountPreferences({ marketingEmailsEnabled: true });
+
+    const online = answering();
+    global.fetch = online as unknown as typeof fetch;
+    await Promise.all([flushAccountPreferences(), flushAccountPreferences()]);
+    await flushAccountPreferences();
+
+    expect(patches(online)).toEqual([{ marketing_emails_enabled: true }]);
+  });
+
+  it('holds a pending change while the account is being claimed', async () => {
+    global.fetch = offline() as unknown as typeof fetch;
+    await updateAccountPreferences({ hidePubNames: true });
+    await prepareAccountMerge('acc-1', 'op-1');
+
+    const online = answering();
+    global.fetch = online as unknown as typeof fetch;
+    await flushAccountPreferences();
+
+    expect(patches(online)).toEqual([]);
+    expect(await pendingAccountPreferences()).toEqual({ hidePubNames: true });
+
+    await clearAccountMerge({ operationId: 'op-1' });
+    await flushAccountPreferences();
+    expect(patches(online)).toEqual([{ hide_pub_names: true }]);
+  });
+
+  it('never sends a pending change under the account signed in after it', async () => {
+    global.fetch = offline() as unknown as typeof fetch;
+    await updateAccountPreferences({ hidePubNames: true });
+    await seedAccount({ deviceId: 'dev-1', accountId: 'acc-2', token: 'tok-2', authenticated: true });
+
+    expect(await pendingAccountPreferences()).toEqual({});
+    const online = answering();
+    global.fetch = online as unknown as typeof fetch;
+    await flushAccountPreferences();
+
+    expect(patches(online)).toEqual([]);
+    expect(await AsyncStorage.getItem(SETTINGS_QUEUE_KEY)).toBeNull();
+  });
+
+  it('forgets a pending change at logout or account deletion', async () => {
+    global.fetch = offline() as unknown as typeof fetch;
+    await updateAccountPreferences({ hidePubNames: true });
+    await clearAccountPreferencesQueue();
+
+    const online = answering();
+    global.fetch = online as unknown as typeof fetch;
+    await flushAccountPreferences();
+
+    expect(patches(online)).toEqual([]);
+  });
+
+  it('survives malformed stored content and sends only the valid fields', async () => {
+    const online = answering();
+    global.fetch = online as unknown as typeof fetch;
+
+    await AsyncStorage.setItem(SETTINGS_QUEUE_KEY, '{not json');
+    await flushAccountPreferences();
+    await AsyncStorage.setItem(SETTINGS_QUEUE_KEY, JSON.stringify([{ ownerId: 7, patch: { hidePubNames: true } }, 'x']));
+    await flushAccountPreferences();
+    expect(patches(online)).toEqual([]);
+
+    await AsyncStorage.setItem(
+      SETTINGS_QUEUE_KEY,
+      JSON.stringify([{ ownerId: 'acc-1', patch: { hidePubNames: 'yes', soundEnabled: true, token: 'x' } }]),
+    );
+    await flushAccountPreferences();
+    expect(patches(online)).toEqual([{ sound_enabled: true }]);
+  });
+
+  it('keeps a change through a 401 and a server error', async () => {
+    global.fetch = answering(503) as unknown as typeof fetch;
+    await updateAccountPreferences({ hidePubNames: true });
+    expect(await pendingAccountPreferences()).toEqual({ hidePubNames: true });
+
+    global.fetch = answering(401) as unknown as typeof fetch;
+    await flushAccountPreferences();
+    await seedAccount({ deviceId: 'dev-1', accountId: 'acc-1', token: 'tok-1' });
+    expect(await pendingAccountPreferences()).toEqual({ hidePubNames: true });
+  });
+
+  it('drops a change the server refuses and hands back the server values', async () => {
+    const refused = jest.fn();
+    setAccountPreferencesRefusedListener(refused);
+    global.fetch = answering(400) as unknown as typeof fetch;
+
+    await updateAccountPreferences({ hidePubNames: true });
+
+    expect(await pendingAccountPreferences()).toEqual({});
+    expect(refused).toHaveBeenCalledWith(expect.objectContaining({ hidePubNames: false, hapticEnabled: true }));
+  });
+
+  it('holds the sharing write until the settings write is answered', async () => {
+    let answer: () => void = () => undefined;
+    global.fetch = jest.fn(
+      () => new Promise((resolve) => (answer = () => resolve({ ok: true, status: 200, json: async () => ({}) }))),
+    ) as unknown as typeof fetch;
+    const order: string[] = [];
+
+    const settings = updateAccountPreferences({ hidePubNames: true });
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    const sharing = runAccountMeWrite(async () => {
+      order.push('sharing');
+    });
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(order).toEqual([]);
+
+    answer();
+    await Promise.all([settings, sharing]);
+    expect(order).toEqual(['sharing']);
   });
 });

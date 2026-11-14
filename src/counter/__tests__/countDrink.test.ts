@@ -19,6 +19,9 @@ let mockUuid = 0;
 jest.mock('@/data/account', () => ({
   generateUuidV4: jest.fn(() => `uuid-${++mockUuid}`),
   setAnonymousSessionEvictionListener: jest.fn(),
+  setAccountPreferencesRefusedListener: jest.fn(),
+  pendingAccountPreferences: jest.fn(async () => ({})),
+  accountPreferencesDeliveries: jest.fn(() => 0),
 }));
 
 const syncVisit = jest.fn();
