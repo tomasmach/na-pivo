@@ -41,6 +41,9 @@ APP = PubReachDaily.Channel.APP
 WEB = PubReachDaily.Channel.WEB
 
 _SEARCH_HOSTS = (
+    ("ai", re.compile(
+        r"(^|\.)(chatgpt\.com|chat\.openai\.com|perplexity\.ai|gemini\.google\.com|copilot\.microsoft\.com|claude\.ai)$"
+    )),
     ("google", re.compile(r"(^|\.)google\.[a-z.]+$|^com\.google\.android\.")),
     ("seznam", re.compile(r"(^|\.)seznam\.cz$|^cz\.seznam\.")),
     ("bing", re.compile(r"(^|\.)bing\.com$")),
@@ -48,7 +51,15 @@ _SEARCH_HOSTS = (
         "other_search",
         re.compile(
             r"(^|\.)(duckduckgo\.com|search\.yahoo\.com|ecosia\.org|yandex\.[a-z]+|search\.brave\.com"
-            r"|startpage\.com|qwant\.com|perplexity\.ai|chatgpt\.com)$"
+            r"|startpage\.com|qwant\.com)$"
+        ),
+    ),
+    (
+        "social",
+        re.compile(
+            r"(^|\.)(facebook\.com|instagram\.com|threads\.net|t\.co|x\.com|twitter\.com|reddit\.com"
+            r"|linkedin\.com|lnkd\.in|tiktok\.com|youtube\.com|pinterest\.com|discord\.com|whatsapp\.com)$"
+            r"|^(com\.facebook\.|com\.instagram\.|com\.reddit\.|com\.twitter\.|com\.zhiliaoapp\.)"
         ),
     ),
 )
@@ -188,6 +199,8 @@ SOURCE_LABELS = {
     "seznam": "Seznam",
     "bing": "Bing",
     "other_search": "Jiný vyhledávač",
+    "ai": "AI chat (ChatGPT, Perplexity…)",
+    "social": "Sociální sítě",
     "direct": "Přímo, bez odkazu",
     "internal": "Z jiné stránky na-pivo.cz",
     "link": "Odkaz z jiného webu",

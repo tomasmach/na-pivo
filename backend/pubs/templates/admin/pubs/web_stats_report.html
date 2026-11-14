@@ -1,0 +1,114 @@
+{% extends "admin/base_site.html" %}
+{% block extrastyle %}{{ block.super }}
+<style>
+  .ws-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(420px, 1fr)); gap: 0 32px; }
+  .ws-num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .ws-up { color: #2e7d32; }
+  .ws-down { color: #c62828; }
+  .ws-bar { background: var(--primary, #79aec8); height: 10px; }
+  .ws-day { white-space: nowrap; }
+  .ws-barcell { width: 160px; }
+  table.ws-table { width: 100%; margin-bottom: 24px; }
+  .ws-muted { color: var(--body-quiet-color, #666); }
+</style>
+{% endblock %}
+{% block breadcrumbs %}
+<div class="breadcrumbs"><a href="{% url "admin:index" %}">Admin</a> › Web analytika</div>
+{% endblock %}
+{% block content %}
+<form method="get" style="margin-bottom: 16px">
+  <label>od <input type="date" name="from" value="{{ start|date:"Y-m-d" }}"></label>
+  <label>do <input type="date" name="to" value="{{ end|date:"Y-m-d" }}"></label>
+  <input type="submit" value="Zobrazit">
+  {% for range in ranges %}<a href="?from={{ range.from|date:"Y-m-d" }}&amp;to={{ range.to|date:"Y-m-d" }}" style="margin-left: 8px">posledních {{ range.days }} dní</a>{% endfor %}
+</form>
+<p>Období {{ start|date:"j. n. Y" }} až {{ end|date:"j. n. Y" }}. {% if report.first_day %}Web měřím od {{ report.first_day|date:"j. n. Y" }}.{% endif %}
+Web nic neukládá o návštěvníkovi (žádné cookies, IP adresa ani otisk prohlížeče), takže počítá návštěvy, ne lidi. Boti se nepočítají.</p>
+
+<div class="ws-grid">
+<div>
+<h2>Web</h2>
+{% if report.web %}
+<p class="ws-muted">Celé dny {{ report.web.now.0|date:"j. n." }} až {{ report.web.now.1|date:"j. n. Y" }}{% if report.web.before %}, porovnání s {{ report.web.before.0|date:"j. n." }} až {{ report.web.before.1|date:"j. n. Y" }}{% else %}. Stejně dlouhé období před ním web ještě neměřil{% endif %}.</p>
+{% include "admin/pubs/_web_stats_compare.html" with block=report.web %}
+{% else %}<p>V tomhle období web nemá žádná data.</p>{% endif %}
+</div>
+<div>
+<h2>Google vyhledávání</h2>
+{% if report.google %}
+<p class="ws-muted">Dny {{ report.google.now.0|date:"j. n." }} až {{ report.google.now.1|date:"j. n. Y" }} podle kalifornského času{% if report.google.before %}, porovnání s {{ report.google.before.0|date:"j. n." }} až {{ report.google.before.1|date:"j. n. Y" }}{% endif %}. Search Console má zpoždění 2 až 3 dny, staženo {{ report.search_synced_at|date:"j. n. H:i" }}.</p>
+{% include "admin/pubs/_web_stats_compare.html" with block=report.google %}
+{% elif report.search_synced_at %}<p>Za tohle období Google zatím nic nedal.</p>
+{% else %}<p class="ws-muted">Google Search Console zatím není napojená. Postup je v backend/README.md, sekce Web analytics.</p>{% endif %}
+</div>
+</div>
+
+<div class="ws-grid">
+<div>
+<h2>Odkud lidé přišli</h2>
+<table class="ws-table"><thead><tr><th>Zdroj</th><th class="ws-num">Otevření</th><th class="ws-num">App Store</th><th class="ws-num">Google Play</th><th class="ws-num">Do storu na 100</th></tr></thead><tbody>
+{% for row in report.sources %}<tr><td>{{ row.label }}</td><td class="ws-num">{{ row.views }}</td><td class="ws-num">{{ row.store_ios }}</td><td class="ws-num">{{ row.store_android }}</td><td class="ws-num">{{ row.store_rate|default_if_none:"–" }}</td></tr>{% empty %}<tr><td colspan="5">Nic.</td></tr>{% endfor %}
+</tbody></table>
+<p class="ws-muted">Klepnutí do storu patří zdroji stránky, na které člověk klepl. Kdo přišel z Googlu a pak šel na další stránku webu, klepá už z prokliku uvnitř webu.</p>
+</div>
+<div>
+<h2>Weby, sítě a AI, které na nás odkazují</h2>
+<table class="ws-table"><thead><tr><th>Web</th><th class="ws-num">Příchody</th><th class="ws-num">Klepnutí do storu</th></tr></thead><tbody>
+{% for row in report.referrers %}<tr><td>{{ row.key }}</td><td class="ws-num">{{ row.views }}</td><td class="ws-num">{{ row.store }}</td></tr>{% empty %}<tr><td colspan="3">Nic.</td></tr>{% endfor %}
+</tbody></table>
+<h2>Kampaně z odkazů (utm)</h2>
+<table class="ws-table"><thead><tr><th>Kampaň</th><th class="ws-num">Otevření</th><th class="ws-num">Klepnutí do storu</th></tr></thead><tbody>
+{% for row in report.campaigns %}<tr><td>{{ row.key }}</td><td class="ws-num">{{ row.views }}</td><td class="ws-num">{{ row.store }}</td></tr>{% empty %}<tr><td colspan="3">Nic.</td></tr>{% endfor %}
+</tbody></table>
+</div>
+</div>
+
+<div class="ws-grid">
+<div>
+<h2>Google: na co lidé hledají</h2>
+<table class="ws-table"><thead><tr><th>Dotaz</th><th class="ws-num">Ukázáno</th><th class="ws-num">Kliky</th><th class="ws-num">CTR</th><th class="ws-num">Pozice</th></tr></thead><tbody>
+{% for row in report.queries %}<tr><td>{{ row.key }}</td><td class="ws-num">{{ row.impressions }}</td><td class="ws-num">{{ row.clicks }}</td><td class="ws-num">{% if row.ctr is None %}–{% else %}{{ row.ctr }} %{% endif %}</td><td class="ws-num">{{ row.position|default_if_none:"–" }}</td></tr>{% empty %}<tr><td colspan="5">Nic.</td></tr>{% endfor %}
+</tbody></table>
+<p class="ws-muted">Vzácné dotazy Google kvůli soukromí neukazuje, takže součet dotazů je menší než celkové číslo.</p>
+</div>
+<div>
+<h2>Google: stránky ve výsledcích</h2>
+<table class="ws-table"><thead><tr><th>Stránka</th><th class="ws-num">Ukázáno</th><th class="ws-num">Kliky</th><th class="ws-num">CTR</th><th class="ws-num">Pozice</th></tr></thead><tbody>
+{% for row in report.search_pages %}<tr><td><a href="{{ row.key }}" target="_blank" rel="noopener">{{ row.path }}</a></td><td class="ws-num">{{ row.impressions }}</td><td class="ws-num">{{ row.clicks }}</td><td class="ws-num">{% if row.ctr is None %}–{% else %}{{ row.ctr }} %{% endif %}</td><td class="ws-num">{{ row.position|default_if_none:"–" }}</td></tr>{% empty %}<tr><td colspan="5">Nic.</td></tr>{% endfor %}
+</tbody></table>
+</div>
+</div>
+
+<h2>Stránky</h2>
+<table class="ws-table"><thead><tr><th>Stránka</th><th class="ws-num">Otevření</th><th class="ws-num">Příchody</th><th class="ws-num">Z vyhledávačů</th><th class="ws-num">App Store</th><th class="ws-num">Google Play</th><th class="ws-num">Do storu na 100</th></tr></thead><tbody>
+{% for row in report.pages %}<tr><td>{{ row.label }}</td><td class="ws-num">{{ row.views }}</td><td class="ws-num">{{ row.entrances }}</td><td class="ws-num">{{ row.search }}</td><td class="ws-num">{{ row.store_ios }}</td><td class="ws-num">{{ row.store_android }}</td><td class="ws-num">{{ row.store_rate|default_if_none:"–" }}</td></tr>{% empty %}<tr><td colspan="7">Nic.</td></tr>{% endfor %}
+</tbody></table>
+
+<h2>Nejčtenější hospody, piva, města a trasy</h2>
+<table class="ws-table"><thead><tr><th>Adresa</th><th>Druh</th><th class="ws-num">Otevření</th><th class="ws-num">Příchody</th><th class="ws-num">Z vyhledávačů</th><th class="ws-num">Klepnutí do storu</th></tr></thead><tbody>
+{% for row in report.paths %}<tr><td><a href="{{ row.key }}" target="_blank" rel="noopener">{{ row.key }}</a></td><td>{{ row.label }}</td><td class="ws-num">{{ row.views }}</td><td class="ws-num">{{ row.entrances }}</td><td class="ws-num">{{ row.search }}</td><td class="ws-num">{{ row.store }}</td></tr>{% empty %}<tr><td colspan="6">Nic.</td></tr>{% endfor %}
+</tbody></table>
+
+<div class="ws-grid">
+<div>
+<h2>Zařízení</h2>
+<table class="ws-table"><thead><tr><th></th><th class="ws-num">Otevření</th><th class="ws-num">App Store</th><th class="ws-num">Google Play</th></tr></thead><tbody>
+{% for row in report.devices %}<tr><td>{{ row.label }}</td><td class="ws-num">{{ row.views }}</td><td class="ws-num">{{ row.store_ios }}</td><td class="ws-num">{{ row.store_android }}</td></tr>{% empty %}<tr><td colspan="4">Nic.</td></tr>{% endfor %}
+</tbody></table>
+</div>
+<div>
+<h2>Jazyk webu</h2>
+<table class="ws-table"><thead><tr><th></th><th class="ws-num">Otevření</th><th class="ws-num">Klepnutí do storu</th></tr></thead><tbody>
+{% for row in report.langs %}<tr><td>{{ row.label }}</td><td class="ws-num">{{ row.views }}</td><td class="ws-num">{{ row.store }}</td></tr>{% empty %}<tr><td colspan="3">Nic.</td></tr>{% endfor %}
+</tbody></table>
+</div>
+</div>
+
+<h2>{% if report.weekly %}Po týdnech{% else %}Po dnech{% endif %}</h2>
+<table class="ws-table"><thead><tr><th>{% if report.weekly %}Týden{% else %}Den{% endif %}</th><th class="ws-barcell"></th><th class="ws-num">Otevření</th><th class="ws-num">Příchody</th><th class="ws-num">Z vyhledávačů</th><th class="ws-num">Z Googlu</th><th class="ws-num">Do storu</th><th class="ws-num">Ukázáno v Googlu</th><th class="ws-num">Kliky z Googlu</th></tr></thead><tbody>
+{% for row in report.periods %}<tr><td class="ws-day">{% if report.weekly %}{{ row.start|date:"j. n." }} až {{ row.end|date:"j. n." }}{% else %}{{ row.start|date:"D j. n." }}{% endif %}</td><td class="ws-barcell">{% if row.bar %}<div class="ws-bar" style="width: {{ row.bar }}%"></div>{% endif %}</td>
+{% if row.web %}<td class="ws-num">{{ row.web.views }}</td><td class="ws-num">{{ row.web.entrances }}</td><td class="ws-num">{{ row.web.search }}</td><td class="ws-num">{{ row.web.google }}</td><td class="ws-num">{{ row.web.store }}</td>{% else %}<td class="ws-num">–</td><td class="ws-num">–</td><td class="ws-num">–</td><td class="ws-num">–</td><td class="ws-num">–</td>{% endif %}
+<td class="ws-num">{{ row.g_impressions|default_if_none:"–" }}</td><td class="ws-num">{{ row.g_clicks|default_if_none:"–" }}</td></tr>{% endfor %}
+</tbody></table>
+<p class="ws-muted">Pomlčka znamená, že za ten den data nejsou: web se tehdy ještě neměřil, nebo je Google zatím nedal.</p>
+{% endblock %}

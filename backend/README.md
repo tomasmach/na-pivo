@@ -398,6 +398,19 @@ out. Active accounts are distinct accounts with an `app_open` (cold start) or
 
 ---
 
+### Web analytics
+
+Every page of the web loads `stats.js`, which sends `POST /web/stats` once per page view and once per tap on an App Store or Google Play link. `WebStatsDaily` keeps, per Prague day, the page (URL name), its language, the kind of source (`google`, `seznam`, `social`, `ai`, `link`, `direct`, `internal`…), the referrer host for links, social networks and AI chats, the link's `utm_campaign` (or `utm_source`), and `ios` / `android` / `desktop` from the user agent. The address itself is kept only for public content pages (a pub, a beer, a city, a public tour); invites, profiles and account pages are counted by page only. No cookie, IP address or fingerprint is stored, so the numbers are visits, not people. Bot user agents and browsers driven by automation are ignored.
+
+Google search numbers come from Search Console. `sync_search_console` runs in the worker loop, at most every 6 hours: the first run copies the 16 months Google keeps, later runs replace the last 10 days, which Google still adjusts. Without `SEARCH_CONSOLE_SERVICE_ACCOUNT` it does nothing. To turn it on:
+
+1. In Google Cloud, create a service account in any project, enable the "Google Search Console API" and create a JSON key for the account.
+2. In Search Console → Settings → Users and permissions of the `na-pivo.cz` property, add the service account's e-mail with "Restricted" permission.
+3. Put the JSON key on one line into `SEARCH_CONSOLE_SERVICE_ACCOUNT` in the server's `.env`. `SEARCH_CONSOLE_SITE` is `sc-domain:na-pivo.cz` for a domain property; a URL-prefix property is written as `https://na-pivo.cz/`.
+4. Restart the worker; `python manage.py sync_search_console --force` copies the history right away.
+
+Admin → Web analytika shows both for a chosen range, with the same range before it for comparison.
+
 ## Deploy (Docker Compose)
 
 Production runs as **Docker Compose** from `/opt/na-pivo/backend` on a Hetzner VPS (`api.na-pivo.cz`), behind a shared **Caddy** reverse proxy that terminates TLS. The same service handles the small public invite surface on `na-pivo.cz` (`/p/*`, Open Graph assets and iOS association). `/opt/na-pivo` is a sparse checkout of the monorepo (only `backend/` is materialised) pinned to a detached `api-*` tag — the backend never deploys from a branch.

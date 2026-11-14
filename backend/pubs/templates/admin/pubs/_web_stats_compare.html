@@ -1,0 +1,3 @@
+<table class="ws-table"><thead><tr><th></th><th class="ws-num">Toto období</th><th class="ws-num">Předtím</th><th class="ws-num">Změna</th></tr></thead><tbody>
+{% for row in block.rows %}<tr><td>{{ row.label }}</td><td class="ws-num"><strong>{{ row.now|default_if_none:"–" }}</strong></td><td class="ws-num">{{ row.before|default_if_none:"–" }}</td><td class="ws-num {% if row.change > 0 %}ws-up{% elif row.change < 0 %}ws-down{% endif %}">{% if row.change is None %}–{% else %}{% if row.change > 0 %}+{% endif %}{{ row.change }} %{% endif %}</td></tr>{% endfor %}
+</tbody></table>

@@ -5813,3 +5813,73 @@ class PubReachVisitor(models.Model):
 
     def __str__(self) -> str:
         return f"PubReachVisitor({self.cache_key} {self.day} {self.metric})"
+
+
+class WebStatsDaily(models.Model):
+    """Views of na-pivo.cz pages and taps on the store links on one Prague day.
+
+    Only the page, its language, where the visit came from, the campaign of the
+    link and the kind of device are counted. ``path`` is kept for public content
+    pages (a pub, a beer, a city) and is empty elsewhere, so no invite or profile
+    address lands here. Nothing about the visitor is stored, so it counts visits,
+    not people.
+    """
+
+    class Metric(models.TextChoices):
+        VIEW = "view", "Page view"
+        STORE_IOS = "store_ios", "App Store tap"
+        STORE_ANDROID = "store_android", "Google Play tap"
+
+    day = models.DateField(db_index=True)
+    page = models.CharField(max_length=48)
+    path = models.CharField(max_length=160, blank=True, default="")
+    lang = models.CharField(max_length=2)
+    metric = models.CharField(max_length=16, choices=Metric.choices)
+    source = models.CharField(max_length=16)
+    referrer = models.CharField(max_length=100, blank=True, default="")
+    campaign = models.CharField(max_length=48, blank=True, default="")
+    device = models.CharField(max_length=8)
+    count = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        verbose_name = "Web analytika"
+        verbose_name_plural = "Web analytika"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["day", "page", "path", "lang", "metric", "source", "referrer", "campaign", "device"],
+                name="web_stats_daily_unique",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return f"WebStatsDaily({self.day} {self.page} {self.metric} {self.count})"
+
+
+class SearchConsoleDaily(models.Model):
+    """Google search results for na-pivo.cz on one day, copied from Search Console.
+
+    ``kind`` is ``total`` (the whole site, ``key`` empty), ``query`` or ``page``.
+    Google keeps 16 months; the copy here stays. Days are Pacific time, as Google
+    reports them.
+    """
+
+    class Kind(models.TextChoices):
+        TOTAL = "total", "Total"
+        QUERY = "query", "Query"
+        PAGE = "page", "Page"
+
+    day = models.DateField(db_index=True)
+    kind = models.CharField(max_length=8, choices=Kind.choices)
+    key = models.CharField(max_length=300, blank=True, default="")
+    clicks = models.PositiveIntegerField(default=0)
+    impressions = models.PositiveIntegerField(default=0)
+    position = models.FloatField(default=0)
+    synced_at = models.DateTimeField()
+
+    class Meta:
+        verbose_name = "Search Console day"
+        verbose_name_plural = "Search Console days"
+        indexes = [models.Index(fields=["kind", "day"])]
+
+    def __str__(self) -> str:
+        return f"SearchConsoleDaily({self.day} {self.kind} {self.key!r} {self.impressions}/{self.clicks})"

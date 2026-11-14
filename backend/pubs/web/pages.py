@@ -241,6 +241,7 @@ def render_page(
         "description": description,
         "section": section,
         "indexable": indexable,
+        "missing": status >= 400,
         "canonical_noindex": canonical_noindex and status == 200,
         # Pages that are only out of the index still get a share preview.
         "shareable": indexable or (follow and status == 200),

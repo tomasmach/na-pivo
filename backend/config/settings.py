@@ -753,6 +753,7 @@ REST_FRAMEWORK = {
         "pub_reach": "30/min",
         # One beacon per pub page view and per navigation tap on the web.
         "web_reach": "60/min",
+        "web_stats": "120/min",
         "ops_live": "10/min",
         "push_devices": PUSH_DEVICES_THROTTLE_RATE,
         "friends": FRIENDS_THROTTLE_RATE,
@@ -909,6 +910,14 @@ LOGGING = {
         },
     },
 }
+
+# ---------------------------------------------------------------------------
+# Google Search Console (web analytics in the admin)
+# ---------------------------------------------------------------------------
+# Used by `sync_search_console`. The service account's JSON key on one line, and
+# the Search Console property it was added to as a user. Empty key = no sync.
+SEARCH_CONSOLE_SERVICE_ACCOUNT: str = os.environ.get("SEARCH_CONSOLE_SERVICE_ACCOUNT", "")
+SEARCH_CONSOLE_SITE: str = os.environ.get("SEARCH_CONSOLE_SITE", "sc-domain:na-pivo.cz")
 
 # ---------------------------------------------------------------------------
 # Linear integration (feedback → Linear issue sync)
