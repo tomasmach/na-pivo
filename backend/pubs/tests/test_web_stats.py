@@ -10,7 +10,7 @@ from django.core.management import call_command
 from django.test import RequestFactory, override_settings
 from django.utils import timezone
 
-from pubs import pub_reach, search_console
+from pubs import pub_reach, search_console, web_stats
 from pubs.models import SearchConsoleDaily, WebStatsDaily
 
 pytestmark = pytest.mark.django_db
@@ -67,10 +67,25 @@ def test_ignores_bots_garbage_and_non_pages(client):
     _beacon(client, {"path": "/admin/", "type": "view"})
     _beacon(client, {"path": "/v1/account", "type": "view"})
     _beacon(client, {"path": "/", "type": "view", "utm": "<script>"})
+    assert _beacon(client, {"path": "/", "type": []}).status_code == 204
+    assert _beacon(client, {"path": "/", "type": "view", "ref": "https://["}).status_code == 204
     client.post("/web/stats", data="{", content_type="application/json", HTTP_USER_AGENT=IPHONE)
 
     assert client.get("/web/stats").status_code == 405
     assert [(page, campaign) for page, _, _, _, _, _, campaign, *_ in _rows()] == [("home", "")]
+
+
+def test_a_full_day_folds_new_addresses_campaigns_and_sites_together(client, monkeypatch):
+    monkeypatch.setattr(web_stats, "MAX_ROWS_PER_DAY", 2)
+    _beacon(client, {"path": "/", "type": "view", "utm": "a"})
+    _beacon(client, {"path": "/", "type": "view", "utm": "b"})
+    _beacon(client, {"path": "/", "type": "view", "utm": "b"})
+    for spam in ("c", "d", "e"):
+        _beacon(client, {"path": "/", "type": "view", "utm": spam, "ref": f"https://{spam}.example"})
+
+    assert sorted((campaign, referrer, count) for *_, referrer, campaign, _, count in _rows()) == [
+        ("", "", 3), ("a", "", 1), ("b", "", 2),
+    ]
 
 
 def test_every_web_page_loads_the_counting_script(client):
@@ -107,12 +122,19 @@ def test_search_console_copies_history_then_replaces_only_recent_days():
     first = FakeGoogle([old, recent])
     assert search_console.sync(first, today) == 6
     assert first.calls[0]["startDate"] == (today - timedelta(days=search_console.HISTORY_DAYS)).isoformat()
+    assert first.calls[0]["dataState"] == "final"
 
     second = FakeGoogle([recent])
     search_console.sync(second, today)
     assert second.calls[0]["startDate"] == (today - timedelta(days=search_console.REFRESH_DAYS)).isoformat()
     assert SearchConsoleDaily.objects.filter(day=old).count() == 3
     assert SearchConsoleDaily.objects.filter(day=recent).count() == 3
+
+    SearchConsoleDaily.objects.update(synced_at=timezone.now() - timedelta(days=30))
+    third = FakeGoogle([recent])
+    search_console.sync(third, today)
+    outage_start = min(today, timezone.localdate() - timedelta(days=30)) - timedelta(days=search_console.REFRESH_DAYS)
+    assert third.calls[0]["startDate"] == outage_start.isoformat()
 
 
 def test_search_console_command_is_quiet_until_configured_and_waits_six_hours(monkeypatch):

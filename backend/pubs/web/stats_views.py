@@ -41,14 +41,18 @@ def web_stats_beacon(request: HttpRequest) -> HttpResponse:
         data = json.loads(request.body)
     except (ValueError, UnicodeDecodeError):
         return done
-    if not isinstance(data, dict) or data.get("type") not in _METRICS:
+    if not isinstance(data, dict) or not isinstance(data.get("type"), str) or data["type"] not in _METRICS:
         return done
     page = web_stats.page_of(str(data.get("path", "")), missing=data.get("missing") is True)
     if page is None or _throttled(request):
         return done
     own_hosts = {host for host in (urlsplit(settings.PUBLIC_WEB_ORIGIN).hostname, request.get_host().split(":")[0]) if host}
     referrer = str(data.get("ref", ""))[:500]
-    source = pub_reach.web_source(referrer, own_hosts)
+    try:
+        source = pub_reach.web_source(referrer, own_hosts)
+        referrer_host = web_stats.referrer_host(referrer, source)
+    except ValueError:
+        return done
     name, path, lang = page
     web_stats.record(
         web_stats.Hit(
@@ -58,7 +62,7 @@ def web_stats_beacon(request: HttpRequest) -> HttpResponse:
             lang=lang,
             metric=_METRICS[data["type"]],
             source=source,
-            referrer=web_stats.referrer_host(referrer, source),
+            referrer=referrer_host,
             campaign=web_stats.campaign_of(str(data.get("utm", ""))),
             device=web_stats.device_of(user_agent),
         )

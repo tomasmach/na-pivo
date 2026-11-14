@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import re
 from collections import defaultdict
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass, replace
 from datetime import date, timedelta
 from urllib.parse import urlsplit
 
@@ -136,7 +136,19 @@ def referrer_host(referrer: str, source: str) -> str:
     return host[:100]
 
 
+MAX_ROWS_PER_DAY = 5000
+
+
+def _day_is_full(hit: Hit) -> bool:
+    return (
+        not WebStatsDaily.objects.filter(**asdict(hit)).exists()
+        and WebStatsDaily.objects.filter(day=hit.day).count() >= MAX_ROWS_PER_DAY
+    )
+
+
 def record(hit: Hit) -> None:
+    if _day_is_full(hit):
+        hit = replace(hit, path="", referrer="", campaign="")
     table = connection.ops.quote_name(WebStatsDaily._meta.db_table)
     # PostgreSQL and SQLite share this upsert syntax.
     with connection.cursor() as cursor:

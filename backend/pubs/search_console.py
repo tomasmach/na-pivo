@@ -1,7 +1,7 @@
 """Copy Google Search Console's search results for na-pivo.cz into ``SearchConsoleDaily``.
 
-Each run replaces the last few days, since Google keeps adjusting them for about
-three days; the first run copies all 16 months Google still has.
+Each run replaces the days since shortly before the previous run, since Google keeps
+adjusting recent days; the first run copies all 16 months Google still has.
 """
 
 from __future__ import annotations
@@ -58,7 +58,7 @@ def _rows(http, start: date, end: date, dimensions: list[str]) -> list[dict]:
                 "endDate": end.isoformat(),
                 "dimensions": dimensions,
                 "type": "web",
-                "dataState": "all",
+                "dataState": "final",
                 "rowLimit": ROW_LIMIT,
                 "startRow": len(rows),
             },
@@ -75,8 +75,9 @@ def sync(http, today: date | None = None) -> int:
     """Replace the days from the refresh window on with what Google reports now. Returns rows written."""
 
     today = today or timezone.localdate()
-    has_history = SearchConsoleDaily.objects.exists()
-    start = today - timedelta(days=REFRESH_DAYS if has_history else HISTORY_DAYS)
+    oldest = today - timedelta(days=HISTORY_DAYS)
+    last = SearchConsoleDaily.objects.aggregate(at=Max("synced_at"))["at"]
+    start = oldest if last is None else max(oldest, min(today, timezone.localdate(last)) - timedelta(days=REFRESH_DAYS))
     now = timezone.now()
     fresh: list[SearchConsoleDaily] = []
     for kind, dimensions in ((Kind.TOTAL, ["date"]), (Kind.QUERY, ["date", "query"]), (Kind.PAGE, ["date", "page"])):
