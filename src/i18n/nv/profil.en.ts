@@ -24,6 +24,7 @@ export const profilEn: Strings['nv']['profil'] = {
     photos: 'Beer photos',
     favorites: 'Favourites',
     addedPubs: 'Pubs I added',
+    ratedBeers: 'Rated beers',
     tours: 'Tour de pub',
     watched: 'Watched beers',
   },

@@ -347,8 +347,9 @@ export async function createBeerCheckIn(input: BeerCheckInInput): Promise<BeerCh
   return res.ok ? parseBeerCheckIn(res.data as RawCheckIn) : null;
 }
 
-export async function fetchMyBeerCheckIns(signal?: AbortSignal): Promise<BeerCheckIn[] | null> {
-  const res = await requestJson('/v1/beer-checkins', { signal });
+/** `rated` asks for my newest rated check-in of every beer; an older server ignores it and sends recent history. */
+export async function fetchMyBeerCheckIns(signal?: AbortSignal, options: { rated?: boolean } = {}): Promise<BeerCheckIn[] | null> {
+  const res = await requestJson(options.rated ? '/v1/beer-checkins?rated=1' : '/v1/beer-checkins', { signal });
   if (!res.ok) return null;
   return Array.isArray(res.data.checkins)
     ? (res.data.checkins as RawCheckIn[]).map(parseBeerCheckIn)

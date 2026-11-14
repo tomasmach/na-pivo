@@ -24,6 +24,7 @@ const DETAIL_PATHS: Record<string, DetailRoute> = {
   '/nv/pivni-fotky': 'pivni-fotky',
   '/nv/moje-hospody': 'moje-hospody',
   '/nv/hlidana-piva': 'hlidana-piva',
+  '/nv/ohodnocena-piva': 'ohodnocena-piva',
   '/nv/fotopivar': 'fotopivar',
   '/nv/tour': 'tour',
   '/nv/cisla': 'cisla',
