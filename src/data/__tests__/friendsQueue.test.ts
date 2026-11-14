@@ -30,6 +30,7 @@ jest.mock('../friendsClient', () => ({
 }));
 
 import {
+  cancelQueuedPubBroadcasts,
   clearFriendsQueue,
   enqueueFriendOp,
   dropQueuedTourPings,
@@ -39,6 +40,7 @@ import {
   type FriendQueueItem,
 } from '../friendsQueue';
 import type { Pub } from '../pubs';
+import { geohash8 } from '../geohash';
 
 const STORAGE_KEY = 'na-pivo-friends-queue';
 
@@ -313,4 +315,81 @@ it('skips a tour ping taken out while the flush was on its way', async () => {
   release();
   await flushing;
   expect(shareFriendPubActivity).not.toHaveBeenCalled();
+});
+
+describe('Dopito with a ping still waiting for signal', () => {
+  const pubKey = geohash8(PUB.lat, PUB.lng);
+  const pingedAt = '2026-11-14T20:40:35.000Z';
+  const dopitoAt = '2026-11-14T20:40:44.000Z';
+
+  it('takes the ping out and says how many pings it will not send', async () => {
+    shareFriendPubActivity.mockResolvedValue(retry());
+    await enqueueFriendOp({ op: 'activity', clientId: 'ping', payload: { pub: PUB, message: '', startedAt: pingedAt } });
+    expect(await readQueue()).toHaveLength(1);
+
+    expect(await cancelQueuedPubBroadcasts(pubKey, dopitoAt)).toBe(1);
+    expect(await cancelQueuedPubBroadcasts(pubKey, dopitoAt)).toBe(0);
+
+    shareFriendPubActivity.mockClear();
+    shareFriendPubActivity.mockResolvedValue({ ok: true });
+    await flushFriendsQueue();
+    expect(shareFriendPubActivity).not.toHaveBeenCalled();
+    expect(await friendActivityState('ping')).toBe('gone');
+  });
+
+  it('counts a ping stored by the version already on phones, without its send time', async () => {
+    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify([{ op: 'activity', clientId: 'old', payload: { pub: PUB, message: '' } }]));
+    expect(await cancelQueuedPubBroadcasts(pubKey, dopitoAt)).toBe(1);
+    expect(await readQueue()).toEqual([]);
+  });
+
+  it('keeps and later sends once what Dopito does not touch: a cheer, a later invitation, a ping from another pub', async () => {
+    cheerFriend.mockResolvedValue(retry());
+    createFriendPlan.mockResolvedValue(retry());
+    shareFriendPubActivity.mockResolvedValue(retry());
+    const otherPub: Pub = { ...PUB, id: 'mapy:other', name: 'U Jinud', lat: 50.1, lng: 14.5 };
+    await enqueueFriendOp({ op: 'friend-cheer', accountId: 'klara' });
+    await enqueueFriendOp({ op: 'activity', clientId: 'plan', payload: { pub: PUB, message: '', scheduledFor: '2026-11-15T18:00:00.000Z' } });
+    await enqueueFriendOp({ op: 'activity', clientId: 'elsewhere', payload: { pub: otherPub, message: '', startedAt: pingedAt } });
+
+    expect(await cancelQueuedPubBroadcasts(pubKey, dopitoAt)).toBe(0);
+    expect(await readQueue()).toHaveLength(3);
+
+    cheerFriend.mockClear().mockResolvedValue({ ok: true });
+    createFriendPlan.mockClear().mockResolvedValue({ ok: true });
+    shareFriendPubActivity.mockClear().mockResolvedValue({ ok: true });
+    await Promise.all([flushFriendsQueue(), flushFriendsQueue()]);
+    await flushFriendsQueue();
+    expect(cheerFriend).toHaveBeenCalledTimes(1);
+    expect(createFriendPlan).toHaveBeenCalledTimes(1);
+    expect(shareFriendPubActivity).toHaveBeenCalledTimes(1);
+    expect(await readQueue()).toEqual([]);
+  });
+
+  it('sends a ping without Dopito exactly once, even when two flushes meet', async () => {
+    shareFriendPubActivity.mockResolvedValue(retry());
+    await enqueueFriendOp({ op: 'activity', clientId: 'ping', payload: { pub: PUB, message: '', startedAt: pingedAt } });
+    shareFriendPubActivity.mockClear().mockResolvedValue({ ok: true });
+    await Promise.all([flushFriendsQueue(), flushFriendsQueue()]);
+    await flushFriendsQueue();
+    expect(shareFriendPubActivity).toHaveBeenCalledTimes(1);
+    expect(shareFriendPubActivity).toHaveBeenCalledWith(PUB, '', 'ping', undefined, pingedAt, undefined);
+  });
+
+  it('survives malformed storage and reports nothing to drop', async () => {
+    await AsyncStorage.setItem(STORAGE_KEY, '{not json');
+    await expect(cancelQueuedPubBroadcasts(pubKey, dopitoAt)).resolves.toBe(0);
+    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify([{ op: 'activity', clientId: 'bad', payload: { pub: { name: 7 } } }]));
+    await expect(cancelQueuedPubBroadcasts(pubKey, dopitoAt)).resolves.toBe(0);
+  });
+
+  it('has nothing to drop once an account claim or deletion cleared the queue', async () => {
+    shareFriendPubActivity.mockResolvedValue(retry());
+    await enqueueFriendOp({ op: 'activity', clientId: 'ping', payload: { pub: PUB, message: '', startedAt: pingedAt } });
+    await clearFriendsQueue();
+    expect(await cancelQueuedPubBroadcasts(pubKey, dopitoAt)).toBe(0);
+    shareFriendPubActivity.mockClear();
+    await flushFriendsQueue();
+    expect(shareFriendPubActivity).not.toHaveBeenCalled();
+  });
 });

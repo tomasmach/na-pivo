@@ -10,6 +10,7 @@ import { formatClock, formatPromile, useAlcoholEstimate } from '@/counter/useAlc
 import { placeKey, removeCountedDrink, type CountableDrink } from '@/counter/countDrink';
 import { fetchBeerPage, submitBeerStyle, type BeerDegree, type StyleAnswer } from '@/data/beersClient';
 import { trackCounterTabOpened } from '@/data/counterTelemetry';
+import { cancelQueuedPubBroadcasts } from '@/data/friendsQueue';
 import { trackClientEvent } from '@/data/telemetryClient';
 import { trackUiInteraction } from '@/data/uxTelemetry';
 import { normalizeDrinkType } from '@/drinks/drinkTypes';
@@ -353,7 +354,11 @@ function CounterView() {
       return;
     }
     const day = drinkingDayKey(new Date(live.startedAt));
+    const droppedPings = cancelQueuedPubBroadcasts(live.pubKey, new Date().toISOString());
     useTallyStore.getState().archiveCurrent('manual');
+    void droppedPings.then((count) => {
+      if (count > 0) toast({ kind: 'offline', title: t.nv.parta.pingDropped, sub: t.nv.parta.pingDroppedSub, icon: 'cloud-off' });
+    });
     leaveFriendHome();
     useCounterNudges.getState().set({ stickerFor: null, tourBanner: null, newBeer: null });
     void trackClientEvent({ event: 'counter_session_closed', context: { reason: 'manual' } });

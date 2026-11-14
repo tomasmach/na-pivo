@@ -32,6 +32,8 @@ export const partaEn: Strings['nv']['parta'] = {
   pingNotePlaceholder: 'Holding the table. Coming?',
   pingSentSub: (pub: string, who?: string) => (who ? `${pub} · ${who} knows` : `${pub} · the crew knows`),
   pingQueued: "I'll ping them once you have signal.",
+  pingDropped: "I won't send the ping now.",
+  pingDroppedSub: 'You finished before the signal came back.',
   pingGhost: 'Invisible mode is on, so nobody would get the ping.',
   pingGhostSend: 'Turn visible and ping',
   pingNoFriends: 'Nobody is in your crew yet, so there is no one to ping.',

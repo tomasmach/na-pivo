@@ -31,6 +31,8 @@ export const partaCs = {
   pingNotePlaceholder: 'Držím stůl. Přidáš se?',
   pingSentSub: (pub: string, who?: string) => (who ? `${pub} · ví to ${who}` : `${pub} · parta to ví`),
   pingQueued: 'Cinknu, až chytíš signál.',
+  pingDropped: 'Cinknutí už nepošlu.',
+  pingDroppedSub: 'Dopils dřív, než naskočil signál.',
   pingGhost: 'Máš zapnutý neviditelný režim, cinknutí by nikomu nepřišlo.',
   pingGhostSend: 'Zviditelnit se a cinknout',
   pingNoFriends: 'V partě zatím nikoho nemáš, tak není komu cinknout.',
