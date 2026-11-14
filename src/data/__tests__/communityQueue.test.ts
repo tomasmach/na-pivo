@@ -1,6 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { enqueuePubCommunity, flushCommunityQueue } from '../communityQueue';
-import { submitPubCommunity, type CommunityEntry } from '../communityClient';
+import { clearCommunityQueue, enqueuePubCommunity, flushCommunityQueue } from '../communityQueue';
+import { buildCommunityEntry, submitPubCommunity, type CommunityEntry } from '../communityClient';
+import { fetchPubHours } from '../hoursClient';
 
 jest.mock('@react-native-async-storage/async-storage', () =>
   require('@react-native-async-storage/async-storage/jest/async-storage-mock'),
@@ -18,6 +19,8 @@ jest.mock('../communityClient', () => ({
   ...jest.requireActual('../communityClient'),
   submitPubCommunity: jest.fn(async () => ({ cacheKey: 'k', hours: null, beers: [] })),
 }));
+
+jest.mock('../hoursClient', () => ({ fetchPubHours: jest.fn(async () => new Map()) }));
 
 const STORAGE_KEY = 'na-pivo-community-queue';
 
@@ -256,5 +259,89 @@ describe('flushCommunityQueue', () => {
     await AsyncStorage.setItem(STORAGE_KEY, '{not json');
     await expect(flushCommunityQueue()).resolves.toBeUndefined();
     expect(submitPubCommunity).not.toHaveBeenCalled();
+  });
+});
+
+describe('an edit made against what the editor showed', () => {
+  const tiger = { externalId: null, name: 'U Zlatého tygra', lat: 50.0855, lng: 14.4186 };
+  const pilsner = { name: 'Pilsner Urquell 12°' };
+  const kozel65 = { name: 'Kozel 11°', priceCzk: 65 };
+  const serverHas = (beers: { name: string; priceCzk?: number }[]) =>
+    (fetchPubHours as jest.Mock).mockImplementation(async (pubs: { id: string }[]) =>
+      new Map([[pubs[0].id, { beers, communityHours: null, openingHours: null }]]),
+    );
+  const offlinePriceFix = () =>
+    buildCommunityEntry({ ...tiger, beers: [{ name: 'Kozel 11°', priceCzk: 70 }], beersBase: [kozel65] }, 'fix-1');
+
+  it('keeps the beers the offline editor never showed once the signal is back', async () => {
+    (submitPubCommunity as jest.Mock).mockResolvedValue(null);
+    await enqueuePubCommunity(offlinePriceFix());
+    expect(await readQueue()).toEqual([expect.objectContaining({ beers_base: [{ name: 'Kozel 11°', price_czk: 65 }] })]);
+
+    serverHas([pilsner, kozel65]);
+    (submitPubCommunity as jest.Mock).mockResolvedValue({ cacheKey: 'k', hours: null, beers: [] });
+    await flushCommunityQueue();
+
+    const sent = (submitPubCommunity as jest.Mock).mock.calls.at(-1)[0];
+    expect(sent.beers).toEqual([{ name: 'Pilsner Urquell 12°' }, { name: 'Kozel 11°', price_czk: 70 }]);
+    expect(sent).not.toHaveProperty('beers_base');
+    expect(await readQueue()).toEqual([]);
+  });
+
+  it('waits instead of sending while the pub cannot be read', async () => {
+    (fetchPubHours as jest.Mock).mockResolvedValue(new Map());
+    await enqueuePubCommunity(offlinePriceFix());
+    expect(submitPubCommunity).not.toHaveBeenCalled();
+    expect(await readQueue()).toHaveLength(1);
+  });
+
+  it('sends the same result again when the server already has it', async () => {
+    serverHas([pilsner, kozel65]);
+    (submitPubCommunity as jest.Mock).mockResolvedValue(null);
+    await enqueuePubCommunity(offlinePriceFix());
+    const first = (submitPubCommunity as jest.Mock).mock.calls.at(-1)[0];
+    serverHas([pilsner, { name: 'Kozel 11°', priceCzk: 70 }]);
+    await flushCommunityQueue();
+    expect((submitPubCommunity as jest.Mock).mock.calls.at(-1)[0]).toEqual(first);
+  });
+
+  it('is never merged into an earlier pending edit of the same pub', async () => {
+    (submitPubCommunity as jest.Mock).mockResolvedValue(null);
+    await enqueuePubCommunity(entry({ client_id: 'released' }));
+    await enqueuePubCommunity({ ...offlinePriceFix(), lat: entry().lat, lng: entry().lng });
+    expect((await readQueue()).map((e) => e.client_id)).toEqual(['released', 'fix-1']);
+  });
+
+  it('flushes an entry stored by a released app as it is, without reading the pub', async () => {
+    const released = entry({ client_id: 'old', hours: undefined, beers: [{ name: 'Kozel', price_czk: 49 }], beer_menu_rotates: false });
+    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify([released]));
+    await flushCommunityQueue();
+    expect(fetchPubHours).not.toHaveBeenCalled();
+    expect(submitPubCommunity).toHaveBeenCalledWith(released);
+  });
+
+  it('drops a stored entry with a malformed base and still sends the rest', async () => {
+    const good = entry({ client_id: 'good', lat: 49.1951, lng: 16.6068 });
+    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify([
+      { ...entry({ client_id: 'bad', beers: [] }), beers_base: 'nope' },
+      { ...entry({ client_id: 'bad-hours' }), hours_base: { mo: [] } },
+      good,
+    ]));
+    await flushCommunityQueue();
+    expect(submitPubCommunity).toHaveBeenCalledTimes(1);
+    expect(submitPubCommunity).toHaveBeenCalledWith(good);
+  });
+
+  it('sends nothing more once the queue is cleared for an account change mid-flush', async () => {
+    let release: (value: Map<string, unknown>) => void = () => {};
+    (fetchPubHours as jest.Mock).mockImplementation(() => new Promise((resolve) => { release = resolve; }));
+    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify([offlinePriceFix()]));
+    const flush = flushCommunityQueue();
+    await new Promise((r) => setTimeout(r, 0));
+    const cleared = clearCommunityQueue();
+    release(new Map([['fix-1', { beers: [pilsner, kozel65], communityHours: null, openingHours: null }]]));
+    await Promise.all([flush, cleared]);
+    expect(submitPubCommunity).not.toHaveBeenCalled();
+    expect(await readQueue()).toEqual([]);
   });
 });

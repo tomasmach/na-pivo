@@ -16,7 +16,14 @@ import { ensureAccount } from './account';
 import { getBackendEndpoint } from './backendConfig';
 import { chainAbortSignal, classifyQueueHttpFailure } from './apiFetch';
 import type { CommunityBeer, WeeklyHours, WireBeer } from './communityHours';
-import { DAY_KEYS, beerFromWire, beerToWire } from './communityHours';
+import {
+  DAY_KEYS,
+  beerFromWire,
+  beerToWire,
+  emptyWeeklyHours,
+  isSameBeerIdentity,
+  parseOsmOpeningHoursToWeeklyHours,
+} from './communityHours';
 import type { WireMapperSnapshot } from './pubAmenitiesClient';
 
 export type { CommunityBeer, WeeklyHours };
@@ -39,6 +46,11 @@ export interface CommunityInput {
   /** The one beer this beer-list edit fixes or removes. A newer server applies
    *  just this to the menu as it is now; `beers` is what older servers store. */
   beerChange?: BeerChange;
+  /** The menu the editor showed before the edit. Only what changed against it
+   *  reaches the server, applied to the server's menu just before sending. */
+  beersBase?: CommunityBeer[];
+  /** The week the editor showed before the edit; only the changed days are sent. */
+  hoursBase?: WeeklyHours;
 }
 
 /** One menu row, as the user saw it, taken off or given a new price/size. */
@@ -68,6 +80,10 @@ export interface CommunityEntry {
   beer_change?: WireBeerChange;
   /** `beers` keeps every size; released apps leave out odd ones and the server restores them. */
   beer_sizes_complete?: boolean;
+  /** Kept on the phone, never sent: see `CommunityInput.beersBase`. */
+  beers_base?: WireBeer[];
+  /** Kept on the phone, never sent: see `CommunityInput.hoursBase`. */
+  hours_base?: WeeklyHours;
 }
 
 /** Backend response for a successful submission. */
@@ -113,10 +129,14 @@ export function buildCommunityEntry(input: CommunityInput, clientId: string): Co
   };
   const city = input.city?.trim();
   if (city) entry.city = city;
-  if (input.hours) entry.hours = input.hours;
+  if (input.hours) {
+    entry.hours = input.hours;
+    if (input.hoursBase) entry.hours_base = input.hoursBase;
+  }
   if (input.beers) {
     entry.beers = input.beers.map(beerToWire);
     entry.beer_sizes_complete = true;
+    if (input.beersBase) entry.beers_base = input.beersBase.map(beerToWire);
   }
   if (typeof input.beerMenuRotates === 'boolean') {
     entry.beer_menu_rotates = input.beerMenuRotates;
@@ -136,6 +156,55 @@ function beerChangeToWire(change: BeerChange): WireBeerChange {
     wire.new_volume_ml = change.newVolumeMl ?? null;
   }
   return wire;
+}
+
+/** The pub's menu and hours as the server shows them now. */
+export interface ServerPubFacts {
+  beers: CommunityBeer[];
+  communityHours: WeeklyHours | null;
+  openingHours: string | null;
+}
+
+const MAX_BEERS = 12;
+
+/**
+ * The entry to send: an edit made against what the editor showed, re-applied to
+ * what the server shows now. A beer the person did not remove stays, and a day
+ * they did not change keeps the server's hours. An entry without a base (a
+ * released app's, or a one-beer change) goes out unchanged.
+ */
+export function rebaseCommunityEntry(entry: CommunityEntry, server: ServerPubFacts): CommunityEntry {
+  const { beers_base: beersBase, hours_base: hoursBase, ...sent } = entry;
+  if (sent.beers && beersBase) {
+    const base = beersBase.map(beerFromWire);
+    const edited = sent.beers.map(beerFromWire);
+    const sameRow = (a: CommunityBeer, b: CommunityBeer) => isSameBeerIdentity(a, b) && a.priceCzk === b.priceCzk;
+    const unchanged = server.beers.length === base.length && server.beers.every((s) => base.some((b) => sameRow(b, s)));
+    if (!unchanged) {
+      const removed = base.filter((b) => !edited.some((e) => isSameBeerIdentity(e, b)));
+      const changed = edited.filter((e) => !base.some((b) => sameRow(b, e)));
+      const next = server.beers.filter((s) => !removed.some((r) => isSameBeerIdentity(r, s)));
+      const unmatched: CommunityBeer[] = [];
+      for (const beer of changed) {
+        const at = next.findIndex((s) => isSameBeerIdentity(s, beer));
+        if (at >= 0) next[at] = beer;
+        else unmatched.push(beer);
+      }
+      // The server names a beer after its catalogue and keeps the first row of
+      // a beer, so a row the phone cannot match goes first and wins.
+      sent.beers = [...unmatched, ...next].slice(0, MAX_BEERS).map(beerToWire);
+    }
+  }
+  if (sent.hours && hoursBase) {
+    const edited = sent.hours;
+    const now = server.communityHours ?? parseOsmOpeningHoursToWeeklyHours(server.openingHours) ?? emptyWeeklyHours();
+    const week = emptyWeeklyHours();
+    for (const day of DAY_KEYS) {
+      week[day] = JSON.stringify(edited[day]) === JSON.stringify(hoursBase[day]) ? now[day] : edited[day];
+    }
+    sent.hours = week;
+  }
+  return sent;
 }
 
 /**

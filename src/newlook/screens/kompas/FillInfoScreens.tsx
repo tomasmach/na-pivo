@@ -245,8 +245,10 @@ export function DoplnitInfoScreen() {
         lng: pub.lng,
         city: pub.city,
         hours: sendHours,
+        hoursBase: startHours,
         beers: sendBeers,
-        beerMenuRotates: sendBeers ? menuRotates : undefined,
+        beersBase: currentBeers,
+        beerMenuRotates: sendBeers && rotating !== null ? rotating : undefined,
       },
       generateUuidV4(),
     );
