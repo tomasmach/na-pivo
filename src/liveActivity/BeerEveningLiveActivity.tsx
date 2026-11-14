@@ -152,7 +152,7 @@ const BeerEveningLiveActivity = (
   // The countdown only shrinks, so a width picked now stays wide enough.
   const transitLeftMs = (departsAtMs ?? 0) - Date.now();
   const transitTimerWidth =
-    transitLeftMs < 60 * 60 * 1000 ? 34 : transitLeftMs < 10 * 60 * 60 * 1000 ? 44 : 52;
+    transitLeftMs < 60 * 60 * 1000 ? 37 : transitLeftMs < 10 * 60 * 60 * 1000 ? 48 : 56;
 
   // A 116 pt numeral needs more than its line height allows, so the text keeps
   // its own height and the frame trims the empty ascender and descender space.
@@ -359,6 +359,8 @@ const BeerEveningLiveActivity = (
                   font({ family: extraboldFont, size: 12 }),
                   foregroundStyle(c.primary),
                   monospacedDigit(),
+                  lineLimit(1),
+                  minimumScaleFactor(0.7),
                   multilineTextAlignment('trailing'),
                   // Just wide enough for the digits, so "za" stays next to them.
                   frame({ width: transitTimerWidth, alignment: 'trailing' }),
