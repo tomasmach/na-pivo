@@ -375,7 +375,6 @@ export async function friendActivityState(clientId: string): Promise<'queued' | 
   return delivered.has(clientId) || (await readDelivered()).includes(clientId) ? 'sent' : 'gone';
 }
 
-/** Dopito also cancels broadcasts that have not reached the server yet; resolves to how many live pings it cancelled. */
 export function cancelQueuedPubBroadcasts(pubKey: string, closedAt: string): Promise<number> {
   return runMutation(async () => {
     const queue = await loadQueue();

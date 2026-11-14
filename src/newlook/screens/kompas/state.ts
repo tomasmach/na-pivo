@@ -112,7 +112,6 @@ export function openNvPub(router: Router, pub: Pub, via?: 'card'): void {
   router.push({ pathname: '/nv/hospoda/[id]', params: via ? { ...nvPubParams(pub), via } : nvPubParams(pub) });
 }
 
-/** Aim the Kompas tab at a pub and open it in the view the button promises. */
 export function showOnKompas(router: Router, pub: Pub, view: KompasView, mapView: MapView = 'okoli'): void {
   useKompasState.getState().pick(pub);
   useKompasState.getState().set({ view, mapView });
