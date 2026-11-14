@@ -219,7 +219,8 @@ async function main() {
   }
   if (!metroOnly) {
     const device = await iosClient();
-    await run('open', ['-a', 'Simulator']);
+    // Xcode 27 ships the simulator window as DeviceHub.
+    await run('open', ['-a', 'Simulator']).catch(() => run('open', ['-a', 'DeviceHub']));
     // Expo dev-launcher accepts --initialUrl on simulators. Restart just this app
     // so a client opened by another checkout cannot keep its previous Metro URL.
     await run('xcrun', ['simctl', 'launch', '--terminate-running-process', device.udid,
