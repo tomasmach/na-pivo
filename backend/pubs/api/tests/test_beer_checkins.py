@@ -964,7 +964,7 @@ def test_checkin_reaction_bypasses_ugc_gate_without_stored_acceptance(client):
 
 
 @pytest.mark.django_db
-def test_rated_list_keeps_latest_rating_per_beer_beyond_recent_history(client):
+def test_rated_list_returns_every_rated_checkin_beyond_recent_history(client):
     token, _ = _register(client, "hodnotitel")
     other_token, _ = _register(client, "cizi")
     start = timezone.now() - timedelta(days=200)
@@ -1018,5 +1018,7 @@ def test_rated_list_keeps_latest_rating_per_beer_beyond_recent_history(client):
     assert [(row["beer_name"], row["rating"]) for row in rows] == [
         ("Plzeň 12", "5.0"),
         ("Radegast Ryze hořká 12", "3.0"),
+        ("12", "1.0"),
         ("kozel  11", "4.0"),
+        ("Kozel 11", "2.0"),
     ]

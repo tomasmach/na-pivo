@@ -153,7 +153,7 @@ describe('loadMyRatings', () => {
 });
 
 describe('loadMyRatedBeers', () => {
-  it('lists every beer once with my newest stars, lets a queued rating win and sorts the best first', async () => {
+  it('lists every beer once with my newest stars, lets a queued rating under an older name win and sorts the best first', async () => {
     serverHistory = [
       checkIn({ beerName: 'Únětická 12', breweryName: 'Únětický pivovar', productKey: 'uneticka-12', rating: 4, updatedAt: '2026-03-01T20:00:00.000Z' }),
       checkIn({ beerName: 'únětická  12', rating: 2, updatedAt: '2026-01-01T20:00:00.000Z' }),
@@ -162,13 +162,13 @@ describe('loadMyRatedBeers', () => {
       checkIn({ beerName: 'Rychtář 12', breweryName: 'Rychtář', productKey: 'rychtar-12', rating: 3 }),
       checkIn({ beerName: 'Rychtář Premium', breweryName: 'Rychtář', productKey: 'rychtar-12', rating: 1 }),
     ];
-    pending = [{ clientId: 'q', beerName: 'Rychtář 12', rating: 5, visibility: 'private' }];
+    pending = [{ clientId: 'q', beerName: 'Rychtář Premium', rating: 5, visibility: 'private' }];
 
     const mine = new Set(['Únětická 12', 'Chodovar 11', 'Rychtář 12', 'Rychtář Premium', 'Bez hvězd']);
     const beers = (await loadMyRatedBeers())?.filter((b) => mine.has(b.beerName));
 
     expect(beers?.map((b) => [b.beerName, b.rating, b.productKey])).toEqual([
-      ['Rychtář 12', 5, 'rychtar-12'],
+      ['Rychtář Premium', 5, 'rychtar-12'],
       ['Chodovar 11', 4, null],
       ['Únětická 12', 4, 'uneticka-12'],
     ]);
