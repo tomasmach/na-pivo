@@ -10,38 +10,42 @@ class PubEvent(models.Model):
     """A time-bounded community event suggestion awaiting human verification."""
 
     class Status(models.TextChoices):
-        PENDING = "pending", "Pending"
-        VERIFIED = "verified", "Verified"
-        REJECTED = "rejected", "Rejected"
+        PENDING = "pending", "Čeká na ověření"
+        VERIFIED = "verified", "Ověřená"
+        REJECTED = "rejected", "Zamítnutá"
 
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False, verbose_name="ID (technické)")
     account = models.ForeignKey(
         "pubs.Account",
         on_delete=models.CASCADE,
         related_name="pub_event_suggestions",
+        verbose_name="Přidal",
     )
-    client_id = models.UUIDField()
-    cache_key = models.CharField(max_length=12, db_index=True)
-    name = models.CharField(max_length=200)
-    lat = models.FloatField()
-    lng = models.FloatField()
-    city = models.CharField(max_length=200, blank=True)
-    external_id = models.CharField(max_length=255, blank=True)
-    title = models.CharField(max_length=120)
-    details = models.CharField(max_length=500, blank=True)
-    starts_at = models.DateTimeField(db_index=True)
-    ends_at = models.DateTimeField(db_index=True)
+    client_id = models.UUIDField(verbose_name="ID z appky (technické)")
+    cache_key = models.CharField(max_length=12, db_index=True, verbose_name="Klíč místa (technické)")
+    name = models.CharField(max_length=200, verbose_name="Hospoda")
+    lat = models.FloatField(verbose_name="Zeměpisná šířka")
+    lng = models.FloatField(verbose_name="Zeměpisná délka")
+    city = models.CharField(max_length=200, blank=True, verbose_name="Město")
+    external_id = models.CharField(max_length=255, blank=True, verbose_name="ID u poskytovatele mapy (technické)")
+    title = models.CharField(max_length=120, verbose_name="Název akce")
+    details = models.CharField(max_length=500, blank=True, verbose_name="Podrobnosti")
+    starts_at = models.DateTimeField(db_index=True, verbose_name="Začátek")
+    ends_at = models.DateTimeField(db_index=True, verbose_name="Konec")
     status = models.CharField(
         max_length=16,
         choices=Status.choices,
         default=Status.PENDING,
         db_index=True,
+        verbose_name="Stav",
     )
-    verified_at = models.DateTimeField(null=True, blank=True)
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
+    verified_at = models.DateTimeField(null=True, blank=True, verbose_name="Ověřeno")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="Vytvořeno")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="Upraveno")
 
     class Meta:
+        verbose_name = "Akce hospody"
+        verbose_name_plural = "Akce hospod"
         ordering = ["starts_at", "created_at"]
         constraints = [
             models.UniqueConstraint(
@@ -68,4 +72,4 @@ class PubEvent(models.Model):
         super().save(*args, **kwargs)
 
     def __str__(self) -> str:
-        return f"{self.title} at {self.name}"
+        return f"{self.title}, {self.name}"
