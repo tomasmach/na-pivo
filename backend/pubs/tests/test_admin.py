@@ -4,9 +4,17 @@ from types import SimpleNamespace
 
 import pytest
 from django.contrib import admin
+from django.contrib.auth.models import User
 
 from pubs.enrichment import geohash8
-from pubs.models import Account, PublishedNight, PublishedNightComment, UserAddedPub
+from pubs.models import (
+    Account,
+    ContentReport,
+    FeedbackReport,
+    PublishedNight,
+    PublishedNightComment,
+    UserAddedPub,
+)
 
 
 def _make_comment(account: Account, *, client_id: str) -> PublishedNightComment:
@@ -111,3 +119,22 @@ def test_user_added_pub_admin_recomputes_cache_key_after_coordinate_edit():
 
     pub.refresh_from_db()
     assert pub.cache_key == geohash8(49.1951, 16.6068)
+
+
+@pytest.mark.django_db
+def test_dashboard_shows_what_waits_for_moderation(client):
+    now = datetime.now(UTC)
+    FeedbackReport.objects.create(client_id=uuid.uuid4(), category="bug", message="Počítadlo se vrátí na nulu", updated_at=now)
+    FeedbackReport.objects.create(client_id=uuid.uuid4(), category="idea", message="Vyřešeno", status="resolved", updated_at=now)
+    ContentReport.objects.create(reason="spam", updated_at=now)
+    client.force_login(User.objects.create_superuser("admin", "admin@example.com", "x"))
+
+    response = client.get("/admin/")
+
+    assert response.status_code == 200
+    assert response.context["waiting"] == [
+        ("Nahlášený obsah", 1, "/admin/pubs/contentreport/?status__exact=new"),
+        ("Zpětná vazba", 1, "/admin/pubs/feedbackreport/?status__exact=new"),
+        ("Túry skryté nahlášením", 0, "/admin/pubs/tourpublication/?status__exact=hidden&hidden_reason=reports"),
+    ]
+    assert "Počítadlo se vrátí na nulu" in response.content.decode()
