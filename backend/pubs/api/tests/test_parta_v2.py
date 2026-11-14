@@ -95,8 +95,21 @@ def _home_plan(client, token, *, days=3, recipients=None, client_id=None, schedu
     return client.post("/v1/friends/pub-activity", data=body, format="json", **_auth(token))
 
 
+@pytest.fixture
+def today_reaches_two_hours_ahead(monkeypatch):
+    from pubs.api import views
+
+    prague_today_bounds = views._prague_today_bounds
+
+    def bounds(now=None):
+        start, end = prague_today_bounds(now)
+        return start, end + timedelta(hours=3)
+
+    monkeypatch.setattr(views, "_prague_today_bounds", bounds)
+
+
 @pytest.mark.django_db
-def test_released_plan_payload_still_creates_one_todays_plan(client, party):
+def test_released_plan_payload_still_creates_one_todays_plan(client, party, today_reaches_two_hours_ahead):
     token, host = party["host"]
     guest_token, _ = party["guest"]
     soon = (timezone.now() + timedelta(hours=2)).isoformat()
@@ -318,7 +331,7 @@ def test_undated_plan_can_be_edited_dated_and_undated_again_keeping_answers(clie
 
 
 @pytest.mark.django_db
-def test_released_payloads_unchanged_by_editing_undated_plans(client, party):
+def test_released_payloads_unchanged_by_editing_undated_plans(client, party, today_reaches_two_hours_ahead):
     token, host = party["host"]
     guest_token, _ = party["guest"]
     # A released client's live broadcast: no place_kind, no scheduled_for.
