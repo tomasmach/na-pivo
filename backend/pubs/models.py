@@ -3352,8 +3352,9 @@ class PubCommunityData(models.Model):
     """
     Community-contributed opening hours and beers-on-tap for one pub.
 
-    Holds the CURRENT community state per geohash-8 cell (one row per
-    ``cache_key``, matching PubHours). Contributions go live immediately — this
+    Holds the CURRENT community state per pub: one row per geohash-8 cell and
+    normalized name, so two pubs in one ~38 m cell keep their own hours and
+    menu. Contributions go live immediately — this
     row is upserted on every submission — and full history is kept in
     PubContributionLog for audit / revert. Community opening hours TAKE
     PRECEDENCE over the firmy.cz-derived PubHours in the /v1/pub-hours read path.
@@ -3366,11 +3367,11 @@ class PubCommunityData(models.Model):
     # ---------- identity ----------
     cache_key = models.CharField(
         max_length=12,
-        unique=True,
         db_index=True,
         help_text="Geohash-8 of (lat, lng) — ~38 m precision; matches PubHours.cache_key.",
     )
     name = models.CharField(max_length=255)
+    name_key = models.CharField(max_length=255)
     lat = models.FloatField()
     lng = models.FloatField()
     city = models.CharField(max_length=128, blank=True, null=True)
@@ -3450,9 +3451,21 @@ class PubCommunityData(models.Model):
         verbose_name = "Pub Community Data"
         verbose_name_plural = "Pub Community Data"
         ordering = ["-updated_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["cache_key", "name_key"], name="unique_pub_community_identity"
+            )
+        ]
 
     def __str__(self) -> str:
         return f"PubCommunityData({self.name} [{self.cache_key}])"
+
+    def save(self, *args, **kwargs) -> None:
+        self.name_key = normalize_pub_name(self.name)
+        update_fields = kwargs.get("update_fields")
+        if update_fields is not None and "name" in update_fields:
+            kwargs["update_fields"] = {*update_fields, "name_key"}
+        super().save(*args, **kwargs)
 
 
 class PubExternalBeerMenu(models.Model):

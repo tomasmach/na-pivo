@@ -14,6 +14,7 @@ from django.conf import settings
 from django.core.cache import cache
 from django.db import connection
 from django.test.utils import CaptureQueriesContext
+from django.utils.timezone import now as dj_now
 from rest_framework import status
 from rest_framework.test import APIClient
 
@@ -1491,3 +1492,141 @@ def test_rebuilding_a_merged_duplicate_menu_keeps_a_removed_beer_gone(client):
     _rebuild_community_signals_after_purge("u2fkbq00")
 
     assert PubCommunityData.objects.get(cache_key="u2fkbq00").beers == [_MENU_NOW[1]]
+
+
+# ---------------------------------------------------------------------------
+# Two pubs in one geohash cell
+# ---------------------------------------------------------------------------
+
+_NEIGHBOUR = "Kavárna Na Rohu"
+_NEIGHBOUR_LAT = 50.08122
+_NEIGHBOUR_LNG = 14.41823
+_NEIGHBOUR_HOURS = {day: [["08:00", "12:00"]] for day in ("mo", "tu", "we", "th", "fr", "sa", "su")}
+
+
+def _read_pub(client: APIClient, name: str, lat: float, lng: float) -> dict:
+    resp = client.post(
+        "/v1/pub-hours",
+        data={"pubs": [{"name": name, "lat": lat, "lng": lng}], "sync_budget": 0},
+        format="json",
+    )
+    assert resp.status_code == status.HTTP_200_OK
+    return resp.json()["results"][0]
+
+
+def _neighbour_payload(**overrides):
+    return _payload(
+        name=_NEIGHBOUR,
+        lat=_NEIGHBOUR_LAT,
+        lng=_NEIGHBOUR_LNG,
+        external_id="mapy:neighbour",
+        **overrides,
+    )
+
+
+@pytest.mark.django_db
+def test_second_pub_in_cell_keeps_the_first_pubs_hours_and_menu(client):
+    assert geohash8(_NEIGHBOUR_LAT, _NEIGHBOUR_LNG) == _KEY
+    token = _register(client)
+    first = client.post("/v1/pub-community", data=_payload(), format="json", **_auth(token))
+    assert first.status_code == status.HTTP_200_OK
+
+    # A 2.3.0 hours-only submission for a different pub in the same cell.
+    hours_only = _neighbour_payload(client_id=str(uuid.uuid4()), hours=_NEIGHBOUR_HOURS)
+    hours_only.pop("beers")
+    resp = client.post("/v1/pub-community", data=hours_only, format="json", **_auth(token))
+    assert resp.status_code == status.HTTP_200_OK
+    assert resp.json()["beers"] == []
+
+    neighbour_beers = [{"name": "Bernard 12°", "price_czk": 52, "volume_ml": 500}]
+    beers_only = _neighbour_payload(client_id=str(uuid.uuid4()), beers=neighbour_beers)
+    beers_only.pop("hours")
+    resp = client.post("/v1/pub-community", data=beers_only, format="json", **_auth(token))
+    assert resp.status_code == status.HTTP_200_OK
+
+    pub = _read_pub(client, _NAME, _LAT, _LNG)
+    assert pub["opening_hours"] == community_hours_to_osm(_FULL_HOURS)
+    assert pub["beers"] == _BEERS
+    neighbour = _read_pub(client, _NEIGHBOUR, _NEIGHBOUR_LAT, _NEIGHBOUR_LNG)
+    assert neighbour["opening_hours"] == community_hours_to_osm(_NEIGHBOUR_HOURS)
+    assert neighbour["beers"] == neighbour_beers
+    assert PubCommunityData.objects.filter(cache_key=_KEY).count() == 2
+    # Beer search is indexed per cell: the neighbour's menu keeps this pub's beer findable.
+    assert PubBeerBrand.objects.get(cache_key=_KEY, brand_key="pilsner-urquell").active
+
+
+@pytest.mark.django_db
+def test_beer_change_at_second_pub_in_cell_leaves_the_first_menu(client):
+    token = _register(client)
+    _seed_menu(client, token, _MENU_NOW)
+    neighbour_menu = [
+        {"name": "Bernard 12°", "price_czk": 52, "volume_ml": 500},
+        {"name": "Kofola", "price_czk": 35, "volume_ml": 500},
+    ]
+    seed = _neighbour_payload(client_id=str(uuid.uuid4()), beers=neighbour_menu)
+    seed.pop("hours")
+    assert client.post("/v1/pub-community", data=seed, format="json", **_auth(token)).status_code == 200
+
+    change = _neighbour_payload(
+        client_id=str(uuid.uuid4()),
+        beers=neighbour_menu[1:],
+        beer_change={"action": "remove", "name": "Bernard 12°", "volume_ml": 500},
+    )
+    change.pop("hours")
+    resp = client.post("/v1/pub-community", data=change, format="json", **_auth(token))
+
+    assert resp.status_code == status.HTTP_200_OK, resp.content
+    assert resp.json()["beers"] == neighbour_menu[1:]
+    assert PubCommunityData.objects.get(name=_NAME).beers == _MENU_NOW
+    assert _read_pub(client, _NAME, _LAT, _LNG)["beers"] == _MENU_NOW
+
+
+@pytest.mark.django_db
+def test_write_picks_the_row_with_the_exact_name_when_two_rows_score_the_same(client):
+    token = _register(client)
+    for name in ("Restaurace U Fleků", "U Fleků Restaurace"):
+        PubCommunityData.objects.create(cache_key=_KEY, name=name, lat=_LAT, lng=_LNG)
+
+    payload = _payload(name="U Fleků Restaurace")
+    payload.pop("beers")
+    resp = client.post("/v1/pub-community", data=payload, format="json", **_auth(token))
+
+    assert resp.status_code == status.HTTP_200_OK, resp.content
+    assert PubCommunityData.objects.get(name="U Fleků Restaurace").hours_json == _FULL_HOURS
+    assert PubCommunityData.objects.get(name="Restaurace U Fleků").hours_json is None
+
+
+@pytest.mark.django_db
+def test_beer_change_also_removes_the_beer_from_a_merged_duplicate_in_the_same_cell(client):
+    from pubs.identity import normalize_pub_name
+    from pubs.models import CanonicalPub, PubAlias
+
+    token = _register(client)
+    canonical = CanonicalPub.objects.create(
+        cache_key=_KEY, name=_NAME, name_key=normalize_pub_name(_NAME), lat=_LAT, lng=_LNG, city="Praha"
+    )
+    PubAlias.objects.create(
+        canonical_pub=canonical, cache_key=_KEY, name=_NAME,
+        name_key=normalize_pub_name(_NAME), lat=_LAT, lng=_LNG, is_primary=True,
+    )
+    PubAlias.objects.create(
+        canonical_pub=canonical, cache_key=_KEY, name="Stará hospoda",
+        name_key=normalize_pub_name("Stará hospoda"), lat=_LAT, lng=_LNG,
+    )
+    PubCommunityData.objects.create(
+        cache_key=_KEY, name="Stará hospoda", lat=_LAT, lng=_LNG,
+        beers=_MENU_NOW[:2], beers_updated_at=dj_now(),
+    )
+    _seed_menu(client, token, _MENU_NOW)
+
+    resp = _change(
+        client,
+        token,
+        "aaaaaaaa-0000-0000-0000-0000000000e1",
+        _MENU_NOW[1:],
+        {"action": "remove", "name": "Pilsner Urquell", "volume_ml": 500},
+    )
+
+    assert resp.status_code == status.HTTP_200_OK, resp.content
+    assert PubCommunityData.objects.get(name="Stará hospoda").beers == [_MENU_NOW[1]]
+    assert "Pilsner Urquell" not in [beer["name"] for beer in _read_pub(client, _NAME, _LAT, _LNG)["beers"]]

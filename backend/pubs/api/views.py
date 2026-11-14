@@ -156,6 +156,7 @@ from pubs.i18n import (
     render_localized,
 )
 from pubs.identity import (
+    matching_pub_row,
     normalize_pub_name,
     resolve_pub_identities,
     resolve_pub_identity,
@@ -2032,7 +2033,29 @@ def _historical_beers_after_menu_replacement(
     return next_historical
 
 
-def _alias_menu_rows_for_update(identity) -> list[PubCommunityData]:
+def _community_row_for_update(
+    cache_key: str, name: str, create_with: dict | None = None
+) -> tuple[PubCommunityData | None, bool]:
+    """This pub's menu and hours row, locked; other pubs in the cell keep theirs.
+
+    With ``create_with`` a missing row is created from those fields. Returns
+    the row and whether it was created here.
+    """
+    rows = PubCommunityData.objects.select_for_update().filter(cache_key=cache_key).order_by("pk")
+    row = matching_pub_row(rows, name)
+    if row is not None or create_with is None:
+        return row, False
+    try:
+        with transaction.atomic():
+            return PubCommunityData.objects.create(cache_key=cache_key, **create_with), True
+    except IntegrityError:
+        row = PubCommunityData.objects.select_for_update().get(
+            cache_key=cache_key, name_key=normalize_pub_name(create_with["name"])
+        )
+        return row, False
+
+
+def _alias_menu_rows_for_update(identity, own_row: PubCommunityData | None) -> list[PubCommunityData]:
     """Menus kept under this pub's older identities, locked.
 
     /v1/pub-hours shows their beers merged with the current one, so a beer
@@ -2042,14 +2065,13 @@ def _alias_menu_rows_for_update(identity) -> list[PubCommunityData]:
         return []
     names_by_key: dict[str, set[str]] = {}
     for alias_key, name_key in identity.aliases:
-        if alias_key != identity.cache_key:
-            names_by_key.setdefault(alias_key, set()).add(name_key)
-    if not names_by_key:
-        return []
+        names_by_key.setdefault(alias_key, set()).add(name_key)
     rows = PubCommunityData.objects.select_for_update().filter(
         cache_key__in=list(names_by_key)
     ).order_by("pk")
-    return [row for row in rows if normalize_pub_name(row.name) in names_by_key[row.cache_key]]
+    if own_row is not None:
+        rows = rows.exclude(pk=own_row.pk)
+    return [row for row in rows if row.name_key in names_by_key[row.cache_key]]
 
 
 def _shown_menu(data: dict) -> dict:
@@ -2213,21 +2235,22 @@ class PubCommunityView(APIView):
                         # twice; it only finishes the index sync, which may have
                         # failed after the menu was saved.
                         has_beers = False
-                        previous = (
-                            PubCommunityData.objects.filter(cache_key=cache_key).first()
+                        previous = matching_pub_row(
+                            PubCommunityData.objects.filter(cache_key=cache_key), identity.name
                         )
                         index_rows = [
                             row
-                            for row in [previous, *_alias_menu_rows_for_update(identity)]
+                            for row in [previous, *_alias_menu_rows_for_update(identity, previous)]
                             if row is not None
                         ]
                     else:
                         # The row exists and is locked before the change is worked
                         # out, so two first changes of an imported menu apply one
                         # after another instead of overwriting each other.
-                        row, created_for_change = PubCommunityData.objects.get_or_create(
-                            cache_key=cache_key,
-                            defaults={
+                        previous, created_for_change = _community_row_for_update(
+                            cache_key,
+                            identity.name,
+                            create_with={
                                 "name": identity.name,
                                 "lat": identity.lat,
                                 "lng": identity.lng,
@@ -2236,8 +2259,7 @@ class PubCommunityView(APIView):
                                 "account": request.user,
                             },
                         )
-                        previous = PubCommunityData.objects.select_for_update().get(pk=row.pk)
-                        alias_rows = _alias_menu_rows_for_update(identity)
+                        alias_rows = _alias_menu_rows_for_update(identity, previous)
                         # The change applies to the menu people see for this pub.
                         shown = _shown_menu(data)
                         current_beers = list(shown.get("beers") or [])
@@ -2273,7 +2295,7 @@ class PubCommunityView(APIView):
                                 PubContributionLog.objects.create(
                                     account=request.user,
                                     client_id=uuid.uuid5(
-                                        data["client_id"], f"alias:{alias_row.cache_key}"
+                                        data["client_id"], f"alias:{alias_row.cache_key}:{alias_row.name_key}"
                                     ),
                                     kind=PubContributionLog.Kind.BEERS,
                                     cache_key=alias_row.cache_key,
@@ -2290,12 +2312,10 @@ class PubCommunityView(APIView):
                                 previous.delete()
                                 previous = None
                 else:
-                    previous = (
-                        PubCommunityData.objects.select_for_update()
-                        .filter(cache_key=cache_key)
-                        .first()
+                    previous, _ = (
+                        _community_row_for_update(cache_key, identity.name)
                         if has_beers
-                        else None
+                        else (None, False)
                     )
                     current_beers = list(previous.beers or []) if previous else []
                     historical = list(previous.historical_beers or []) if previous else []
@@ -2336,10 +2356,14 @@ class PubCommunityView(APIView):
                     # Nothing to save: report the menu as it is.
                     record = previous
                 else:
-                    record, _ = PubCommunityData.objects.update_or_create(
-                        cache_key=cache_key,
-                        defaults=defaults,
-                    )
+                    record = previous
+                    if record is None:
+                        record, _ = _community_row_for_update(
+                            cache_key, identity.name, create_with=defaults
+                        )
+                    for field, value in defaults.items():
+                        setattr(record, field, value)
+                    record.save()
 
                     # Append idempotent history rows, one per submitted kind.
                     if has_hours:
@@ -3280,74 +3304,49 @@ class DrinksView(APIView):
 
         Returns whether the community menu was changed. NEVER touches hours.
 
-        Three cases:
-          * No row for the cell → create one holding just this beer (mirrors how
-            PubCommunityView seeds a row), menu_updated = True.
-          * Row exists and names_match(row.name, posted name) → merge the beer
-            (update price of a same name+volume entry, else append if room).
-          * Row exists but names_match fails (different business in the same
-            ~38 m cell) → skip the merge, leave the menu untouched.
+        Two cases:
+          * No row for this pub in the cell → create one holding just this beer
+            (mirrors how PubCommunityView seeds a row), menu_updated = True.
+          * The pub's row exists → merge the beer (update price of a same
+            name+volume entry, else append if room).
+        Rows of other businesses in the same ~38 m cell are never touched.
         """
         now = dj_timezone.now()
-        row = PubCommunityData.objects.select_for_update().filter(cache_key=cache_key).first()
-
-        if row is None:
-            try:
-                # Nested atomic gives this INSERT its own savepoint. If a concurrent
-                # first-drink wins the unique cache_key race, the savepoint rolls back
-                # cleanly and the outer DrinkLog transaction can still continue.
-                with transaction.atomic():
-                    row = PubCommunityData.objects.create(
-                        cache_key=cache_key,
-                        name=data["name"],
-                        lat=data["lat"],
-                        lng=data["lng"],
-                        city=data.get("city") or None,
-                        external_id=data.get("external_id") or None,
-                        account=account,
-                        beers=[
-                            {
-                                "name": beer["name"],
-                                "price_czk": beer["price_czk"],
-                                "volume_ml": beer.get("volume_ml"),
-                            }
-                        ],
-                        beers_updated_at=now,
-                    )
-                upsert_pub_beer_brand(
-                    cache_key=cache_key,
-                    data=data,
-                    beer=beer,
-                    source=PubBeerBrand.Source.DRINK,
-                    account=account,
-                    match_cache=match_cache,
-                )
-                _upsert_price_index_from_row(
-                    row,
-                    observed_at=now,
-                    source=PubPriceIndex.Source.DRINK,
-                )
-                return True
-            except IntegrityError:
-                # A concurrent first-drink for this brand-new cell won the race and
-                # already created the row (cache_key is unique). Re-fetch it and
-                # fall through to the names_match + merge path instead of letting
-                # the IntegrityError bubble up as a 500 (which would commit our
-                # DrinkLog but silently drop this beer from the menu). The merge
-                # below is still guarded by names_match against whatever business
-                # the winner seeded.
-                row = (
-                    PubCommunityData.objects.select_for_update().filter(cache_key=cache_key).first()
-                )
-                if row is None:
-                    # The winner's row vanished between INSERT-fail and re-SELECT
-                    # (deleted concurrently) — nothing to merge into.
-                    return False
-
-        # Collision guard: a different business sharing this geohash cell must not
-        # inherit the menu (same gate as the read path).
-        if not names_match(row.name, data["name"]):
-            return False
+        row, created = _community_row_for_update(
+            cache_key,
+            data["name"],
+            create_with={
+                "name": data["name"],
+                "lat": data["lat"],
+                "lng": data["lng"],
+                "city": data.get("city") or None,
+                "external_id": data.get("external_id") or None,
+                "account": account,
+                "beers": [
+                    {
+                        "name": beer["name"],
+                        "price_czk": beer["price_czk"],
+                        "volume_ml": beer.get("volume_ml"),
+                    }
+                ],
+                "beers_updated_at": now,
+            },
+        )
+        if created:
+            upsert_pub_beer_brand(
+                cache_key=cache_key,
+                data=data,
+                beer=beer,
+                source=PubBeerBrand.Source.DRINK,
+                account=account,
+                match_cache=match_cache,
+            )
+            _upsert_price_index_from_row(
+                row,
+                observed_at=now,
+                source=PubPriceIndex.Source.DRINK,
+            )
+            return True
 
         beers = list(row.beers or [])
         changed = _merge_drink_into_menu(beers, beer)
@@ -3396,12 +3395,11 @@ class DrinksView(APIView):
         product_key: str | None = None,
         match_cache: BeerCatalogMatchCache | None = None,
     ) -> bool:
-        """True if the pub's community menu names a beer matching the supplied
-        brand_key or product_key (exactly one is passed by callers)."""
-        row = PubCommunityData.objects.filter(cache_key=cache_key).first()
-        if row is None:
-            return False
-        for beer in row.beers or []:
+        """True if a community menu in the cell names a beer matching the supplied
+        brand_key or product_key (exactly one is passed by callers). The beer
+        indexes it guards are kept per cell."""
+        menus = PubCommunityData.objects.filter(cache_key=cache_key).values_list("beers", flat=True)
+        for beer in (beer for beers in menus for beer in beers or []):
             match = match_beer_brand(str(beer.get("name") or ""), match_cache=match_cache)
             if match is None:
                 continue
