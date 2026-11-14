@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { ScrollView, View } from 'react-native';
+import { RefreshControl, ScrollView, View } from 'react-native';
 import Animated from 'react-native-reanimated';
 import { useFocusEffect } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -33,6 +33,7 @@ import { CheerButton } from './cheer';
 import { usePartaStore } from './partaStore';
 import { endPing, respondToPlan } from './planActions';
 import { PartaPhotoStrip } from './PartaPhotos';
+import { useRefreshWhileOpen } from './useRefreshWhileOpen';
 
 const RSVP: { key: 'going' | 'maybe' | 'cant'; label: () => string; icon: IconName }[] = [
   { key: 'going', label: () => t.nv.parta.rsvpGoing, icon: 'check' },
@@ -235,6 +236,12 @@ export function PartaScreen() {
       void load();
     }, [load]),
   );
+  useRefreshWhileOpen();
+  const [pulling, setPulling] = useState(false);
+  const pullToRefresh = () => {
+    setPulling(true);
+    void load().finally(() => setPulling(false));
+  };
 
   // A push tap or invite claim asks for fresh data even when Parta is already open, and may name a plan to open.
   const pendingRefresh = usePartaSignalStore((st) => st.pendingRefresh);
@@ -471,6 +478,7 @@ export function PartaScreen() {
         onScroll={scrollKey === 'parta' ? onScroll : onPlansScroll}
         scrollEventThrottle={16}
         showsVerticalScrollIndicator={false}
+        refreshControl={<RefreshControl refreshing={pulling} onRefresh={pullToRefresh} tintColor={C.muted} progressViewOffset={insets.top + 64} />}
         contentContainerStyle={{ paddingTop: insets.top + 8, paddingHorizontal: SCREEN_X, gap: 20, paddingBottom: tabSpace + 30 }}
       >
         {content}

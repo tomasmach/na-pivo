@@ -29,6 +29,7 @@ jest.mock('expo-router', () => ({
   useRouter: () => ({ push: mockPush, back: jest.fn(), navigate: jest.fn(), canGoBack: () => true }),
   useLocalSearchParams: () => ({}),
   useFocusEffect: jest.fn(),
+  useIsFocused: () => false,
 }));
 jest.mock('expo-location', () => ({}));
 jest.mock('expo-calendar/legacy', () => ({}));
