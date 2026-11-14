@@ -17,6 +17,21 @@ def pub_identity_key(cache_key: str, name: str) -> str:
     return f"{cache_key}::{normalized_name}" if normalized_name else cache_key
 
 
+def matching_pub_row(rows, name: str):
+    """The row of one geohash cell that belongs to the pub called ``name``.
+
+    A cell is ~38 m wide, so it can hold rows of several businesses. Rows are
+    model instances or ``.values()`` dicts.
+    """
+    from pubs.enrichment import name_similarity, names_match
+
+    def row_name(row) -> str:
+        return row["name"] if isinstance(row, dict) else row.name
+
+    matching = [row for row in rows or () if names_match(name, row_name(row))]
+    return max(matching, key=lambda row: name_similarity(name, row_name(row)), default=None)
+
+
 @dataclass(frozen=True, slots=True)
 class ResolvedPubIdentity:
     """Canonical display identity plus every retained source identity."""

@@ -50,12 +50,11 @@ from pubs.enrichment import (
     classify_venue,
     geohash8,
     is_open_now,
-    name_similarity,
     names_match,
     next_change,
 )
 from pubs.firmy_policy import firmy_covers, firmy_source_options, is_fresh
-from pubs.identity import normalize_pub_name, resolve_pub_identities
+from pubs.identity import matching_pub_row, normalize_pub_name, resolve_pub_identities
 from pubs.models import EnrichTask, PubCommunityData, PubExternalBeerMenu, PubHours
 
 logger = logging.getLogger(__name__)
@@ -231,18 +230,18 @@ def _community_result(
     }
 
 
+def _community_by_key(keys) -> dict[str, list[PubCommunityData]]:
+    grouped: dict[str, list[PubCommunityData]] = {}
+    for row in PubCommunityData.objects.filter(cache_key__in=keys):
+        grouped.setdefault(row.cache_key, []).append(row)
+    return grouped
+
+
 def _external_by_key(keys: list[str]) -> dict[str, list[PubExternalBeerMenu]]:
     grouped: dict[str, list[PubExternalBeerMenu]] = {}
     for row in PubExternalBeerMenu.objects.filter(cache_key__in=keys, active=True):
         grouped.setdefault(row.cache_key, []).append(row)
     return grouped
-
-
-def _matching_external_menu(
-    rows: list[PubExternalBeerMenu] | None, name: str
-) -> PubExternalBeerMenu | None:
-    matching = [row for row in rows or [] if names_match(name, row.name)]
-    return max(matching, key=lambda row: name_similarity(name, row.name), default=None)
 
 
 def _attach_external_menu(result: dict[str, Any], row: PubExternalBeerMenu | None) -> None:
@@ -313,10 +312,7 @@ def _attach_retained_alias_data(
     }
     if not alias_keys:
         return
-    community_by_key = {
-        row.cache_key: row
-        for row in PubCommunityData.objects.filter(cache_key__in=alias_keys)
-    }
+    community_by_key = _community_by_key(alias_keys)
     external_by_key = _external_by_key(list(alias_keys))
 
     for index, (result, identity) in enumerate(
@@ -329,9 +325,10 @@ def _attach_retained_alias_data(
             names_by_key.setdefault(cache_key, set()).add(name_key)
         community_rows = [
             row
-            for cache_key, row in community_by_key.items()
+            for cache_key, rows in community_by_key.items()
             if cache_key in names_by_key
-            and normalize_pub_name(row.name) in names_by_key[cache_key]
+            for row in rows
+            if normalize_pub_name(row.name) in names_by_key[cache_key]
         ]
         has_retained_external = any(
             normalize_pub_name(row.name) in names_by_key.get(cache_key, set())
@@ -624,10 +621,7 @@ def get_or_enrich(
     # Bulk-load community-contributed data for the same keys (single batched
     # query, not N+1). Community hours take precedence over firmy data, and
     # community beers are attached to every matching result.
-    community: dict[str, PubCommunityData] = {
-        row.cache_key: row
-        for row in PubCommunityData.objects.filter(cache_key__in=all_keys)
-    }
+    community = _community_by_key(all_keys)
     external = _external_by_key(all_keys)
 
     # Lazy-initialise the scraper only when we actually need a sync fetch
@@ -645,12 +639,9 @@ def get_or_enrich(
         row = existing.get(key)
 
         # --- Community data takes precedence -------------------------------
-        # Guard against a geohash-8 collision with names_match, same as the
-        # firmy cache read below: a different business in the same ~38 m cell
-        # must not be served this pub's community data.
-        comm = community.get(key)
-        comm_matches = comm is not None and names_match(name, comm.name)
-        external_menu = _matching_external_menu(external.get(key), name)
+        comm = matching_pub_row(community.get(key), name)
+        comm_matches = comm is not None
+        external_menu = matching_pub_row(external.get(key), name)
 
         if comm_matches and comm.hours_json is not None:
             # Community hours satisfy this pub fully — override firmy entirely
@@ -802,10 +793,7 @@ def get_cached_pub_details(
             "venue_categories", "venue_tags", "error"
         )
     }
-    community_by_key = {
-        row.cache_key: row
-        for row in PubCommunityData.objects.filter(cache_key__in=keys)
-    }
+    community_by_key = _community_by_key(keys)
     external_by_key = _external_by_key(keys)
 
     results: list[dict[str, Any] | None] = []
@@ -818,13 +806,8 @@ def get_cached_pub_details(
             if hours_row is not None and names_match(name, hours_row.name)
             else None
         )
-        community_row = community_by_key.get(key)
-        matching_community = (
-            community_row
-            if community_row is not None and names_match(name, community_row.name)
-            else None
-        )
-        external_menu = _matching_external_menu(external_by_key.get(key), name)
+        matching_community = matching_pub_row(community_by_key.get(key), name)
+        external_menu = matching_pub_row(external_by_key.get(key), name)
 
         if matching_community is not None and matching_community.hours_json is not None:
             result = _community_result(

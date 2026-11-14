@@ -65,6 +65,7 @@ from pubs.beer_photo_deletions import (
 )
 from pubs.enrichment.normalizer import community_hours_to_osm
 from pubs.i18n import current_locale, locale_for_account, remember_account_locale
+from pubs.identity import matching_pub_row
 from pubs.models import (
     Account,
     AccountDeletionOperation,
@@ -3633,19 +3634,6 @@ def _rebuild_community_signals_after_purge(cache_key: str) -> None:
     consulted. Community-sourced signal rows always restart from that
     provenance; independent EXTERNAL price data is never touched.
     """
-    hours_log = (
-        PubContributionLog.objects.exclude(account=None)
-        .filter(cache_key=cache_key, kind=PubContributionLog.Kind.HOURS)
-        .order_by("-created_at", "-id")
-        .first()
-    )
-    beers_log = (
-        PubContributionLog.objects.exclude(account=None)
-        .filter(cache_key=cache_key, kind=PubContributionLog.Kind.BEERS)
-        .order_by("-created_at", "-id")
-        .first()
-    )
-
     # Community-sourced state loses its provenance with the deleted author and
     # is rebuilt from scratch below. A DRINK-derived price survives only while
     # a surviving account still stands behind the pub's brand/product rows;
@@ -3670,9 +3658,35 @@ def _rebuild_community_signals_after_purge(cache_key: str) -> None:
             cache_key=cache_key, source=PubPriceIndex.Source.DRINK
         ).delete()
 
+    rows = list(PubCommunityData.objects.filter(cache_key=cache_key).order_by("pk"))
+    logs = list(
+        PubContributionLog.objects.exclude(account=None)
+        .filter(
+            cache_key=cache_key,
+            kind__in=[PubContributionLog.Kind.HOURS, PubContributionLog.Kind.BEERS],
+        )
+        .order_by("-created_at", "-id")
+    )
+    for row in rows:
+        own_logs = [log for log in logs if matching_pub_row(rows, log.name) is row]
+        _rebuild_community_row_after_purge(
+            row,
+            hours_log=next((log for log in own_logs if log.kind == PubContributionLog.Kind.HOURS), None),
+            beers_log=next((log for log in own_logs if log.kind == PubContributionLog.Kind.BEERS), None),
+        )
+
+
+def _rebuild_community_row_after_purge(
+    row: PubCommunityData,
+    *,
+    hours_log: PubContributionLog | None,
+    beers_log: PubContributionLog | None,
+) -> None:
+    """Rebuild one pub's menu and hours from its latest surviving logs."""
+    cache_key = row.cache_key
     if hours_log is None and beers_log is None:
         # Nobody survives behind this pub's community state — remove it.
-        PubCommunityData.objects.filter(cache_key=cache_key).delete()
+        row.delete()
         return
 
     newest = max(
@@ -3717,7 +3731,9 @@ def _rebuild_community_signals_after_purge(cache_key: str) -> None:
         defaults["beer_menu_rotates"] = False
         defaults["beers_updated_at"] = None
 
-    PubCommunityData.objects.update_or_create(cache_key=cache_key, defaults=defaults)
+    for field, value in defaults.items():
+        setattr(row, field, value)
+    row.save()
 
     if beers_log is None or not beers:
         return
