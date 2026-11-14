@@ -32,7 +32,7 @@ from pubs.api.pub_beers_views import (
 from pubs.api.views import _globally_reported_pub_cache_keys, _with_pub_name_corrections
 from pubs.beer_catalog import BeerCatalogMatchCache, poured_product, suggest_beers
 from pubs.enrichment import names_match
-from pubs.identity import normalize_pub_name, pub_identity_key
+from pubs.identity import matching_pub_row, normalize_pub_name, pub_identity_key
 from pubs.models import (
     Account,
     BeerCheckIn,
@@ -295,13 +295,13 @@ def open_state(week: dict | None, now: datetime | None = None) -> dict | None:
 # ---------- city ----------
 
 
-def _community(keys) -> dict[str, dict]:
+def _community(keys) -> dict[str, list[dict]]:
     rows = {}
     for chunk in _chunks(keys):
         for row in PubCommunityData.objects.filter(cache_key__in=chunk).values(
             "cache_key", "name", "hours_json", "beers", "beers_updated_at", "hours_updated_at"
         ):
-            rows[row["cache_key"]] = row
+            rows.setdefault(row["cache_key"], []).append(row)
     return rows
 
 
@@ -424,9 +424,7 @@ def _enrich(pubs: list[dict]) -> list[dict]:
     out = []
     for pub in pubs:
         key, name = pub["k"], pub["n"]
-        menu = community.get(key)
-        if menu and not names_match(menu["name"], name):
-            menu = None
+        menu = matching_pub_row(community.get(key), name)
         price = prices.get(key)
         if price and not names_match(price["name"], name):
             price = None
@@ -642,9 +640,10 @@ def pub_detail(pub: dict) -> dict:
     data = cache.get(cache_name)
     if data is None:
         base = _enrich([pub])[0]
-        menu = PubCommunityData.objects.filter(cache_key=pub["k"]).values("name", "beers", "beers_updated_at").first()
-        if menu and not names_match(menu["name"], pub["n"]):
-            menu = None
+        menu = matching_pub_row(
+            PubCommunityData.objects.filter(cache_key=pub["k"]).values("name", "beers", "beers_updated_at"),
+            pub["n"],
+        )
         city = catalogue()["cities"].get(pub["c"])
         data = {
             **base,

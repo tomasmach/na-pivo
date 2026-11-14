@@ -580,9 +580,6 @@ class AccountUsageStatsAdmin(_ReadOnlyAdmin, ModelAdmin):
 
 @admin.register(PubCommunityData)
 class PubCommunityDataAdmin(ModelAdmin):
-    # Fully editable so the owner can fix or revert community data. cache_key and
-    # the timestamps stay read-only (cache_key is identity; timestamps are
-    # bookkeeping).
     list_display = (
         "name",
         "cache_key",
@@ -594,7 +591,7 @@ class PubCommunityDataAdmin(ModelAdmin):
     )
     list_select_related = ("account",)
     search_fields = ("name", "cache_key", "external_id", "city")
-    readonly_fields = ("cache_key", "created_at", "updated_at")
+    readonly_fields = ("cache_key", "name_key", "created_at", "updated_at")
     ordering = ("-updated_at",)
 
 

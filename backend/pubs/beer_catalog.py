@@ -8,7 +8,7 @@ from dataclasses import dataclass
 
 from django.utils import timezone
 
-from pubs.models import BeerBrand, BeerProduct, PubBeerBrand, PubBeerProduct
+from pubs.models import BeerBrand, BeerProduct, PubBeerBrand, PubBeerProduct, PubCommunityData
 
 # Letters and digits are separate tokens, so "Šerák11°" matches "Šerák 11".
 _TOKEN_RE = re.compile(r"[a-z]+|[0-9]+")
@@ -428,11 +428,23 @@ def sync_pub_beer_indexes_for_menu(
 ) -> set[int]:
     """Make the active per-pub beer indexes match a full community menu write.
 
+    The indexes are kept per geohash cell, so beers on the other community
+    menus saved in the cell stay active too.
+
     Returns the ids of the catalogue products this menu has on tap.
     """
     active_brand_keys: set[str] = set()
     active_product_keys: set[str] = set()
     active_product_ids: set[int] = set()
+
+    cell_menus = PubCommunityData.objects.filter(cache_key=cache_key).values_list("beers", flat=True)
+    for beer in (beer for menu in cell_menus for beer in menu or []):
+        match = match_beer_brand(str(beer.get("name") or ""), match_cache=match_cache)
+        if match is None:
+            continue
+        active_brand_keys.add(match.brand.key)
+        if match.product is not None:
+            active_product_keys.add(match.product.key)
 
     for beer in beers:
         match = upsert_pub_beer_brand(
