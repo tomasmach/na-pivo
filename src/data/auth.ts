@@ -468,7 +468,7 @@ interface FetchOutcome {
  */
 async function authFetch(
   path: string,
-  opts: { method?: string; body?: unknown; bearer?: 'current' | 'ensure' | 'claim' | 'none' },
+  opts: { method?: string; body?: unknown; bearer?: 'current' | 'ensure' | 'claim' | 'none'; onlyAsToken?: string | null },
 ): Promise<FetchOutcome | { networkError: true }> {
   const endpoint = getBackendEndpoint(path);
   if (!endpoint) return { networkError: true };
@@ -489,6 +489,7 @@ async function authFetch(
     }
   } else if (opts.bearer === 'current') {
     token = await getSessionToken();
+    if (opts.onlyAsToken !== undefined && token !== opts.onlyAsToken) return { networkError: true };
   }
 
   const controller = new AbortController();
@@ -1044,10 +1045,8 @@ export async function updateProfile(params: {
   if (params.showAsPubRegular !== undefined) body.show_as_pub_regular = params.showAsPubRegular;
 
   const owner = await getSessionToken();
-  const res = await runAccountMeWrite(async () =>
-    (await getSessionToken()) === owner
-      ? authFetch('/v1/account/me', { method: 'PATCH', bearer: 'current', body })
-      : { networkError: true as const },
+  const res = await runAccountMeWrite(() =>
+    authFetch('/v1/account/me', { method: 'PATCH', bearer: 'current', onlyAsToken: owner, body }),
   );
   return resolveProfileResult(res);
 }

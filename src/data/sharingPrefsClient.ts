@@ -43,16 +43,14 @@ async function request(body?: Record<string, unknown>): Promise<RemoteSharing | 
   if (!body) return send();
   const generation = boundaryGeneration;
   const owner = await getSessionToken();
-  return runAccountMeWrite(async () =>
-    generation === boundaryGeneration && (await getSessionToken()) === owner ? send(body) : null,
-  );
+  return runAccountMeWrite(async () => (generation === boundaryGeneration ? send(body, owner) : null));
 }
 
-async function send(body?: Record<string, unknown>): Promise<RemoteSharing | 'refused' | null> {
+async function send(body?: Record<string, unknown>, onlyAsToken?: string | null): Promise<RemoteSharing | 'refused' | null> {
   const endpoint = getBackendEndpoint(PATH);
   if (!endpoint) return null;
   const session = await ensureAccount();
-  if (!session) return null;
+  if (!session || (onlyAsToken !== undefined && session.token !== onlyAsToken)) return null;
   const abort = chainAbortSignal(undefined, 9000);
   try {
     const resp = await fetch(endpoint, {

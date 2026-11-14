@@ -94,3 +94,15 @@ it('does not send a sharing change that was still waiting when the account chang
 
   expect(global.fetch).not.toHaveBeenCalled();
 });
+
+it('does not send a sharing change under a session other than the one that made it', async () => {
+  mockSessionToken = 'signed-in-token';
+  useVycepStore.setState({ ...DEFAULT_SHARING_PREFS, shareDefault: 'public', nightAutopublish: 'public', sharingDirty: true });
+  global.fetch = jest.fn() as typeof fetch;
+
+  await syncSharingPrefs();
+  mockSessionToken = 'old-token';
+
+  expect(global.fetch).not.toHaveBeenCalled();
+  expect(useVycepStore.getState().sharingDirty).toBe(true);
+});
