@@ -197,7 +197,8 @@ export function FotoPivarScreen() {
     const result = last?.myResult ?? null;
     const [first, ...rest] = last?.winners ?? [];
     return (
-      <Screen header={<BackHeader onBack={() => setEnded(false)} />} footer={<Button label={t.nv.vycep.nextRound} onPress={() => setEnded(false)} />} gap={16}>
+      <Screen footer={<Button label={t.nv.vycep.nextRound} onPress={() => setEnded(false)} />} gap={16} padTop={0}>
+        <BackHeader onBack={() => setEnded(false)} />
         <View style={[s.row, { justifyContent: 'space-between', alignItems: 'flex-end' }]}>
           <D s={44}>{t.nv.vycep.contestTitle}</D>
           {last ? (
@@ -281,10 +282,11 @@ export function FotoPivarScreen() {
 
   return (
     <Screen
-      header={<BackHeader />}
       footer={parta ? <Button label={t.nv.vycep.enter} icon="plus" onPress={() => router.push('/nv/prihlasit-fotku')} /> : <Button label={t.nv.vycep.shoot} icon="camera" onPress={() => router.push('/nv/do-denicku')} />}
       gap={16}
+      padTop={0}
     >
+      <BackHeader />
       <View style={[s.row, { justifyContent: 'space-between', alignItems: 'flex-end' }]}>
         <D s={44}>{t.nv.vycep.contestTitle}</D>
         <Press onPress={() => setEnded(true)} style={[s.row, { gap: 6, marginBottom: 6 }]}>
