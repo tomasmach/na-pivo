@@ -127,6 +127,7 @@ const roundsInFlight = new Set<string>();
 const Post = memo(function Post({ night, showScope }: { night: PublishedNight; showScope: boolean }) {
   const given = night.myRound;
   const count = night.rounds;
+  const router = useNvRouter();
   const handle = authorHandle(night);
   const setRound = (round: { given: boolean; count: number }) => tellFeeds(night.id, { round });
 
@@ -210,23 +211,30 @@ const Post = memo(function Post({ night, showScope }: { night: PublishedNight; s
   return (
     <View style={{ backgroundColor: C.card, borderRadius: 24, padding: 16, gap: 12 }}>
       <View style={[s.row, { gap: 12 }]}>
-        <View style={[{ width: 36, height: 36, borderRadius: 18, backgroundColor: C.control, overflow: 'hidden' }, s.center]}>
-          {night.author.avatarUrl ? (
-            <Image source={{ uri: night.author.avatarUrl }} style={{ width: 36, height: 36 }} />
-          ) : (
-            <T s={14} w={800} c={C.yellow}>
-              {handle.replace('@', '').charAt(0).toUpperCase()}
+        <Press
+          disabled={night.isMine}
+          onPress={() => router.push({ pathname: '/nv/kamos/[id]', params: { id: night.author.id } })}
+          accessibilityRole={night.isMine ? undefined : 'button'}
+          style={[s.fill, s.row, { gap: 12 }]}
+        >
+          <View style={[{ width: 36, height: 36, borderRadius: 18, backgroundColor: C.control, overflow: 'hidden' }, s.center]}>
+            {night.author.avatarUrl ? (
+              <Image source={{ uri: night.author.avatarUrl }} style={{ width: 36, height: 36 }} />
+            ) : (
+              <T s={14} w={800} c={C.yellow}>
+                {handle.replace('@', '').charAt(0).toUpperCase()}
+              </T>
+            )}
+          </View>
+          <View style={[s.fill, { gap: 1 }]}>
+            <T s={16} w={700} numberOfLines={1}>
+              {handle}
             </T>
-          )}
-        </View>
-        <View style={[s.fill, { gap: 1 }]}>
-          <T s={16} w={700} numberOfLines={1}>
-            {handle}
-          </T>
-          <T s={12} c={C.muted} numberOfLines={1}>
-            {meta}
-          </T>
-        </View>
+            <T s={12} c={C.muted} numberOfLines={1}>
+              {meta}
+            </T>
+          </View>
+        </Press>
         <Press
           accessibilityRole="button"
           accessibilityLabel={night.isMine ? t.nv.vycep.unpublish : t.nv.vycep.report}

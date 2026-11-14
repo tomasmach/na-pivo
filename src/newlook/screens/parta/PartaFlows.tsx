@@ -280,7 +280,7 @@ export function KamosScreen() {
 
 type BoardTab = 'piva' | 'objevitele' | 'maperi' | 'hospody';
 type BoardPeriodKey = Extract<BoardPeriod, 'week' | 'month' | 'all'>;
-type BoardRow = { key: string; initial: string; uri?: string | null; name: string; sub: string; score: string; me: boolean; rank: number };
+type BoardRow = { key: string; accountId?: string; initial: string; uri?: string | null; name: string; sub: string; score: string; me: boolean; rank: number };
 type BoardView = { rank: string; title: string; sub: string; rows: BoardRow[]; empty: boolean };
 
 function personBoard(tab: Exclude<BoardTab, 'hospody'>, board: Leaderboard, period: BoardPeriodKey): BoardView {
@@ -288,6 +288,7 @@ function personBoard(tab: Exclude<BoardTab, 'hospody'>, board: Leaderboard, peri
   const race = tab === 'maperi' ? '' : period === 'week' ? t.nv.parta.nextRaceWeek : period === 'month' ? t.nv.parta.nextRaceMonth : '';
   const rows: BoardRow[] = board.entries.slice(0, 10).map((e) => ({
     key: e.account.id,
+    accountId: e.isMe ? undefined : e.account.id,
     rank: e.rank,
     initial: personInitial(e.account),
     uri: e.account.avatarUrl,
@@ -330,6 +331,7 @@ function pubsBoard(board: PubBoard, period: BoardPeriodKey): BoardView {
 }
 
 export function ZebrickyScreen() {
+  const router = useNvRouter();
   const myAvatar = useMe().avatarUrl;
   const [tab, setTab] = useState<BoardTab>('piva');
   const [period, setPeriod] = useState<BoardPeriodKey>('week');
@@ -419,6 +421,7 @@ export function ZebrickyScreen() {
                   titleColor={r.me ? C.yellow : C.white}
                   titleWeight={700}
                   sub={r.sub || undefined}
+                  onPress={r.accountId ? () => router.push({ pathname: '/nv/kamos/[id]', params: { id: r.accountId ?? '' } }) : undefined}
                   trailing={
                     <D s={24} c={r.me ? C.yellow : C.white}>
                       {r.score}
