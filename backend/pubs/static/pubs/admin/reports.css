@@ -1,4 +1,4 @@
-.np-report { display: flex; flex-direction: column; gap: 12px; color: var(--color-base-300); }
+.np-report { font-size: 14px; display: flex; flex-direction: column; gap: 12px; color: var(--color-base-300); }
 .np-report h2 { margin-top: 20px; font-size: 18px; font-weight: 600; color: var(--color-base-100); }
 .np-report h2 small { font-size: 14px; font-weight: 400; color: var(--color-base-400); }
 .np-report h3 { margin-top: 12px; font-size: 15px; font-weight: 600; color: var(--color-base-100); }
@@ -9,7 +9,8 @@
 .np-report input[type=text], .np-report input[type=date] { height: 38px; padding: 0 10px; border: 1px solid var(--color-base-700); border-radius: var(--radius-md, 6px); background: var(--color-base-950); color: var(--color-base-100); color-scheme: dark; }
 .np-report input[type=submit] { height: 38px; padding: 0 16px; border-radius: var(--radius-md, 6px); background: var(--color-primary-400); color: var(--color-base-950); font-weight: 600; cursor: pointer; }
 .np-report .np-ranges { display: flex; gap: 6px; height: 38px; align-items: center; }
-.np-report .np-ranges a { padding: 4px 10px; border: 1px solid var(--color-base-700); border-radius: 999px; font-size: 13px; color: var(--color-base-300); }
+.np-report .np-ranges a { padding: 6px 10px; border: 1px solid var(--color-base-700); border-radius: var(--radius-md, 6px); font-size: 13px; color: var(--color-base-300); }
+.np-report .np-ranges a.np-active { border-color: var(--color-primary-400); color: var(--color-primary-400); }
 .np-report .np-ranges a:hover { border-color: var(--color-primary-400); color: var(--color-primary-400); text-decoration: none; }
 .np-report table { width: 100%; border: 1px solid var(--color-base-800); border-collapse: separate; border-spacing: 0; border-radius: var(--radius-md, 6px); overflow: hidden; background: var(--color-base-900); }
 .np-report th { padding: 8px 12px; text-align: left; font-size: 12px; font-weight: 600; color: var(--color-base-400); border-bottom: 1px solid var(--color-base-800); }

@@ -137,4 +137,6 @@ def test_dashboard_shows_what_waits_for_moderation(client):
         ("Zpětná vazba", 1, "/admin/pubs/feedbackreport/?status__exact=new"),
         ("Túry skryté nahlášením", 0, "/admin/pubs/tourpublication/?status__exact=hidden&hidden_reason=reports"),
     ]
-    assert "Počítadlo se vrátí na nulu" in response.content.decode()
+    page = response.content.decode()
+    assert "Počítadlo se vrátí na nulu" in page
+    assert "Vyřešeno" not in page

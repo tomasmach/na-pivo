@@ -22,6 +22,10 @@ SECTIONS = [
         ("publishednightcomment", "Komentáře", "comment", None),
         ("publishednight", "Večery", "nightlife", None),
     ]),
+    ("Čísla", [
+        ("webstatsdaily", "Web analytika", "bar_chart", None),
+        ("pubreachdaily", "Dosah hospod", "visibility", None),
+    ]),
     ("Lidé", [
         ("account", "Účty", "person", None),
         ("pushdevice", "Push zařízení", "notifications", None),
@@ -52,10 +56,6 @@ SECTIONS = [
         ("pubfavorite", "Oblíbené", "favorite", None),
         ("pubcontributionlog", "Příspěvky", "volunteer_activism", None),
     ]),
-    ("Čísla", [
-        ("webstatsdaily", "Web analytika", "bar_chart", None),
-        ("pubreachdaily", "Dosah hospod", "visibility", None),
-    ]),
     ("Systém", [
         ("releasenote", "Co je nového", "campaign", None),
         ("clientevent", "Události z appky", "bug_report", None),
@@ -77,7 +77,7 @@ def navigation(request):  # noqa: ARG001
     for title, items in SECTIONS:
         groups.append({
             "title": title,
-            "collapsible": title in ("Pivo", "Deník", "Systém"),
+            "collapsible": title in ("Hospody", "Pivo", "Deník", "Systém"),
             "items": [
                 {"title": label, "icon": icon, "link": _changelist(model), **({"badge": badge} if badge else {})}
                 for model, label, icon, badge in items
@@ -128,6 +128,6 @@ def dashboard(request, context):  # noqa: ARG001
             ("Vypitá piva", DrinkLog.objects.filter(drank_at__gte=week_ago).count(), f"{DrinkLog.objects.count()} celkem"),
             ("Večery", PublishedNight.objects.filter(created_at__gte=week_ago).count(), f"{PublishedNight.objects.count()} celkem"),
         ],
-        "feedback": FeedbackReport.objects.order_by("-created_at")[:6],
+        "feedback": _waiting_feedback().order_by("-created_at")[:6],
     })
     return context

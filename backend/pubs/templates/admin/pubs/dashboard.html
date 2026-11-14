@@ -31,7 +31,7 @@
     </section>
 
     <section>
-        {% component "unfold/components/title.html" with class="mb-4" %}Poslední zpětná vazba{% endcomponent %}
+        {% component "unfold/components/title.html" with class="mb-4" %}Nová zpětná vazba{% endcomponent %}
         <div class="border border-base-200 rounded-default divide-y divide-base-200 dark:border-base-800 dark:divide-base-800 dark:bg-base-900">
             {% for item in feedback %}
                 <a href="{% url 'admin:pubs_feedbackreport_change' item.pk %}" class="flex gap-4 items-baseline px-5 py-3 hover:bg-base-50 dark:hover:bg-base-800">
@@ -40,7 +40,7 @@
                     <span class="shrink-0 text-subtle text-sm">{{ item.created_at|date:"j. n. H:i" }}{% if item.app_version %} · {{ item.app_version }}{% endif %}{% if item.platform %} · {{ item.platform }}{% endif %}</span>
                 </a>
             {% empty %}
-                <p class="px-5 py-3 text-subtle">Zatím nic.</p>
+                <p class="px-5 py-3 text-subtle">Všechno vyřízené.</p>
             {% endfor %}
         </div>
     </section>

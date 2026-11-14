@@ -75,6 +75,12 @@ class GroupAdmin(BaseGroupAdmin, ModelAdmin):
     pass
 
 
+def _account_label(account: Account | None) -> str:
+    if account is None:
+        return "-"
+    return f"@{account.nickname}" if account.nickname else str(account.public_id)[:8]
+
+
 class _ReadOnlyAdmin:
     """Mixin for append-only / audit tables: forbid add and change in admin."""
 
@@ -276,8 +282,8 @@ class ContentReportAdmin(ModelAdmin):
         "created_at",
         "reason",
         "status",
-        "target_account",
-        "reporter",
+        "target_nickname",
+        "reporter_nickname",
         "short_comment",
     )
     list_select_related = ("target_account", "reporter")
@@ -298,6 +304,14 @@ class ContentReportAdmin(ModelAdmin):
     @admin.display(description="comment")
     def short_comment(self, obj: ContentReport) -> str:
         return _truncate(obj.comment, 60)
+
+    @admin.display(description="target account")
+    def target_nickname(self, obj: ContentReport) -> str:
+        return _account_label(obj.target_account)
+
+    @admin.display(description="reporter")
+    def reporter_nickname(self, obj: ContentReport) -> str:
+        return _account_label(obj.reporter)
 
     @admin.action(description="Hide target profiles")
     def hide_target_profiles(self, request, queryset) -> None:  # noqa: ARG002
@@ -783,6 +797,7 @@ class PubVisitAdmin(_ReadOnlyAdmin, ModelAdmin):
 
 class ReleaseNoteItemInline(TabularInline):
     model = ReleaseNoteItem
+    show_title = False
     extra = 1
     fields = ("order", "icon", "text", "text_en")
     ordering = ("order",)
