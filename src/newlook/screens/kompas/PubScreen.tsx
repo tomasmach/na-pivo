@@ -236,7 +236,7 @@ export function PubScreen() {
   const footer = (
     <View style={[s.row, { gap: 10 }]}>
       <Button label={L().guideMe} icon="navigation" flex onPress={guide} />
-      <IconButton icon="compass" size={52} iconSize={23} color={C.yellow} label={L().showOnCompass} onPress={() => showOnKompas(router, pub)} />
+      <IconButton icon="compass" size={52} iconSize={23} color={C.yellow} label={L().showOnCompass} onPress={() => showOnKompas(router, pub, 'compass')} />
     </View>
   );
 
@@ -264,7 +264,7 @@ export function PubScreen() {
             ) : null}
           </View>
         </View>
-        <Press onPress={() => showOnKompas(router, pub)} style={{ height: 112, borderRadius: 20, overflow: 'hidden', backgroundColor: C.card }}>
+        <Press onPress={() => showOnKompas(router, pub, 'map')} style={{ height: 112, borderRadius: 20, overflow: 'hidden', backgroundColor: C.card }}>
           <MapView
             // Rebuilt when the iPhone Duo folds or opens: Google drops the pin and the centre on a resize.
             key={mapWidth}
