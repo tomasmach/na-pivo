@@ -114,6 +114,7 @@ export const kompasEn: Strings['nv']['kompas'] = {
   findPouringSub: "I'll show them on the map",
   inView: 'Closest to you',
   inViewCount: pubs,
+  inViewPlacesCount: places,
   unknownMenu: 'Menu unknown',
   areaOpenUntil: (area, time) => `${area} · open until ${time}`,
   notFound: (query) => `I found nothing for "${query}".`,

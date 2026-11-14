@@ -124,6 +124,7 @@ export const kompasCs = {
   findPouringSub: 'Ukážu je na mapě',
   inView: 'Nejblíž k tobě',
   inViewCount: pubs,
+  inViewPlacesCount: places,
   unknownMenu: 'Nabídku neznám',
   areaOpenUntil: (area: string, time: string) => `${area} · otevřeno do ${time}`,
   notFound: (query: string) => `Na „${query}“ jsem nic nenašel.`,

@@ -326,7 +326,7 @@ export function HledaniScreen() {
                 {L().inView}
               </T>
               <T s={13} c={C.muted}>
-                {L().inViewCount(nearbyRows.length)}
+                {nearbyRows.some(({ pub }) => pub.placeKind === 'restaurant') ? L().inViewPlacesCount(nearbyRows.length) : L().inViewCount(nearbyRows.length)}
               </T>
             </View>
             <Card>
@@ -337,9 +337,9 @@ export function HledaniScreen() {
                   <Row
                     key={`${pub.id}-${pub.lat}`}
                     last={i === nearbyRows.length - 1}
-                    leading={<Tile icon="beer" />}
+                    leading={<Tile icon={pub.placeKind === 'restaurant' ? 'utensils' : 'beer'} />}
                     title={pub.name}
-                    sub={tap ? (czk ? L().beerPrice(tap.name, formatPrice(czk, currency)) : tap.name) : L().unknownMenu}
+                    sub={withPlaceKind(pub.placeKind, tap ? (czk ? L().beerPrice(tap.name, formatPrice(czk, currency)) : tap.name) : L().unknownMenu)}
                     trailing={<Distance meters={distanceMeters} />}
                     onPress={() => openPub(pub)}
                   />

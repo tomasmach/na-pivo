@@ -188,7 +188,7 @@ export function useKompas() {
   const pins = useMemo(() => {
     const pin = (pub: Pub) => {
       const key = geohash8(pub.lat, pub.lng);
-      return { key, id: pinId(pub), lat: pub.lat, lng: pub.lng, label: pinLabel(pub), beers: beersByPub?.get(key) ?? 0 };
+      return { key, id: pinId(pub), lat: pub.lat, lng: pub.lng, label: pinLabel(pub), beers: beersByPub?.get(key) ?? 0, restaurant: isRestaurant(pub) };
     };
     const list = mapPubs.map(pin);
     if (picked && !list.some((p) => p.key === geohash8(picked.lat, picked.lng))) list.push(pin(picked));

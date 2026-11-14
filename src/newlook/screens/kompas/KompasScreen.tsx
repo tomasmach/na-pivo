@@ -190,17 +190,11 @@ function MapMode({ k, name, onCompass, beside = false }: { k: Kompas; name: Name
   const city = k.map.visitedCities.find((c) => c.key === cityKey) ?? k.map.visitedCities[0];
 
   const beerFilter = st.filters.beerBrand;
-  const activeChip =
-    st.mapView === 'stopy'
-      ? L().chipTraces
-      : st.onlyDrunk
-        ? L().chipOnlyDrunk
-        : beerFilter?.label ?? (st.filters.includeRestaurants ? L().restaurantsWithBeer : null);
+  const activeChip = st.mapView === 'stopy' ? L().chipTraces : st.onlyDrunk ? L().chipOnlyDrunk : beerFilter?.label ?? null;
   const clearActive = () => {
     if (st.mapView === 'stopy') st.set({ mapView: 'okoli' });
     else if (st.onlyDrunk) st.set({ onlyDrunk: false });
-    else if (beerFilter) st.setFilters({ beerBrand: null });
-    else st.setFilters({ includeRestaurants: false });
+    else st.setFilters({ beerBrand: null });
   };
 
   const onPub = (id: string) => {
@@ -321,17 +315,10 @@ function MapMode({ k, name, onCompass, beside = false }: { k: Kompas; name: Name
         contentContainerStyle={{ paddingLeft: beside ? 0 : SCREEN_X, paddingRight: SCREEN_X, gap: 8 }}
       >
         {activeChip ? (
-          <Press
-            haptic
-            onPress={clearActive}
-            style={[s.row, { height: 34, borderRadius: 17, paddingLeft: 13, paddingRight: 10, gap: 6, backgroundColor: '#3A2E08F0', borderWidth: 1, borderColor: C.yellowStrong }]}
-          >
-            {beerFilter && st.mapView !== 'stopy' && !st.onlyDrunk ? <Icon name="beer" size={15} color={C.yellow} /> : null}
-            <T s={13} w={700} c={C.yellow}>
-              {activeChip}
-            </T>
-            <Icon name="x" size={14} color={C.yellow} />
-          </Press>
+          <ActiveChip label={activeChip} icon={beerFilter && st.mapView !== 'stopy' && !st.onlyDrunk ? 'beer' : undefined} onPress={clearActive} />
+        ) : null}
+        {st.filters.includeRestaurants && st.mapView !== 'stopy' ? (
+          <ActiveChip label={L().restaurantsWithBeer} icon="utensils" onPress={() => st.setFilters({ includeRestaurants: false })} />
         ) : null}
         {CATEGORIES.filter((c) => !(c.beer && beerFilter?.key === c.beer.key)).map((c) => {
           const on = c.beer ? beerFilter?.key === c.beer.key : !!c.amenity && st.filters.amenityKeys.includes(c.amenity);
@@ -487,6 +474,22 @@ function MapMode({ k, name, onCompass, beside = false }: { k: Kompas; name: Name
         </LayoutAnimationConfig>
       </View>
     </View>
+  );
+}
+
+function ActiveChip({ label, icon, onPress }: { label: string; icon?: IconName; onPress: () => void }) {
+  return (
+    <Press
+      haptic
+      onPress={onPress}
+      style={[s.row, { height: 34, borderRadius: 17, paddingLeft: 13, paddingRight: 10, gap: 6, backgroundColor: '#3A2E08F0', borderWidth: 1, borderColor: C.yellowStrong }]}
+    >
+      {icon ? <Icon name={icon} size={15} color={C.yellow} /> : null}
+      <T s={13} w={700} c={C.yellow}>
+        {label}
+      </T>
+      <Icon name="x" size={14} color={C.yellow} />
+    </Press>
   );
 }
 

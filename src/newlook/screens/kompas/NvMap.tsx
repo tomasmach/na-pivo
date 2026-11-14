@@ -33,7 +33,7 @@ export const GRAY_MAP: MapStyleElement[] = [
 
 type Point = { lat: number; lng: number };
 /** `key` is the pub's cell; `id` tells apart pubs that share one cell. */
-export type MapPin = Point & { key: string; id: string; label: string | null; beers: number };
+export type MapPin = Point & { key: string; id: string; label: string | null; beers: number; restaurant?: boolean };
 export type MapFriend = Point & { key: string; initial: string };
 export type MapCity = Point & { key: string; name: string; count: number };
 export type NvMapHandle = { centerOn: (at: Point) => void };
@@ -212,7 +212,7 @@ const PubMarkers = memo(function PubMarkers({
       zIndex={p.key === targetKey ? 2 : 0}
     >
       <WithBeers beers={p.beers}>
-        <PubPin label={p.label} target={p.key === targetKey} />
+        <PubPin label={p.label} target={p.key === targetKey} restaurant={p.restaurant} />
       </WithBeers>
     </StaticMapMarker>
   ));
@@ -267,12 +267,13 @@ const CityMarkers = memo(function CityMarkers({ cities, selected, onPress }: { c
   ));
 });
 
-export function PubPin({ label, target }: { label: string | null; target: boolean }) {
-  const showIcon = !label || target;
+export function PubPin({ label, target, restaurant }: { label: string | null; target: boolean; restaurant?: boolean }) {
+  const showIcon = !label || target || restaurant;
+  const icon = restaurant ? 'utensils' : 'beer';
   if (target && !label) {
     return (
       <View style={[{ width: 38, height: 38, borderRadius: 19, backgroundColor: C.yellow, borderWidth: 2, borderColor: C.black }, s.center]}>
-        <Icon name="beer" size={17} color={C.black} />
+        <Icon name={icon} size={17} color={C.black} />
       </View>
     );
   }
@@ -291,7 +292,7 @@ export function PubPin({ label, target }: { label: string | null; target: boolea
         },
       ]}
     >
-      {showIcon ? <Icon name="beer" size={target ? 16 : 14} color={C.black} /> : null}
+      {showIcon ? <Icon name={icon} size={target ? 16 : 14} color={C.black} /> : null}
       {label ? (
         <T s={target ? 15 : 13} w={target ? 800 : 700} c={C.black}>
           {label}
