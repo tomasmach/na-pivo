@@ -56,9 +56,12 @@ function viewerPhoto(entry: PhotoContestEntry): ViewerPhoto {
 /** The round ranked by rundas, shared by the grid and the photo viewer opened from it. */
 const useContestStore = create<{ snap: PhotoContestSnapshot | null; failed: boolean }>(() => ({ snap: null, failed: false }));
 
+let contestGeneration = 0;
+
 function loadContest(signal?: AbortSignal) {
+  const generation = contestGeneration;
   void fetchPhotoContest(signal, { order: 'top' }).then((next) => {
-    if (signal?.aborted) return;
+    if (signal?.aborted || generation !== contestGeneration) return;
     useContestStore.setState((st) => ({ snap: next ?? st.snap, failed: !next }));
   });
 }
@@ -79,7 +82,7 @@ function toggleRound(entry: PhotoContestEntry) {
   });
 }
 
-function entryMenu(entry: PhotoContestEntry, onWithdrawn?: () => void) {
+function entryMenu(entry: PhotoContestEntry, onWithdraw?: () => void) {
   if (entry.isMine) {
     dialog({
       title: t.nv.vycep.withdrawTitle,
@@ -89,17 +92,18 @@ function entryMenu(entry: PhotoContestEntry, onWithdrawn?: () => void) {
         {
           label: t.nv.vycep.withdrawConfirm,
           kind: 'danger',
-          onPress: () =>
+          onPress: () => {
+            onWithdraw?.();
             void withdrawPhotoContestEntryById(entry.id).then((res) => {
               if (!res.ok) {
                 toast({ kind: 'error', title: res.detail, icon: 'trophy' });
                 return;
               }
               toast({ kind: 'info', title: t.nv.vycep.withdrawn, icon: 'trophy' });
-              onWithdrawn?.();
               loadContest();
               void loadBeerPhotos();
-            }),
+            });
+          },
         },
       ],
     });
@@ -164,7 +168,13 @@ export function FotoPivarScreen() {
       return () => controller.abort();
     }, []),
   );
-  useEffect(() => () => useContestStore.setState({ snap: null, failed: false }), []);
+  useEffect(
+    () => () => {
+      contestGeneration += 1;
+      useContestStore.setState({ snap: null, failed: false });
+    },
+    [],
+  );
   const parta = useVycepStore((st) => st.shareDefault) === 'friends';
   const myId = useAccountStore((st) => st.profile?.id ?? null);
   const [tab, setTab] = useState<'nove' | 'vedou'>('nove');
@@ -185,9 +195,9 @@ export function FotoPivarScreen() {
       besideAuthor: (photo) => <ViewerRound id={photo.key} />,
       menu: {
         label: t.nv.vycep.entryMenu,
-        onPress: (photo) => {
+        onPress: (photo, close) => {
           const current = useContestStore.getState().snap?.entries.find((e) => e.id === photo.key);
-          if (current) entryMenu(current, () => nvBack(router));
+          if (current) entryMenu(current, close);
         },
       },
     });

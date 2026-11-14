@@ -23,7 +23,7 @@ import { usePaneWidth } from '../../duo/pane';
 
 export type ViewerActions = {
   besideAuthor?: (photo: ViewerPhoto) => React.ReactNode;
-  menu?: { label: string; onPress: (photo: ViewerPhoto) => void };
+  menu?: { label: string; onPress: (photo: ViewerPhoto, close: () => void) => void };
 };
 
 /** The list the full-screen viewer swipes through; set right before opening it. */
@@ -159,7 +159,7 @@ export function PartaPhotoScreen() {
       <View style={{ position: 'absolute', top: insets.top + 6, left: SCREEN_X }}>{close}</View>
       {actions.menu ? (
         <View style={{ position: 'absolute', top: insets.top + 6, right: SCREEN_X }}>
-          <IconButton icon="ellipsis" size={40} iconSize={18} bg="#0A0A0A99" onPress={() => actions.menu?.onPress(photos[index])} label={actions.menu.label} />
+          <IconButton icon="ellipsis" size={40} iconSize={18} bg="#0A0A0A99" onPress={() => actions.menu?.onPress(photos[index], () => nvBack(router))} label={actions.menu.label} />
         </View>
       ) : null}
       {photos.length > 1 ? (
