@@ -35,6 +35,8 @@ type KompasState = {
   pin: { lat: number; lng: number } | null;
   /** Map or compass chosen on the tab itself or by a button that promises one; null follows Settings. */
   view: KompasView | null;
+  /** Moved the map by hand without location, so the map stops asking for it until the app restarts. */
+  browsingWithoutLocation: boolean;
   set: (patch: Partial<Omit<KompasState, 'set' | 'setFilters' | 'clearFilters' | 'pick'>>) => void;
   setFilters: (patch: Partial<PubSearchFilters>) => void;
   clearFilters: () => void;
@@ -51,6 +53,7 @@ export const useKompasState = create<KompasState>((set, get) => ({
   cityPubs: null,
   pin: null,
   view: null,
+  browsingWithoutLocation: false,
   set: (patch) => set(patch),
   setFilters: (patch) => set({ filters: normalizePubSearchFilters({ ...get().filters, ...patch }) }),
   clearFilters: () => {

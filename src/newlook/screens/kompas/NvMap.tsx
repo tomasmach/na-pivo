@@ -60,6 +60,8 @@ type Props = {
   onPub?: (id: string) => void;
   onCity?: (key: string) => void;
   onRegion?: (region: Region) => void;
+  /** The person moved the map with a finger, not the app. */
+  onPan?: () => void;
   showRoute?: boolean;
   bottomPadding?: number;
   /** Height of the controls drawn over the top of the map. */
@@ -69,7 +71,7 @@ type Props = {
 };
 
 export const NvMap = forwardRef<NvMapHandle, Props>(function NvMap(
-  { pins, me, target, friends, cities, view, selectedCity, onPub, onCity, onRegion, showRoute = true, bottomPadding = 0, coveredTop = 0, coveredRight = 0 },
+  { pins, me, target, friends, cities, view, selectedCity, onPub, onCity, onRegion, onPan, showRoute = true, bottomPadding = 0, coveredTop = 0, coveredRight = 0 },
   handle,
 ) {
   const ref = useRef<MapView>(null);
@@ -158,9 +160,10 @@ export const NvMap = forwardRef<NvMapHandle, Props>(function NvMap(
       userInterfaceStyle="dark"
       onLayout={(e) => setSize({ width: e.nativeEvent.layout.width, height: e.nativeEvent.layout.height })}
       onMapReady={() => setReady(true)}
-      onRegionChangeComplete={(region) => {
+      onRegionChangeComplete={(region, details) => {
         setViewport(region);
         onRegion?.(region);
+        if (details?.isGesture) onPan?.();
       }}
     >
       {view !== 'stopy' ? (

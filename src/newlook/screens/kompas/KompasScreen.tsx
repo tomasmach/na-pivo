@@ -22,6 +22,7 @@ import { openPubInMaps } from '@/utils/maps';
 
 import { AvatarSlot, Glass, GlassButton, useTabBarSpace } from '../../components/chrome';
 import { Icon, type IconName } from '../../components/Icon';
+import { StatusCard } from '../../components/StatusCard';
 import { Button, Chip, D, Dot, IconButton, Press, T } from '../../components/ui';
 import { usePubNameReveal } from '../../hiddenPubNames';
 import { toast } from '../../ui/store';
@@ -61,7 +62,25 @@ function summaryLine(k: Kompas): string {
   if (k.hideClosed) parts.push(L().summaryOpen);
   if (filters.beerBrand) parts.push(L().summaryPubs(k.mapPubs.length));
   else if (filters.priceMaxCzk) parts.push(L().summaryMaxPrice(filters.priceMaxCzk));
+  else if (k.filterCount > 0 && !k.hideClosed) parts.push(L().summaryPubs(k.mapPubs.length));
   return parts.join(' · ') || L().summaryAll;
+}
+
+export type MapNotice = 'askLocation' | 'deniedLocation' | 'noResults' | 'empty';
+
+/** Why the map shows no pubs, when it shows none and no pub card says otherwise. */
+export function mapNotice(k: Kompas, browsingWithoutLocation: boolean): MapNotice | null {
+  if (k.target) return null;
+  if (!k.position && k.map.permissionState !== 'granted') {
+    if (browsingWithoutLocation) return null;
+    return k.map.permissionState === 'denied' ? 'deniedLocation' : 'askLocation';
+  }
+  // Zoomed out past where the map searches, or still loading: no pins is no answer yet.
+  const area = k.map.searchArea;
+  if (k.pins.length > 0 || !area || k.map.loadingPubs) return null;
+  const { beerBrand, amenityKeys } = useKompasState.getState().filters;
+  const hiddenHere = k.map.loadedPubs.some((pub) => haversineMeters(area, pub) <= area.radiusKm * 1000);
+  return beerBrand || amenityKeys.length > 0 || hiddenHere ? 'noResults' : 'empty';
 }
 
 /** The beer line under a pub: the first tap with its price. */
@@ -188,6 +207,7 @@ function MapMode({ k, name, onCompass, beside = false }: { k: Kompas; name: Name
   const showPubBeers = useSettingsStore((s) => s.showPubBeers);
   const layersDot = st.mapView !== 'okoli' || !showPubBeers || st.onlyDrunk;
   const city = k.map.visitedCities.find((c) => c.key === cityKey) ?? k.map.visitedCities[0];
+  const notice = st.mapView === 'stopy' || beside ? null : mapNotice(k, st.browsingWithoutLocation);
 
   const beerFilter = st.filters.beerBrand;
   const activeChip = st.mapView === 'stopy' ? L().chipTraces : st.onlyDrunk ? L().chipOnlyDrunk : beerFilter?.label ?? null;
@@ -241,7 +261,7 @@ function MapMode({ k, name, onCompass, beside = false }: { k: Kompas; name: Name
 
   // The map buttons sit just above whatever card is showing, or above the tab bar when none is.
   const beers = target?.kind === 'pub' && !name.secret ? (k.beersByPub?.get(target.key) ?? 0) : 0;
-  const cardSpace = st.mapView === 'stopy' ? (city ? 160 : 0) : target && !beside ? (collapsed ? 64 : beers ? 180 : 160) : 0;
+  const cardSpace = st.mapView === 'stopy' ? (city ? 160 : 0) : target && !beside ? (collapsed ? 64 : beers ? 180 : 160) : notice ? 160 : 0;
   return (
     <View style={{ flex: 1, backgroundColor: C.bg }}>
       {/* The map runs on under the iPhone Duo's side column, like the system's maps; only its controls keep clear. */}
@@ -258,6 +278,7 @@ function MapMode({ k, name, onCompass, beside = false }: { k: Kompas; name: Name
         onPub={onPub}
         onCity={setCityKey}
         onRegion={k.map.loadRegion}
+        onPan={notice === 'askLocation' || notice === 'deniedLocation' ? () => st.set({ browsingWithoutLocation: true }) : undefined}
         // Clears the tallest pub card, the one with last week's beers, so the Google logo stays whole.
         bottomPadding={tabSpace + 160}
         coveredTop={insets.top + 104}
@@ -470,11 +491,29 @@ function MapMode({ k, name, onCompass, beside = false }: { k: Kompas; name: Name
                 </Glass>
               </Press>
             </Animated.View>
+          ) : notice ? (
+            <Animated.View key={notice} entering={riseIn}>
+              <MapNoticeCard notice={notice} k={k} onAddPub={() => openAddPub(router)} onClearFilters={st.clearFilters} />
+            </Animated.View>
           ) : null}
         </LayoutAnimationConfig>
       </View>
     </View>
   );
+}
+
+function MapNoticeCard({ notice, k, onAddPub, onClearFilters }: { notice: MapNotice; k: Kompas; onAddPub: () => void; onClearFilters: () => void }) {
+  const card = { style: shadow.raised };
+  switch (notice) {
+    case 'askLocation':
+      return <StatusCard {...card} text={L().mapLocationAsk} action={L().locationCta} actionIcon="map-pin" onAction={() => void k.map.requestPermission()} />;
+    case 'deniedLocation':
+      return <StatusCard {...card} text={L().mapLocationDenied} action={t.permissions.openSettings} actionIcon="settings" onAction={() => void k.map.requestPermission()} />;
+    case 'noResults':
+      return <StatusCard {...card} text={L().noResultsBody} action={L().clearFilters} actionIcon="x" onAction={onClearFilters} />;
+    default:
+      return <StatusCard {...card} text={L().mapEmpty} action={L().addPub} actionIcon="map-pin-plus" onAction={onAddPub} />;
+  }
 }
 
 function ActiveChip({ label, icon, onPress }: { label: string; icon?: IconName; onPress: () => void }) {
