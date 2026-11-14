@@ -156,7 +156,11 @@ def _beacon(client, body, user_agent=BROWSER):
         ("https://duckduckgo.com", "other_search"),
         ("", "direct"),
         ("https://na-pivo.cz", "internal"),
-        ("https://www.facebook.com", "link"),
+        ("https://www.facebook.com", "social"),
+        ("https://l.instagram.com", "social"),
+        ("https://chatgpt.com", "ai"),
+        ("https://gemini.google.com", "ai"),
+        ("https://www.pivnici.cz", "link"),
     ],
 )
 def test_web_counts_a_page_view_with_where_it_came_from(client, referrer, source):

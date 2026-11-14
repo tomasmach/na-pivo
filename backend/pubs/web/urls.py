@@ -49,10 +49,12 @@ from pubs.web.pubs_views import (
 from pubs.web.rankings import rankings, rankings_og
 from pubs.web.reach_views import web_reach
 from pubs.web.routes import bilingual
+from pubs.web.stats_views import web_stats_beacon
 from pubs.web.tours import tour, tour_og, tours
 
 urlpatterns = [
     path("web/reach", web_reach, name="reach-beacon"),
+    path("web/stats", web_stats_beacon, name="stats-beacon"),
     path("web/<str:filename>", web_asset, name="web-asset"),
 
     *bilingual("hospody", "en/pubs", pubs_index, "web-pubs"),

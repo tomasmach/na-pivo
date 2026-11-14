@@ -6,7 +6,7 @@ from django.template.response import TemplateResponse
 from django.urls import path, reverse
 from django.utils import timezone
 
-from . import community_event_admin, pub_event_admin, pub_reach  # noqa: F401
+from . import community_event_admin, pub_event_admin, pub_reach, web_stats  # noqa: F401
 from .enrichment import geohash8
 from .models import (
     Account,
@@ -42,6 +42,7 @@ from .models import (
     ReleaseNoteItem,
     TourPublication,
     UserAddedPub,
+    WebStatsDaily,
 )
 
 
@@ -821,14 +822,7 @@ class PubReachDailyAdmin(_ImmutableAdmin, admin.ModelAdmin):
         """One pub's map pins, page views and navigation taps over a chosen range, app and web apart."""
 
         today = pub_reach.reach_day(timezone.now())
-        try:
-            days = max(1, min(int(request.GET.get("days") or 30), 3660))
-        except ValueError:
-            days = 30
-        end = _parse_day(request.GET.get("to")) or today
-        start = _parse_day(request.GET.get("from")) or end - timedelta(days=days - 1)
-        if start > end:
-            start, end = end, start
+        start, end = _report_range(request, today)
         query = (request.GET.get("pub") or "").strip()
         matches = pub_reach.find_pubs(query) if query else []
         chosen = matches[0] if len(matches) == 1 else None
@@ -840,9 +834,7 @@ class PubReachDailyAdmin(_ImmutableAdmin, admin.ModelAdmin):
             "start": start,
             "end": end,
             "today": today,
-            "ranges": [
-                {"days": n, "from": today - timedelta(days=n - 1), "to": today} for n in (7, 30, 90)
-            ],
+            "ranges": _ranges(today),
             "matches": matches if len(matches) > 1 else [],
             "no_match": bool(query) and not matches,
             "chosen": {"cache_key": chosen[0], "name": chosen[1]} if chosen else None,
@@ -852,6 +844,39 @@ class PubReachDailyAdmin(_ImmutableAdmin, admin.ModelAdmin):
             "report_url": reverse("admin:pubs_pubreachdaily_report"),
         }
         return TemplateResponse(request, "admin/pubs/pub_reach_report.html", context)
+
+
+@admin.register(WebStatsDaily)
+class WebStatsDailyAdmin(_ImmutableAdmin, admin.ModelAdmin):
+    """The list is the report: page views, sources, store taps and Google search for a range."""
+
+    def changelist_view(self, request, extra_context=None):  # noqa: ARG002
+        today = pub_reach.reach_day(timezone.now())
+        start, end = _report_range(request, today)
+        context = {
+            **self.admin_site.each_context(request),
+            "opts": self.model._meta,
+            "title": "Web analytika",
+            "start": start,
+            "end": end,
+            "ranges": _ranges(today),
+            "report": web_stats.report(start, end, today),
+        }
+        return TemplateResponse(request, "admin/pubs/web_stats_report.html", context)
+
+
+def _report_range(request, today: date) -> tuple[date, date]:
+    try:
+        days = max(1, min(int(request.GET.get("days") or 30), 3660))
+    except ValueError:
+        days = 30
+    end = _parse_day(request.GET.get("to")) or today
+    start = _parse_day(request.GET.get("from")) or end - timedelta(days=days - 1)
+    return (end, start) if start > end else (start, end)
+
+
+def _ranges(today: date) -> list[dict]:
+    return [{"days": n, "from": today - timedelta(days=n - 1), "to": today} for n in (7, 30, 90, 365)]
 
 
 def _parse_day(value: str | None) -> date | None:

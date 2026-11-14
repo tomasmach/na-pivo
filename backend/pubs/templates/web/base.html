@@ -32,9 +32,10 @@
 {% if page.account %}<meta name="csrf-token" content="{{ csrf_token }}">{% endif %}
 {% block head %}{% endblock %}
 </head>
-<body class="{% block body_class %}{% endblock %}">
+<body class="{% block body_class %}{% endblock %}"{% if page.missing %} data-stats-missing{% endif %}>
 <a class="np-skip np-btn np-btn--primary" href="#{{ main_id|default:"obsah" }}">{% translate "Přeskočit na obsah" %}</a>
 {% block shell %}{% endblock %}
 {% block scripts %}{% endblock %}
+<script src="{% asset "stats.js" %}" defer></script>
 </body>
 </html>
