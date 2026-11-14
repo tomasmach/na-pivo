@@ -22,7 +22,7 @@ let serverHistory: BeerCheckIn[] | null = [];
 jest.mock('@/data/beerCheckinsClient', () => ({ fetchMyBeerCheckIns: jest.fn(async () => serverHistory) }));
 
 // eslint-disable-next-line import/first -- the mocks above must exist before the module loads
-import { loadMyRatings, myRating, reviewDay, saveBeerRating, savedRating } from '../model';
+import { loadMyRatedBeers, loadMyRatings, myRating, reviewDay, saveBeerRating, savedRating } from '../model';
 
 function checkIn(overrides: Partial<BeerCheckIn> = {}): BeerCheckIn {
   return {
@@ -149,5 +149,34 @@ describe('loadMyRatings', () => {
     expect(fresh.myRating(ratings, 'Kozel 11°')).toBe(4);
     expect(fresh.myRating(ratings, 'rotten')).toBeNull();
     expect(fresh.myRating(ratings, 'too much')).toBeNull();
+  });
+});
+
+describe('loadMyRatedBeers', () => {
+  it('lists every beer once with my newest stars, lets a queued rating under an older name win and sorts the best first', async () => {
+    serverHistory = [
+      checkIn({ beerName: 'Únětická 12', breweryName: 'Únětický pivovar', productKey: 'uneticka-12', rating: 4, updatedAt: '2026-03-01T20:00:00.000Z' }),
+      checkIn({ beerName: 'únětická  12', rating: 2, updatedAt: '2026-01-01T20:00:00.000Z' }),
+      checkIn({ beerName: 'Chodovar 11', breweryName: 'Chodovar', productKey: null, rating: 4, updatedAt: '2026-04-01T20:00:00.000Z' }),
+      checkIn({ beerName: 'Bez hvězd', rating: null }),
+      checkIn({ beerName: 'Rychtář 12', breweryName: 'Rychtář', productKey: 'rychtar-12', rating: 3 }),
+      checkIn({ beerName: 'Rychtář Premium', breweryName: 'Rychtář', productKey: 'rychtar-12', rating: 1 }),
+    ];
+    pending = [{ clientId: 'q', beerName: 'Rychtář Premium', rating: 5, visibility: 'private' }];
+
+    const mine = new Set(['Únětická 12', 'Chodovar 11', 'Rychtář 12', 'Rychtář Premium', 'Bez hvězd']);
+    const beers = (await loadMyRatedBeers())?.filter((b) => mine.has(b.beerName));
+
+    expect(beers?.map((b) => [b.beerName, b.rating, b.productKey])).toEqual([
+      ['Rychtář Premium', 5, 'rychtar-12'],
+      ['Chodovar 11', 4, null],
+      ['Únětická 12', 4, 'uneticka-12'],
+    ]);
+    expect(beers?.[0].breweryName).toBe('Rychtář');
+  });
+
+  it('says it failed instead of showing an empty list when the server does not answer', async () => {
+    serverHistory = null;
+    expect(await loadMyRatedBeers()).toBeNull();
   });
 });

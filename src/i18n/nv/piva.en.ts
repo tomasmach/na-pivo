@@ -166,6 +166,11 @@ export const pivaEn: Strings['nv']['piva'] = {
     visibilityOptions: { private: 'Only me', friends: 'Party', public: 'Everyone' },
   },
 
+  rated: {
+    title: 'Rated beers',
+    failed: 'Your ratings did not come through.',
+    empty: 'No ratings here yet. Find a beer and give it some stars.',
+  },
   watches: {
     title: 'Watched beers',
     alertsOff: 'Your notifications are off, so I cannot tell you.',
