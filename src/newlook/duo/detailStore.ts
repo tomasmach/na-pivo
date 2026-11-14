@@ -14,6 +14,7 @@ export type DetailRoute =
   | 'pivni-fotky'
   | 'moje-hospody'
   | 'hlidana-piva'
+  | 'ohodnocena-piva'
   | 'fotopivar'
   | 'tour'
   | 'cisla'
