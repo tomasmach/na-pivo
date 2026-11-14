@@ -23,7 +23,7 @@ import {
 } from '@/data/addedPubsQueue';
 import { trackUiInteraction } from '@/data/uxTelemetry';
 import { clearPubsSnapshot, pubIdForCoords, upsertLocalPub } from '@/data/pubs';
-import { resolvePubSearchResult, suggestPubsToAdd, type PubSearchResult } from '@/data/pubSearchClient';
+import { isKnownPub, resolvePubSearchResult, suggestPubsToAdd, type PubSearchResult } from '@/data/pubSearchClient';
 import { t } from '@/i18n';
 import { usePubStore } from '@/stores/pubStore';
 import { dateTimeFormat } from '@/utils/intlFormat';
@@ -40,6 +40,7 @@ import { GRAY_MAP, nearRegion } from './NvMap';
 import { useKompasState } from './state';
 import { useRecentPosition } from './usePubPage';
 import { useNvParams, useNvRouter } from '../../duo/details';
+import { useNvPlaceStore } from '../stamgast/placeStore';
 
 const L = () => t.nv.kompas;
 
@@ -47,7 +48,8 @@ type Located = AddedPubLocation & { source: 'address' | 'gps' | 'pin' };
 
 export function PridatHospoduScreen() {
   const router = useRouter();
-  const { clientId: editedId, name: typedName } = useLocalSearchParams<{ clientId?: string; name?: string }>();
+  const { clientId: editedId, name: typedName, target } = useLocalSearchParams<{ clientId?: string; name?: string; target?: string }>();
+  const forCounter = target === 'stamgast';
   const position = useRecentPosition();
   const bumpCatalogRevision = usePubStore((st) => st.bumpCatalogRevision);
   const [manual, setManual] = useState(!!editedId);
@@ -157,6 +159,11 @@ export function PridatHospoduScreen() {
     setOpening(result.id);
     const place = await resolvePubSearchResult(result);
     setOpening(null);
+    if (forCounter && place && isKnownPub(result)) {
+      useNvPlaceStore.getState().pickPub(place);
+      nvBack(router);
+      return;
+    }
     setName(place?.name ?? result.name);
     setCity(place?.city ?? result.city ?? '');
     setAddress(place?.address ?? result.address ?? '');
@@ -243,7 +250,8 @@ export function PridatHospoduScreen() {
       address: address.trim(),
       ...(located.source === 'pin' ? { locationSource: 'map_pin' as const } : {}),
     };
-    upsertLocalPub({ id: pubIdForCoords(entry.lat, entry.lng), name: entry.name, lat: entry.lat, lng: entry.lng, city: entry.city, address: entry.address, venueKind: 'pub', userAddedClientId: clientId });
+    const pub = { id: pubIdForCoords(entry.lat, entry.lng), name: entry.name, lat: entry.lat, lng: entry.lng, city: entry.city, address: entry.address, venueKind: 'pub' as const, userAddedClientId: clientId };
+    upsertLocalPub(pub);
     bumpCatalogRevision();
     void clearPubsSnapshot();
     void enqueueAddedPub(buildAddedPubEntry(entry, clientId)).then((state) => {
@@ -254,7 +262,12 @@ export function PridatHospoduScreen() {
       else if (state === 'location-not-found') toast({ kind: 'error', title: L().addLocationMissing, icon: 'map-pin' });
       else toast({ kind: 'error', title: L().addRejected, icon: 'circle-alert' });
     });
-    router.replace('/nv/moje-hospody');
+    if (forCounter) {
+      useNvPlaceStore.getState().pickPub(pub);
+      nvBack(router);
+    } else {
+      router.replace('/nv/moje-hospody');
+    }
   };
 
   if (!manual) {

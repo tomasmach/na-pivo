@@ -917,7 +917,7 @@ export function ZmenitMistoSheet() {
             icon="map-pin-plus"
             height={48}
             style={PLACE_CHIP}
-            onPress={() => router.replace('/nv/pridat-hospodu')}
+            onPress={() => router.replace({ pathname: '/nv/pridat-hospodu', params: { target: 'stamgast' } })}
           />
         </View>
       )}

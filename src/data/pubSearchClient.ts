@@ -245,6 +245,10 @@ export async function suggestPubsToAdd(
     .filter((item): item is PubSearchResult => item !== null);
 }
 
+export function isKnownPub(result: PubSearchResult): boolean {
+  return !!result.pub || result.id.startsWith('local:') || result.id.startsWith('community:');
+}
+
 export async function resolvePubSearchResult(
   result: PubSearchResult,
   signal?: AbortSignal,
