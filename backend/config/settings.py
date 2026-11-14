@@ -113,6 +113,7 @@ MIDDLEWARE = [
     # anything else falls back to LANGUAGE_CODE). Must sit after
     # SessionMiddleware and before CommonMiddleware.
     "django.middleware.locale.LocaleMiddleware",
+    "pubs.i18n.czech_admin_middleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
@@ -246,6 +247,7 @@ LANGUAGES = [
     ("en", "English"),
 ]
 LOCALE_PATHS = [BASE_DIR / "locale"]
+LOGIN_REDIRECT_URL = "admin:index"
 TIME_ZONE = "Europe/Prague"
 USE_I18N = True
 USE_TZ = True

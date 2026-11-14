@@ -1,56 +1,36 @@
 {% extends "admin/index.html" %}
-{% load unfold %}
-
+{% load static %}
+{% block extrastyle %}{{ block.super }}<link rel="stylesheet" href="{% static "pubs/admin/workbench.css" %}">{% endblock %}
 {% block breadcrumbs %}{% endblock %}
 
 {% block content %}
-<div class="flex flex-col gap-8">
-    {% if waiting %}
-    <section>
-        {% component "unfold/components/title.html" with class="mb-4" %}Čeká na tebe{% endcomponent %}
-        <div class="grid grid-cols-1 gap-4 md:grid-cols-3">
-            {% for label, count, url in waiting %}
-                {% component "unfold/components/card.html" with href=url %}
-                    {% component "unfold/components/text.html" %}{{ label }}{% endcomponent %}
-                    <div class="mt-1 font-semibold text-3xl {% if count %}text-primary-400{% else %}text-important{% endif %}">{{ count }}</div>
-                {% endcomponent %}
-            {% endfor %}
-        </div>
-    </section>
+<div class="wb">
+  {% if queue is not None %}
+    <div class="wb-head">
+      <h2>Ke zpracování · {{ queue_count }}</h2>
+      <a class="wb-btn" href="{% url 'admin_queue' %}">Otevřít frontu</a>
+    </div>
+    <div class="wb-list">
+      {% for item in queue %}
+        <a class="wb-row" href="{% url 'admin_queue' %}">
+          <span><span class="wb-tag {{ item.tone }}">{{ item.tag }}</span></span>
+          <span class="wb-text">{{ item.title }}</span>
+          <span class="wb-when">{{ item.when|date:"j. n. H:i" }}</span>
+        </a>
+      {% empty %}
+        <div class="wb-empty"><strong>Všechno vyřízené</strong>Nic nečeká.</div>
+      {% endfor %}
+    </div>
+    {% if queue_more %}<p class="wb-muted"><a href="{% url 'admin_queue' %}">a dalších {{ queue_more }} ve frontě</a></p>{% endif %}
+  {% endif %}
 
-    {% endif %}
-
-    {% if week %}
-    <section>
-        {% component "unfold/components/title.html" with class="mb-4" %}Posledních 7 dní{% endcomponent %}
-        <div class="grid grid-cols-1 gap-4 md:grid-cols-3">
-            {% for label, value, total in week %}
-                {% component "unfold/components/card.html" %}
-                    {% component "unfold/components/text.html" %}{{ label }}{% endcomponent %}
-                    <div class="mt-1 font-semibold text-3xl text-important">{{ value }}</div>
-                    {% component "unfold/components/text.html" with class="mt-1" %}{{ total }}{% endcomponent %}
-                {% endcomponent %}
-            {% endfor %}
-        </div>
-    </section>
-
-    {% endif %}
-
-    {% if feedback is not None %}
-    <section>
-        {% component "unfold/components/title.html" with class="mb-4" %}Nová zpětná vazba{% endcomponent %}
-        <div class="border border-base-200 rounded-default divide-y divide-base-200 dark:border-base-800 dark:divide-base-800 dark:bg-base-900">
-            {% for item in feedback %}
-                <a href="{% url 'admin:pubs_feedbackreport_change' item.pk %}" class="flex gap-4 items-baseline px-5 py-3 hover:bg-base-50 dark:hover:bg-base-800">
-                    <span class="w-16 shrink-0 font-semibold text-xs uppercase {% if item.category == 'bug' %}text-primary-400{% else %}text-subtle{% endif %}">{{ item.get_category_display }}</span>
-                    <span class="grow text-important">{{ item.message|truncatechars:110 }}</span>
-                    <span class="shrink-0 text-subtle text-sm">{{ item.created_at|date:"j. n. H:i" }}{% if item.app_version %} · {{ item.app_version }}{% endif %}{% if item.platform %} · {{ item.platform }}{% endif %}</span>
-                </a>
-            {% empty %}
-                <p class="px-5 py-3 text-subtle">Všechno vyřízené.</p>
-            {% endfor %}
-        </div>
-    </section>
-    {% endif %}
+  {% if week %}
+    <h2>Posledních 7 dní</h2>
+    <div class="wb-stats three">
+      {% for label, value, total, url in week %}
+        <a class="wb-stat" href="{{ url }}"><span>{{ label }}</span><strong>{{ value }}</strong><small>{{ total }}</small></a>
+      {% endfor %}
+    </div>
+  {% endif %}
 </div>
 {% endblock %}
