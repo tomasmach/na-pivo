@@ -11,7 +11,7 @@ from rest_framework.test import APIClient
 from pubs.api.tests.test_nights import _auth, _publish, _register
 from pubs.api.tests.test_pub_events import _claimed_account
 from pubs.api.tests.test_pub_events import _payload as _event_payload
-from pubs.models import ContentReport, FeedbackReport, PublishedNightComment
+from pubs.models import ContentReport, FeedbackReport, PublishedNight, PublishedNightComment
 from pubs.pub_events import PubEvent
 
 QUEUE = "/admin/fronta/"
@@ -194,3 +194,22 @@ def test_admin_speaks_czech_even_for_an_english_browser(admin_client):
     assert "Hledat…" in page
     assert "Type to search" not in page
     assert "Published nights" not in page
+
+
+@pytest.mark.django_db
+def test_night_detail_only_lets_the_admin_hide_the_night(api, admin_client):
+    token, _ = _register(api, "klara")
+    _publish(api, token, visibility="public", pub_names=["U Zlatého tygra"])
+    night = PublishedNight.objects.get()
+    url = f"/admin/pubs/publishednight/{night.pk}/change/"
+
+    page = admin_client.get(url).content.decode()
+    assert "U Zlatého tygra" in page
+    assert "\\u00e9" not in page
+
+    admin_client.post(url, {"is_removed": "on", "beer_count": 99, "pub_names": '["Jinde"]'})
+
+    night.refresh_from_db()
+    assert night.is_removed is True
+    assert night.beer_count != 99
+    assert night.pub_names == ["U Zlatého tygra"]

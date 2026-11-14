@@ -168,10 +168,17 @@ REPORT_ACTIONS = {
 }
 
 
+def _night_link(snapshot: dict) -> tuple[str, str] | None:
+    night = PublishedNight.objects.filter(public_id=snapshot.get("night_id")).values_list("pk", flat=True).first()
+    if night is None:
+        return None
+    return "Otevřít večer", reverse("admin:pubs_publishednight_change", args=[night])
+
+
 def _report_item(report: ContentReport) -> Item:
     snap = report.target_snapshot or {}
     author = account_name(report.target_account)
-    actions = [Action("dismiss", "Nechat")]
+    actions = [Action("dismiss", "V pořádku")]
     quote = image = ""
     lines = [f"{report.get_reason_display()} · nahlásil(a): {account_name(report.reporter)}"]
     if report.comment:
@@ -216,7 +223,7 @@ def _report_item(report: ContentReport) -> Item:
         lines=lines,
         quote=quote,
         image=image,
-        links=[link for link in (account_link(report.target_account),) if link],
+        links=[link for link in (_night_link(snap), account_link(report.target_account)) if link],
         actions=actions,
     )
 
@@ -224,11 +231,18 @@ def _report_item(report: ContentReport) -> Item:
 def _feedback_item(feedback: FeedbackReport) -> Item:
     tone = "yellow" if feedback.category == FeedbackReport.Category.BUG else ""
     tags = {"bug": "Chyba", "idea": "Nápad"}
-    device = " · ".join(part for part in (feedback.platform, feedback.app_version, feedback.os_version) if part)
+    system = {"ios": "iOS", "android": "Android"}.get(feedback.platform.lower(), feedback.platform)
+    device = " · ".join(
+        part
+        for part in (f"{system} {feedback.os_version}".strip(), f"appka {feedback.app_version}" if feedback.app_version else "")
+        if part
+    )
     lines = [f"Od: {account_name(feedback.account)}" + (f" · {device}" if device else "")]
     if feedback.contact:
         lines.append(f"Kontakt: {feedback.contact}")
     links = [link for link in (account_link(feedback.account),) if link]
+    if feedback.contact_type == FeedbackReport.ContactType.EMAIL and feedback.contact:
+        links.insert(0, ("Odepsat e-mailem", f"mailto:{feedback.contact}"))
     if feedback.attachment:
         links.append(("Příloha", feedback.attachment.url))
     if feedback.linear_issue_url:

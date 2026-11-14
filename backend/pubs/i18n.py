@@ -17,7 +17,9 @@ from __future__ import annotations
 from collections.abc import Mapping
 from dataclasses import dataclass
 
+from asgiref.sync import iscoroutinefunction
 from django.utils import translation
+from django.utils.decorators import sync_and_async_middleware
 
 DEFAULT_LOCALE = "cs"
 
@@ -103,11 +105,25 @@ def render_localized(value: object, locale: str) -> str:
         return str(value)
 
 
+
+def _speak_czech_in_admin(request) -> None:
+    if request.path.startswith("/admin/"):
+        translation.activate(DEFAULT_LOCALE)
+        request.LANGUAGE_CODE = DEFAULT_LOCALE
+
+
+@sync_and_async_middleware
 def czech_admin_middleware(get_response):
-    def middleware(request):
-        if request.path.startswith("/admin/"):
-            translation.activate(DEFAULT_LOCALE)
-            request.LANGUAGE_CODE = DEFAULT_LOCALE
-        return get_response(request)
+    if iscoroutinefunction(get_response):
+
+        async def middleware(request):
+            _speak_czech_in_admin(request)
+            return await get_response(request)
+
+    else:
+
+        def middleware(request):
+            _speak_czech_in_admin(request)
+            return get_response(request)
 
     return middleware

@@ -12,7 +12,7 @@ from unfold.admin import ModelAdmin, TabularInline
 from unfold.forms import AdminPasswordChangeForm, UserChangeForm, UserCreationForm
 
 from . import admin_queue, community_event_admin, pub_event_admin, pub_reach, web_stats  # noqa: F401
-from .admin_base import PubsAdmin, short
+from .admin_base import AppCreatedMixin, PubsAdmin, short
 from .enrichment import geohash8
 from .models import (
     Account,
@@ -192,13 +192,14 @@ class EnrichTaskAdmin(PubsAdmin):
 
 
 @admin.register(Account)
-class AccountAdmin(PubsAdmin):
+class AccountAdmin(AppCreatedMixin, PubsAdmin):
     list_display = ("person", "display_name", "is_public", "subscription_tier", "created_at", "last_seen_at")
     list_filter = ("is_public", "excluded_from_leaderboards", "marketing_emails_enabled", "subscription_tier", "subscription_status")
     search_fields = ("nickname", "display_name", "public_id", "device_id")
-    # Only the SHA-256 token_hash is stored (never the raw bearer secret), so it
-    # is safe to surface read-only — it cannot be reversed into a usable token.
-    readonly_fields = ("public_id", "token_hash", "created_at", "last_seen_at")
+    readonly_fields = (
+        "public_id", "device_id", "deletion_epoch", "ugc_terms_version", "ugc_terms_accepted_at",
+        "quorum_trusted_at", "beer_watch_lat", "beer_watch_lng", "beer_watch_located_at", "created_at", "last_seen_at",
+    )
     ordering = ("-created_at",)
     change_form_outer_before_template = "admin/pubs/account/profile.html"
     fieldsets = (
@@ -220,7 +221,7 @@ class AccountAdmin(PubsAdmin):
             "subscription_original_transaction_id", "subscription_expires_at", "subscription_updated_at",
         )}),
         ("Technické", {"classes": ["tab"], "fields": (
-            "public_id", "device_id", "token_hash", "deletion_epoch", "ugc_terms_version",
+            "public_id", "device_id", "deletion_epoch", "ugc_terms_version",
             "ugc_terms_accepted_at", "quorum_trusted_at", "beer_watch_lat", "beer_watch_lng",
             "beer_watch_located_at", "created_at", "last_seen_at",
         )}),
@@ -264,11 +265,10 @@ def _report_action(handler):
 
 
 @admin.register(ContentReport)
-class ContentReportAdmin(PubsAdmin):
+class ContentReportAdmin(AppCreatedMixin, PubsAdmin):
     list_display = ("created_at", "reason", "status", "target", "reporter_name", "short_comment")
     list_select_related = ("target_account", "reporter")
     list_filter = ("reason", "status", "created_at")
-    list_editable = ("status",)
     search_fields = (
         "comment",
         "moderator_note",
@@ -299,41 +299,26 @@ class ContentReportAdmin(PubsAdmin):
 
 
 @admin.register(PublishedNight)
-class PublishedNightAdmin(PubsAdmin):
+class PublishedNightAdmin(AppCreatedMixin, PubsAdmin):
     """Moderation surface: published content is immutable except its kill switch."""
 
     list_display = ("created_at", "account", "drinking_day", "pubs", "beer_count", "visibility", "is_removed")
     list_select_related = ("account",)
     list_filter = ("visibility", "is_removed", "created_at")
-    list_editable = ("is_removed",)
     search_fields = ("public_id", "client_id", "account__public_id", "account__nickname", "city")
-    readonly_fields = (
-        "account",
-        "public_id",
-        "client_id",
-        "drinking_day",
-        "started_at",
-        "ended_at",
-        "beer_count",
-        "wine_count",
-        "soft_drink_count",
-        "shot_count",
-        "pub_names",
-        "city",
-        "duration_minutes",
-        "visibility",
-        "created_at",
-        "updated_at",
-    )
+    exclude = ("pub_names",)
     ordering = ("-created_at", "-id")
 
     @admin.display(description="Hospody")
     def pubs(self, obj: PublishedNight) -> str:
         return short(", ".join(obj.pub_names or []) or obj.city, 60)
 
+    def get_readonly_fields(self, request, obj=None):
+        return ["pubs", *(field.name for field in self.model._meta.fields if field.name not in ("id", "is_removed", "pub_names"))]
+
 
 @admin.register(PublishedNightComment)
-class PublishedNightCommentAdmin(PubsAdmin):
+class PublishedNightCommentAdmin(AppCreatedMixin, PubsAdmin):
     """Moderation surface for night comments: authored content is immutable,
     moderation only flips the soft-removed kill switch."""
 
@@ -357,7 +342,7 @@ class PublishedNightCommentAdmin(PubsAdmin):
 
 
 @admin.register(PubReport)
-class PubReportAdmin(PubsAdmin):
+class PubReportAdmin(AppCreatedMixin, PubsAdmin):
     list_display = ("name", "city", "reason", "active", "account", "created_at")
     list_select_related = ("account",)
     list_filter = ("reason", "active")
@@ -367,7 +352,7 @@ class PubReportAdmin(PubsAdmin):
 
 
 @admin.register(PubNameCorrection)
-class PubNameCorrectionAdmin(PubsAdmin):
+class PubNameCorrectionAdmin(AppCreatedMixin, PubsAdmin):
     list_display = ("original_name", "suggested_name", "city", "active", "account", "updated_at")
     list_select_related = ("account",)
     list_filter = ("active",)
@@ -377,11 +362,10 @@ class PubNameCorrectionAdmin(PubsAdmin):
 
 
 @admin.register(FeedbackReport)
-class FeedbackReportAdmin(PubsAdmin):
+class FeedbackReportAdmin(AppCreatedMixin, PubsAdmin):
     list_display = ("created_at", "category", "status", "short_message", "account", "contact", "app_version", "platform")
     list_select_related = ("account",)
     list_filter = ("category", "status", "contact_type", "platform")
-    list_editable = ("status",)
     search_fields = ("message", "contact")
     readonly_fields = (
         "client_id",
@@ -693,7 +677,7 @@ class ReleaseNoteAdmin(PubsAdmin):
 
 
 @admin.register(TourPublication)
-class TourPublicationAdmin(PubsAdmin):
+class TourPublicationAdmin(AppCreatedMixin, PubsAdmin):
     """Public tours: a reported one hides itself, and only this admin brings it back."""
 
     list_display = ("title", "owner", "status", "hidden_why", "city", "stop_count", "people_count", "published_at")

@@ -1,3 +1,4 @@
+from django.core.exceptions import FieldDoesNotExist
 from unfold.admin import ModelAdmin
 
 TECHNICAL_FIELDS = {
@@ -44,6 +45,20 @@ def short(value: str | None, limit: int) -> str:
     return text if len(text) <= limit else f"{text[:limit - 1]}…"
 
 
+def is_technical(model, name: str) -> bool:
+    if name in TECHNICAL_FIELDS:
+        return True
+    try:
+        return "(technické)" in str(model._meta.get_field(name).verbose_name)
+    except FieldDoesNotExist:
+        return False
+
+
+class AppCreatedMixin:
+    def has_add_permission(self, request, obj=None) -> bool:  # noqa: ARG002
+        return False
+
+
 class PubsAdmin(ModelAdmin):
     def get_form(self, request, obj=None, change=False, **kwargs):
         names = [field.name for field in self.model._meta.get_fields()]
@@ -54,8 +69,8 @@ class PubsAdmin(ModelAdmin):
         if self.fieldsets:
             return super().get_fieldsets(request, obj)
         fields = self.get_fields(request, obj)
-        main = [name for name in fields if name not in TECHNICAL_FIELDS]
-        technical = [name for name in fields if name in TECHNICAL_FIELDS]
+        main = [name for name in fields if not is_technical(self.model, name)]
+        technical = [name for name in fields if is_technical(self.model, name)]
         fieldsets = [(None, {"fields": main})]
         if technical:
             fieldsets.append(("Technické", {"fields": technical, "classes": ["collapse"]}))

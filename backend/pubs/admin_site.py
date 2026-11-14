@@ -11,6 +11,8 @@ SECTIONS = [
         ("account", "Účty", "person"),
         ("publishednight", "Večery", "nightlife"),
         ("publishednightcomment", "Komentáře", "comment"),
+        ("drinklog", "Vypitá piva", "local_drink"),
+        ("tourpublication", "Túry", "route"),
     ]),
     ("Hospody", [
         ("canonicalpub", "Hospody", "storefront"),
@@ -34,8 +36,6 @@ SECTIONS = [
     ("Technické", [
         ("contentreport", "Historie nahlášení", "flag"),
         ("feedbackreport", "Historie zpětné vazby", "chat"),
-        ("tourpublication", "Túry", "route"),
-        ("drinklog", "Vypitá piva", "local_drink"),
         ("pubvisit", "Návštěvy", "pin_drop"),
         ("pubrating", "Hodnocení hospod", "thumb_up"),
         ("pubfavorite", "Oblíbené hospody", "favorite"),

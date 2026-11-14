@@ -866,7 +866,7 @@ class Account(models.Model):
     )
     beer_watch_located_at = models.DateTimeField(
         null=True, blank=True, help_text="When the app last sent the beer-watch cell.",
-        verbose_name="Hlídání piva: poloha z",
+        verbose_name="Hlídání piva: poloha zjištěna",
     )
     beer_watch_radius_m = models.PositiveIntegerField(
         default=3000, help_text="How far from the cell a watched beer on tap is reported.",
@@ -1016,7 +1016,7 @@ class Account(models.Model):
     def __str__(self) -> str:
         if self.nickname:
             return f"@{self.nickname}"
-        return self.display_name or "Účet bez přezdívky"
+        return self.display_name or f"Bez přezdívky, od {czech_day(self.created_at)}"
 
     # --- DRF auth duck-typing -------------------------------------------------
     # AccountTokenAuthentication returns an Account as request.user, so DRF's
