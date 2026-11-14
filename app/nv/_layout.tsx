@@ -61,7 +61,7 @@ const SHEET_ROUTES = new Set(SHEETS);
 // window on the open book.
 const WIDE_ROUTES = new Set(['tour-mapa', 'vyfot', 'onboarding']);
 // One-way screens: a tap beside their panel does not leave them.
-const ONE_WAY_ROUTES = new Set(['prichod', 'verejne-noci']);
+const ONE_WAY_ROUTES = new Set(['prichod', 'verejne-noci', 'viditelnost']);
 
 // On the iPhone Duo a screen pushed over the tabs is a panel: the whole window beside the side
 // column when folded, the right half over the still visible tabs on the open book, like a split
@@ -129,6 +129,7 @@ export default function NewLookLayout() {
         <Stack.Screen name="notifikace" options={{ animation: 'fade' }} />
         <Stack.Screen name="onboarding" options={{ animation: 'fade', gestureEnabled: false }} />
         <Stack.Screen name="verejne-noci" options={{ animation: 'fade', gestureEnabled: false }} />
+        <Stack.Screen name="viditelnost" options={({ route }) => ({ ...panel(route.key, route.name), animation: 'fade', gestureEnabled: false })} />
         <Stack.Screen
           name="prihlaseni"
           options={({ route }) => panel(route.key, route.name) ?? { presentation: 'fullScreenModal', animation: 'slide_from_bottom' }}

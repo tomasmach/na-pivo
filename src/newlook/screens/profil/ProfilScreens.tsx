@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { AppState, Image, Linking, Platform, ScrollView, Share, View, type TextInputInstance } from 'react-native';
+import { AppState, BackHandler, Image, Linking, Platform, ScrollView, Share, View, type TextInputInstance } from 'react-native';
 
 import * as Clipboard from 'expo-clipboard';
 import QRCode from 'react-native-qrcode-svg';
@@ -1333,6 +1333,104 @@ export function UpravitProfilScreen() {
   );
 }
 
+function VisibilityChoice({ title, sub, icon, on, onPress }: { title: string; sub: string; icon: IconName; on: boolean; onPress: () => void }) {
+  return (
+    <Press
+      haptic
+      onPress={onPress}
+      accessibilityRole="radio"
+      accessibilityState={{ selected: on }}
+      accessibilityLabel={`${title}. ${sub}`}
+      style={[s.row, { padding: 14, gap: 12, borderRadius: 18, backgroundColor: on ? C.tint : C.card, borderWidth: on ? 1.5 : 1, borderColor: on ? C.white : C.hairline }]}
+    >
+      <Icon name={icon} size={22} color={on ? C.yellow : C.text2} />
+      <View style={[s.fill, { gap: 4 }]}>
+        <T s={16} w={700}>
+          {title}
+        </T>
+        <T s={13} c={C.muted}>
+          {sub}
+        </T>
+      </View>
+      <View style={[{ width: 24, height: 24, borderRadius: 12, borderWidth: on ? 0 : 1.5, borderColor: C.muted, backgroundColor: on ? C.white : 'transparent' }, s.center]}>
+        {on ? <Icon name="check" size={14} color={C.black} /> : null}
+      </View>
+    </Press>
+  );
+}
+
+/** Asked once right after registration: the server makes new profiles public, so the person decides before anything else. */
+export function ViditelnostScreen() {
+  const router = useRouter();
+  const updateProfile = useAccountStore((st) => st.updateProfile);
+  const copy = t.profile.privacy;
+  const [isPublic, setIsPublic] = useState<boolean | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    const sub = BackHandler.addEventListener('hardwareBackPress', () => true);
+    return () => sub.remove();
+  }, []);
+
+  const next = () => router.replace('/nv/upravit-profil');
+
+  const confirm = async () => {
+    if (busy || isPublic === null) return;
+    setBusy(true);
+    setFailed(false);
+    try {
+      const result = await updateProfile({ isPublic });
+      if (result.ok) next();
+      else setFailed(true);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Screen
+      footer={
+        <View>
+          <Button testID="visibility-confirm" label={busy ? copy.saving : copy.confirm} disabled={busy || isPublic === null} onPress={() => void confirm()} />
+          {failed ? (
+            <Press testID="visibility-skip" onPress={next} disabled={busy} style={{ alignItems: 'center', paddingTop: 12, paddingBottom: 4 }} hitSlop={{ top: 6, bottom: 10, left: 40, right: 40 }}>
+              <T s={13} w={600} c={C.muted}>
+                {copy.skipAfterError}
+              </T>
+            </Press>
+          ) : null}
+        </View>
+      }
+      gap={16}
+    >
+      <View style={{ gap: 10, marginTop: 12 }}>
+        <D s={44} accessibilityRole="header">
+          {copy.title}
+        </D>
+        <T s={16} c={C.text2} lh={1.45}>
+          {copy.body}
+        </T>
+      </View>
+      <View style={{ gap: 8, marginTop: 8 }} accessibilityRole="radiogroup">
+        <VisibilityChoice title={copy.publicTitle} sub={copy.publicBody} icon="globe" on={isPublic === true} onPress={() => setIsPublic(true)} />
+        <VisibilityChoice title={copy.privateTitle} sub={copy.privateBody} icon="lock" on={isPublic === false} onPress={() => setIsPublic(false)} />
+      </View>
+      <View style={[s.row, { gap: 10, alignItems: 'flex-start' }]}>
+        <Icon name="lock" size={15} color={C.muted} />
+        <T s={14} c={C.text2} lh={1.4} style={s.fill}>
+          {copy.promise}
+        </T>
+      </View>
+      {failed ? (
+        <T s={14} w={500} c={C.danger} lh={1.4} accessibilityRole="alert">
+          {copy.error}
+        </T>
+      ) : null}
+    </Screen>
+  );
+}
+
 export function DokonciUcetSheet() {
   const router = useRouter();
   const updateProfile = useAccountStore((st) => st.updateProfile);
@@ -1695,8 +1793,7 @@ export function PrihlaseniScreen() {
   const googleConfigured = useMemo(() => isGoogleSignInConfigured(), []);
 
   const done = (created: boolean) => {
-    // A new account picks its nickname and whether the profile is public first.
-    if (created) router.replace('/nv/upravit-profil');
+    if (created) router.replace('/nv/viditelnost');
     else close(router);
   };
 
