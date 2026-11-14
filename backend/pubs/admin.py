@@ -234,7 +234,7 @@ class AccountAdmin(AppCreatedMixin, PubsAdmin):
     def change_view(self, request, object_id, form_url="", extra_context=None):
         account = self.get_object(request, object_id)
         if account is not None:
-            extra_context = {**(extra_context or {}), "profile": admin_queue.account_profile(account)}
+            extra_context = {**(extra_context or {}), "profile": admin_queue.account_profile(request, account)}
         return super().change_view(request, object_id, form_url, extra_context)
 
 

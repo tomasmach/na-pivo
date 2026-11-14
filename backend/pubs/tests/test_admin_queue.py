@@ -213,3 +213,30 @@ def test_night_detail_only_lets_the_admin_hide_the_night(api, admin_client):
     assert night.is_removed is True
     assert night.beer_count != 99
     assert night.pub_names == ["U Zlatého tygra"]
+
+
+@pytest.mark.django_db
+def test_profile_shows_only_what_the_staff_member_may_view(api):
+    token, account = _register(api, "klara")
+    _publish(api, token, visibility="public", pub_names=["U Zlatého tygra"])
+    _feedback(api, token, "Soukromá zpráva v profilu")
+    staff = User.objects.create_user("staff", "staff@example.com", "x", is_staff=True)
+    staff.user_permissions.add(Permission.objects.get(codename="view_account"))
+    client = Client()
+    client.force_login(staff)
+    url = f"/admin/pubs/account/{account.pk}/change/"
+
+    page = client.get(url).content.decode()
+
+    assert "@klara" in page
+    assert "Soukromá zpráva v profilu" not in page
+    assert "U Zlatého tygra" not in page
+
+    staff.user_permissions.add(Permission.objects.get(codename="view_feedbackreport"))
+    assert "Soukromá zpráva v profilu" in client.get(url).content.decode()
+
+
+@pytest.mark.django_db
+def test_records_made_by_the_app_cannot_be_added_in_the_admin(admin_client):
+    for model in ("pubevent", "communityevent", "account", "publishednight", "feedbackreport", "contentreport"):
+        assert admin_client.get(f"/admin/pubs/{model}/add/").status_code == 403, model

@@ -401,73 +401,88 @@ def queue_view(request):
     return TemplateResponse(request, "admin/pubs/queue.html", context)
 
 
-def account_profile(account: Account) -> dict:
+def account_profile(request, account: Account) -> dict:
+    def may(model: str) -> bool:
+        return _can(request, model, "view") or _can(request, model, "change")
+
     nights = PublishedNight.objects.filter(account=account)
-    feedback = FeedbackReport.objects.filter(account=account).order_by("-created_at")[:10]
-    reports = (
-        ContentReport.objects.filter(Q(reporter=account) | Q(target_account=account))
-        .select_related("reporter", "target_account")
-        .order_by("-created_at")[:10]
-    )
-    usage = AccountUsageStats.objects.filter(account=account).first()
-    activity = [
-        {
-            "tag": "Večer",
-            "text": " · ".join(
-                part
-                for part in (
-                    ", ".join(night.pub_names or []) or night.city or "bez hospody",
-                    f"{night.beer_count} piv",
-                    night.get_visibility_display(),
-                    "skrytý" if night.is_removed else "",
-                )
-                if part
-            ),
-            "when": night.created_at,
-            "url": reverse("admin:pubs_publishednight_change", args=[night.pk]),
-        }
-        for night in nights.order_by("-created_at")[:8]
-    ]
-    for item in feedback:
-        activity.append({
-            "tag": {"bug": "Chyba", "idea": "Nápad"}.get(item.category, "Zpětná vazba"),
-            "tone": "yellow" if item.category == FeedbackReport.Category.BUG else "",
-            "text": item.message,
-            "when": item.created_at,
-            "url": reverse("admin:pubs_feedbackreport_change", args=[item.pk]),
-        })
-    for report in reports:
-        reported_self = report.target_account_id == account.pk
-        activity.append({
-            "tag": "Nahlášen(a)" if reported_self else "Nahlásil(a)",
-            "tone": "red" if reported_self else "",
-            "text": (
-                f"{report.get_reason_display()} · nahlásil(a): {account_name(report.reporter)}"
-                if reported_self
-                else f"{account_name(report.target_account)} · {report.get_reason_display()}"
-            ),
-            "when": report.created_at,
-            "url": reverse("admin:pubs_contentreport_change", args=[report.pk]),
-        })
-    activity.sort(key=lambda row: row["when"], reverse=True)
-    friends = Friendship.objects.filter(
-        Q(requester=account) | Q(recipient=account), status=Friendship.Status.ACCEPTED
-    ).count()
     drinks = DrinkLog.objects.filter(account=account)
-    beers = drinks.filter(drink_type=DrinkLog.DrinkType.BEER)
+    usage = AccountUsageStats.objects.filter(account=account).first() if may("accountusagestats") else None
+    activity = []
+    if may("publishednight"):
+        activity += [
+            {
+                "tag": "Večer",
+                "text": " · ".join(
+                    part
+                    for part in (
+                        ", ".join(night.pub_names or []) or night.city or "bez hospody",
+                        f"{night.beer_count} piv",
+                        night.get_visibility_display(),
+                        "skrytý" if night.is_removed else "",
+                    )
+                    if part
+                ),
+                "when": night.created_at,
+                "url": reverse("admin:pubs_publishednight_change", args=[night.pk]),
+            }
+            for night in nights.order_by("-created_at")[:8]
+        ]
+    if may("feedbackreport"):
+        activity += [
+            {
+                "tag": {"bug": "Chyba", "idea": "Nápad"}.get(item.category, "Zpětná vazba"),
+                "tone": "yellow" if item.category == FeedbackReport.Category.BUG else "",
+                "text": item.message,
+                "when": item.created_at,
+                "url": reverse("admin:pubs_feedbackreport_change", args=[item.pk]),
+            }
+            for item in FeedbackReport.objects.filter(account=account).order_by("-created_at")[:10]
+        ]
+    if may("contentreport"):
+        reports = (
+            ContentReport.objects.filter(Q(reporter=account) | Q(target_account=account))
+            .select_related("reporter", "target_account")
+            .order_by("-created_at")[:10]
+        )
+        for report in reports:
+            reported_self = report.target_account_id == account.pk
+            activity.append({
+                "tag": "Nahlášen(a)" if reported_self else "Nahlásil(a)",
+                "tone": "red" if reported_self else "",
+                "text": (
+                    f"{report.get_reason_display()} · nahlásil(a): {account_name(report.reporter)}"
+                    if reported_self
+                    else f"{account_name(report.target_account)} · {report.get_reason_display()}"
+                ),
+                "when": report.created_at,
+                "url": reverse("admin:pubs_contentreport_change", args=[report.pk]),
+            })
+    activity.sort(key=lambda row: row["when"], reverse=True)
+    stats = [("Kamarádů", Friendship.objects.filter(
+        Q(requester=account) | Q(recipient=account), status=Friendship.Status.ACCEPTED
+    ).count(), None)]
+    if may("drinklog"):
+        stats = [
+            ("Piv", drinks.filter(drink_type=DrinkLog.DrinkType.BEER).count(),
+             reverse("admin:pubs_drinklog_changelist") + f"?account__id__exact={account.pk}"),
+            *stats,
+            ("Hospod", drinks.exclude(cache_key__isnull=True).values("cache_key").distinct().count(), None),
+        ]
+    if may("publishednight"):
+        stats.insert(1 if may("drinklog") else 0, (
+            "Večerů", nights.count(),
+            reverse("admin:pubs_publishednight_changelist") + f"?account__id__exact={account.pk}",
+        ))
     return {
         "name": account_name(account),
         "since": account.created_at,
         "last_seen": account.last_seen_at,
-        "device": " · ".join(
-            part for part in (usage.last_platform, usage.last_app_version) if part
-        ) if usage else "",
-        "stats": [
-            ("Piv", beers.count(), reverse("admin:pubs_drinklog_changelist") + f"?account__id__exact={account.pk}"),
-            ("Večerů", nights.count(), reverse("admin:pubs_publishednight_changelist") + f"?account__id__exact={account.pk}"),
-            ("Kamarádů", friends, None),
-            ("Hospod", drinks.exclude(cache_key__isnull=True).values("cache_key").distinct().count(), None),
-        ],
+        "device": " · ".join(part for part in (usage.last_platform, usage.last_app_version) if part) if usage else "",
+        "stats": stats,
         "activity": activity[:15],
-        "open_reports": ContentReport.objects.filter(target_account=account, status__in=WAITING_REPORT).count(),
+        "open_reports": (
+            ContentReport.objects.filter(target_account=account, status__in=WAITING_REPORT).count()
+            if may("contentreport") else 0
+        ),
     }

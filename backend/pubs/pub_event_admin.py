@@ -1,12 +1,12 @@
 from django.contrib import admin, messages
 from django.utils import timezone
 
-from .admin_base import PubsAdmin
+from .admin_base import AppCreatedMixin, PubsAdmin
 from .pub_events import PubEvent
 
 
 @admin.register(PubEvent)
-class PubEventAdmin(PubsAdmin):
+class PubEventAdmin(AppCreatedMixin, PubsAdmin):
     list_display = ("title", "name", "account", "status", "starts_at", "ends_at", "created_at")
     list_select_related = ("account",)
     list_filter = ("status", "starts_at", "ends_at")

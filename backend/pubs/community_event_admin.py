@@ -1,7 +1,7 @@
 from django.contrib import admin
 from unfold.admin import TabularInline
 
-from .admin_base import PubsAdmin
+from .admin_base import AppCreatedMixin, PubsAdmin
 from .community_events import CommunityEvent, CommunityEventMembership
 
 
@@ -12,7 +12,7 @@ class MembershipInline(TabularInline):
 
 
 @admin.register(CommunityEvent)
-class CommunityEventAdmin(PubsAdmin):
+class CommunityEventAdmin(AppCreatedMixin, PubsAdmin):
     list_display = ("title", "city", "host", "starts_at", "capacity", "status")
     list_filter = ("status", "city", "starts_at")
     search_fields = ("title", "city", "area_label", "host__nickname")
