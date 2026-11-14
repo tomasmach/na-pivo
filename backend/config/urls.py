@@ -7,6 +7,7 @@ from django.urls import include, path, re_path
 from django.views.generic import RedirectView
 from django.views.static import serve
 
+from pubs.admin_queue import queue_view
 from pubs.models import BeerPage
 from pubs.profile_pages import public_profile_page
 from pubs.pub_web_views import pub_share_landing
@@ -99,6 +100,7 @@ urlpatterns = [
 
 if settings.ENABLE_DJANGO_ADMIN:
     urlpatterns += [
+        path("admin/fronta/", admin.site.admin_view(queue_view), name="admin_queue"),
         path("admin/", admin.site.urls),
         re_path(r"^static/(?P<path>.*)$", serve, {"document_root": settings.STATIC_ROOT}),
     ]

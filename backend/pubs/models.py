@@ -28,6 +28,7 @@ from django.db.models.functions import Lower
 from django.utils import timezone
 from django.utils.translation import gettext_lazy
 
+from pubs.display import account_label, clip, czech_day, czech_moment, with_city
 from pubs.enrichment.matcher import geohash8
 from pubs.identity import normalize_pub_name
 
@@ -52,9 +53,9 @@ class PubHours(models.Model):
 
     class Status(models.TextChoices):
         OK = "ok", "OK"
-        UNKNOWN = "unknown", "Unknown"
-        PENDING = "pending", "Pending"
-        ERROR = "error", "Error"
+        UNKNOWN = "unknown", "Neznámá"
+        PENDING = "pending", "Čeká"
+        ERROR = "error", "Chyba"
 
     # ---------- identity ----------
     cache_key = models.CharField(
@@ -62,11 +63,12 @@ class PubHours(models.Model):
         unique=True,
         db_index=True,
         help_text="Geohash-8 of (lat, lng) — ~38 m precision.",
+        verbose_name="Klíč místa (technické)",
     )
-    name = models.CharField(max_length=255)
-    lat = models.FloatField()
-    lng = models.FloatField()
-    city = models.CharField(max_length=128, blank=True)
+    name = models.CharField(max_length=255, verbose_name="Název")
+    lat = models.FloatField(verbose_name="Zeměpisná šířka")
+    lng = models.FloatField(verbose_name="Zeměpisná délka")
+    city = models.CharField(max_length=128, blank=True, verbose_name="Město")
 
     # ---------- enrichment result ----------
     # TextField (not CharField(512)): a heavily multi-segmented openingHoursSpecification
@@ -78,52 +80,61 @@ class PubHours(models.Model):
         blank=True,
         null=True,
         help_text="OSM opening_hours grammar string, e.g. 'Mo-Fr 10:00-22:00; Sa 11:00-20:00'.",
+        verbose_name="Otevírací doba (zápis OSM)",
     )
     source = models.CharField(
         max_length=64,
         default="firmy",
         help_text="Data source identifier, e.g. 'firmy'.",
+        verbose_name="Zdroj",
     )
     source_ref = models.CharField(
         max_length=64,
         blank=True,
         null=True,
         help_text="Firmy.cz firmId of the matched business listing.",
+        verbose_name="ID ve Firmy.cz (technické)",
     )
     confidence = models.FloatField(
         null=True,
         blank=True,
         help_text="Match confidence in [0, 1] — name similarity blended with geo distance.",
+        verbose_name="Jistota shody",
     )
     rating_value = models.FloatField(
         null=True,
         blank=True,
         help_text="Public star rating from the source listing, e.g. 4.1.",
+        verbose_name="Hodnocení",
     )
     rating_count = models.PositiveIntegerField(
         null=True,
         blank=True,
         help_text="Number of public user ratings behind rating_value.",
+        verbose_name="Počet hodnocení",
     )
     rating_label = models.CharField(
         max_length=64,
         blank=True,
         null=True,
         help_text="Human rating label from the source listing, e.g. 'Velmi dobré'.",
+        verbose_name="Slovní hodnocení",
     )
     has_garden = models.BooleanField(
         null=True,
         blank=True,
         db_index=True,
         help_text="Whether the source listing explicitly marks a beer garden/outdoor seating.",
+        verbose_name="Zahrádka",
     )
     status = models.CharField(
         max_length=16,
         choices=Status.choices,
         default=Status.PENDING,
         db_index=True,
+        verbose_name="Stav",
     )
-    error = models.TextField(blank=True, null=True)
+    error = models.TextField(blank=True, null=True, verbose_name="Chyba")
 
     # ---------- venue classification ----------
     # Whether this place serves draft beer, derived from the Firmy.cz categories
@@ -131,10 +142,10 @@ class PubHours(models.Model):
     # path and future filtering query by it. 'unknown' is the safe default for
     # a row that has never been classified (e.g. a no-match or pre-migration row).
     class VenueKind(models.TextChoices):
-        PUB = "pub", "Pub"
-        MAYBE = "maybe", "Maybe"
-        NOT_PUB = "not_pub", "Not a pub"
-        UNKNOWN = "unknown", "Unknown"
+        PUB = "pub", "Hospoda"
+        MAYBE = "maybe", "Možná hospoda"
+        NOT_PUB = "not_pub", "Není hospoda"
+        UNKNOWN = "unknown", "Neznámé"
 
     venue_kind = models.CharField(
         max_length=16,
@@ -142,16 +153,19 @@ class PubHours(models.Model):
         default=VenueKind.UNKNOWN,
         db_index=True,
         help_text="Draft-beer classification derived from Firmy.cz categories/tags.",
+        verbose_name="Typ podniku",
     )
     venue_categories = models.JSONField(
         default=list,
         blank=True,
         help_text="Firmy.cz category names the classification was derived from.",
+        verbose_name="Kategorie",
     )
     venue_tags = models.JSONField(
         default=list,
         blank=True,
         help_text="Firmy.cz tag slugs used for lightweight pub metadata such as garden.",
+        verbose_name="Štítky",
     )
 
     # ---------- timestamps ----------
@@ -159,16 +173,17 @@ class PubHours(models.Model):
         null=True,
         blank=True,
         help_text="When the Firmy.cz fetch completed (None = never fetched).",
+        verbose_name="Staženo",
     )
-    updated_at = models.DateTimeField(auto_now=True)
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="Upraveno")
 
     class Meta:
-        verbose_name = "Pub Hours"
-        verbose_name_plural = "Pub Hours"
+        verbose_name = "otevírací doba"
+        verbose_name_plural = "otevírací doby"
         ordering = ["-updated_at"]
 
     def __str__(self) -> str:
-        return f"{self.name} [{self.cache_key}] — {self.status}"
+        return self.name or "Hospoda bez názvu"
 
 
 class PubDirectory(models.Model):
@@ -266,18 +281,18 @@ class PubGooglePlace(models.Model):
 class CanonicalPub(models.Model):
     """One user-facing pub that can represent multiple retained source rows."""
 
-    public_id = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
-    cache_key = models.CharField(max_length=12, db_index=True)
-    name = models.CharField(max_length=255)
-    name_key = models.CharField(max_length=255)
-    lat = models.FloatField()
-    lng = models.FloatField()
-    city = models.CharField(max_length=128, blank=True, default="")
-    country = models.CharField(max_length=2, blank=True, default="", db_index=True)
-    external_id = models.CharField(max_length=256, blank=True, default="")
-    active = models.BooleanField(default=True, db_index=True)
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
+    public_id = models.UUIDField(default=uuid.uuid4, unique=True, editable=False, verbose_name="Veřejné ID (technické)")
+    cache_key = models.CharField(max_length=12, db_index=True, verbose_name="Klíč místa (technické)")
+    name = models.CharField(max_length=255, verbose_name="Název")
+    name_key = models.CharField(max_length=255, verbose_name="Normalizovaný název (technické)")
+    lat = models.FloatField(verbose_name="Zeměpisná šířka")
+    lng = models.FloatField(verbose_name="Zeměpisná délka")
+    city = models.CharField(max_length=128, blank=True, default="", verbose_name="Město")
+    country = models.CharField(max_length=2, blank=True, default="", db_index=True, verbose_name="Země")
+    external_id = models.CharField(max_length=256, blank=True, default="", verbose_name="ID u poskytovatele mapy (technické)")
+    active = models.BooleanField(default=True, db_index=True, verbose_name="Aktivní")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="Vytvořeno")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="Upraveno")
 
     class Meta:
         constraints = [
@@ -286,15 +301,15 @@ class CanonicalPub(models.Model):
                 name="unique_canonical_pub_identity",
             )
         ]
-        verbose_name = "Canonical Pub"
-        verbose_name_plural = "Canonical Pubs"
+        verbose_name = "hospoda"
+        verbose_name_plural = "hospody"
 
     def save(self, *args, **kwargs) -> None:
         self.name_key = normalize_pub_name(self.name)
         super().save(*args, **kwargs)
 
     def __str__(self) -> str:
-        return f"{self.name} [{self.cache_key}]"
+        return with_city(self.name, self.city)
 
 
 class PubAlias(models.Model):
@@ -304,16 +319,17 @@ class PubAlias(models.Model):
         CanonicalPub,
         on_delete=models.PROTECT,
         related_name="aliases",
+        verbose_name="Hospoda",
     )
-    cache_key = models.CharField(max_length=12, db_index=True)
-    name = models.CharField(max_length=255)
-    name_key = models.CharField(max_length=255)
-    lat = models.FloatField()
-    lng = models.FloatField()
-    is_primary = models.BooleanField(default=False)
-    active = models.BooleanField(default=True, db_index=True)
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
+    cache_key = models.CharField(max_length=12, db_index=True, verbose_name="Klíč místa (technické)")
+    name = models.CharField(max_length=255, verbose_name="Název")
+    name_key = models.CharField(max_length=255, verbose_name="Normalizovaný název (technické)")
+    lat = models.FloatField(verbose_name="Zeměpisná šířka")
+    lng = models.FloatField(verbose_name="Zeměpisná délka")
+    is_primary = models.BooleanField(default=False, verbose_name="Hlavní")
+    active = models.BooleanField(default=True, db_index=True, verbose_name="Aktivní")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="Vytvořeno")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="Upraveno")
 
     class Meta:
         constraints = [
@@ -333,15 +349,15 @@ class PubAlias(models.Model):
                 name="pubalias_cache_active_idx",
             )
         ]
-        verbose_name = "Pub Alias"
-        verbose_name_plural = "Pub Aliases"
+        verbose_name = "alias hospody"
+        verbose_name_plural = "aliasy hospod"
 
     def save(self, *args, **kwargs) -> None:
         self.name_key = normalize_pub_name(self.name)
         super().save(*args, **kwargs)
 
     def __str__(self) -> str:
-        return f"{self.name} [{self.cache_key}] -> {self.canonical_pub}"
+        return f"{self.name} → {self.canonical_pub.name}"
 
 
 class PubMergeAudit(models.Model):
@@ -351,30 +367,28 @@ class PubMergeAudit(models.Model):
         CanonicalPub,
         on_delete=models.PROTECT,
         related_name="merge_audits",
+        verbose_name="Hospoda",
     )
-    source_cache_key = models.CharField(max_length=12)
-    source_name = models.CharField(max_length=255)
-    target_cache_key = models.CharField(max_length=12)
-    target_name = models.CharField(max_length=255)
-    actor = models.CharField(max_length=128)
-    reason = models.TextField()
-    affected_rows = models.JSONField(default=dict)
-    deactivated_directory_ids = models.JSONField(default=list)
-    deactivated_user_added_ids = models.JSONField(default=list)
-    reverted_at = models.DateTimeField(null=True, blank=True)
-    reverted_by = models.CharField(max_length=128, blank=True, default="")
-    created_at = models.DateTimeField(auto_now_add=True)
+    source_cache_key = models.CharField(max_length=12, verbose_name="Klíč sloučeného místa (technické)")
+    source_name = models.CharField(max_length=255, verbose_name="Sloučená hospoda")
+    target_cache_key = models.CharField(max_length=12, verbose_name="Klíč cílového místa (technické)")
+    target_name = models.CharField(max_length=255, verbose_name="Cílová hospoda")
+    actor = models.CharField(max_length=128, verbose_name="Provedl")
+    reason = models.TextField(verbose_name="Důvod")
+    affected_rows = models.JSONField(default=dict, verbose_name="Přepojené záznamy")
+    deactivated_directory_ids = models.JSONField(default=list, verbose_name="Vypnuté záznamy adresáře (technické)")
+    deactivated_user_added_ids = models.JSONField(default=list, verbose_name="Vypnuté přidané hospody (technické)")
+    reverted_at = models.DateTimeField(null=True, blank=True, verbose_name="Vráceno")
+    reverted_by = models.CharField(max_length=128, blank=True, default="", verbose_name="Vrátil")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="Vytvořeno")
 
     class Meta:
         ordering = ["-created_at", "-id"]
-        verbose_name = "Pub Merge Audit"
-        verbose_name_plural = "Pub Merge Audits"
+        verbose_name = "sloučení hospod"
+        verbose_name_plural = "sloučení hospod"
 
     def __str__(self) -> str:
-        return (
-            f"{self.source_name} [{self.source_cache_key}] -> "
-            f"{self.target_name} [{self.target_cache_key}]"
-        )
+        return f"{self.source_name} → {self.target_name}"
 
 
 class EnrichTask(models.Model):
@@ -391,39 +405,41 @@ class EnrichTask(models.Model):
         unique=True,
         db_index=True,
         help_text="Geohash-8 of (lat, lng) — matches PubHours.cache_key.",
+        verbose_name="Klíč místa (technické)",
     )
-    name = models.CharField(max_length=255)
-    lat = models.FloatField()
-    lng = models.FloatField()
+    name = models.CharField(max_length=255, verbose_name="Název")
+    lat = models.FloatField(verbose_name="Zeměpisná šířka")
+    lng = models.FloatField(verbose_name="Zeměpisná délka")
     city = models.CharField(
         max_length=128,
         blank=True,
         null=True,
         help_text="Optional city hint passed by the mobile app.",
+        verbose_name="Město",
     )
 
     # ---------- retry bookkeeping ----------
-    attempts = models.PositiveIntegerField(default=0)
-    max_attempts = models.PositiveIntegerField(default=3)
+    attempts = models.PositiveIntegerField(default=0, verbose_name="Pokusy")
+    max_attempts = models.PositiveIntegerField(default=3, verbose_name="Max. pokusů")
     done = models.BooleanField(
         default=False,
         db_index=True,
         help_text="True once the task has been processed successfully (or max_attempts exceeded).",
+        verbose_name="Hotovo",
     )
-    error = models.TextField(blank=True, null=True)
+    error = models.TextField(blank=True, null=True, verbose_name="Chyba")
 
     # ---------- timestamps ----------
-    created_at = models.DateTimeField(auto_now_add=True)
-    last_attempt_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="Vytvořeno")
+    last_attempt_at = models.DateTimeField(null=True, blank=True, verbose_name="Poslední pokus")
 
     class Meta:
-        verbose_name = "Enrich Task"
-        verbose_name_plural = "Enrich Tasks"
+        verbose_name = "úloha obohacení"
+        verbose_name_plural = "obohacování"
         ordering = ["created_at"]
 
     def __str__(self) -> str:
-        done_label = "done" if self.done else f"attempt {self.attempts}/{self.max_attempts}"
-        return f"EnrichTask({self.name} [{self.cache_key}] — {done_label})"
+        return with_city(self.name, self.city)
 
 
 def generate_account_token() -> str:
@@ -611,30 +627,30 @@ class Account(models.Model):
     """
 
     class Status(models.TextChoices):
-        ACTIVE = "active", "Active"
+        ACTIVE = "active", "Aktivní"
         # Soft-deleted: logged out + tokens revoked, hard-purged by the
         # purge_deleted_accounts command after the grace window. Signing back in
         # within the window reactivates it.
-        PENDING_DELETION = "pending_deletion", "Pending deletion"
+        PENDING_DELETION = "pending_deletion", "Čeká na smazání"
 
     class CompassMode(models.TextChoices):
-        NEAREST = "nearest", "Nearest"
-        SURPRISE = "surprise", "Surprise"
+        NEAREST = "nearest", "Nejbližší"
+        SURPRISE = "surprise", "Překvapení"
 
     class PriceCurrency(models.TextChoices):
         CZK = "CZK", "CZK"
         EUR = "EUR", "EUR"
 
     class SubscriptionTier(models.TextChoices):
-        FREE = "free", "Free"
+        FREE = "free", "Zdarma"
         PLUS = "plus", "Na Pivo+"
 
     class SubscriptionStatus(models.TextChoices):
-        INACTIVE = "inactive", "Inactive"
-        PENDING_VERIFICATION = "pending_verification", "Pending verification"
-        ACTIVE = "active", "Active"
-        GRACE_PERIOD = "grace_period", "Grace period"
-        EXPIRED = "expired", "Expired"
+        INACTIVE = "inactive", "Neaktivní"
+        PENDING_VERIFICATION = "pending_verification", "Čeká na ověření"
+        ACTIVE = "active", "Aktivní"
+        GRACE_PERIOD = "grace_period", "Ochranná lhůta"
+        EXPIRED = "expired", "Vypršelo"
 
     # ---------- identity ----------
     public_id = models.UUIDField(
@@ -643,12 +659,14 @@ class Account(models.Model):
         editable=False,
         db_index=True,
         help_text="Stable public account id exposed to the client (not the PK).",
+        verbose_name="Veřejné ID (technické)",
     )
     device_id = models.CharField(
         max_length=64,
         unique=True,
         db_index=True,
         help_text="Client-generated UUID persisted on the device; the identity anchor.",
+        verbose_name="ID zařízení (technické)",
     )
     token_hash = models.CharField(
         max_length=64,
@@ -661,14 +679,16 @@ class Account(models.Model):
         # NULLs on both sqlite and Postgres. No db_index — see AuthToken.token_hash.
         help_text="DEPRECATED — superseded by AuthToken. SHA-256 digest of the "
         "legacy single bearer token; nullable, kept for backwards compatibility.",
+        verbose_name="Hash tokenu (technické)",
     )
     deletion_epoch = models.BigIntegerField(
         default=0,
         help_text=(
             "Server-only generation for account-deletion authorization. "
             "Credential auth advances it so already-issued sessions cannot "
-            "commit a delayed DELETE after reactivation."
+            "commit a delayed DELETE after reactivation.",
         ),
+        verbose_name="Generace mazání (technické)",
     )
 
     # ---------- preferences ----------
@@ -678,70 +698,81 @@ class Account(models.Model):
         default="",
         help_text=(
             "Last known app language ('cs' or 'en'). Empty means unknown, which "
-            "renders Czech. Used out of request context (push, e-mail, cron)."
+            "renders Czech. Used out of request context (push, e-mail, cron).",
         ),
+        verbose_name="Jazyk",
     )
     hide_pub_names = models.BooleanField(
         default=False,
         help_text="Whether the app should hide pub names behind the reveal interaction.",
+        verbose_name="Skrývat názvy hospod",
     )
     compass_mode = models.CharField(
         max_length=16,
         choices=CompassMode.choices,
         default=CompassMode.NEAREST,
         help_text="Preferred compass mode in the mobile app.",
+        verbose_name="Režim kompasu",
     )
     max_distance_km = models.FloatField(
         null=True,
         blank=True,
         help_text="Preferred search radius in kilometres; null means unlimited.",
+        verbose_name="Max. vzdálenost (km)",
     )
     price_currency = models.CharField(
         max_length=3,
         choices=PriceCurrency.choices,
         default=PriceCurrency.CZK,
         help_text="Preferred currency for displaying counted beer totals.",
+        verbose_name="Měna",
     )
     haptic_enabled = models.BooleanField(
         default=True,
         help_text="Whether haptic feedback is enabled in the mobile app.",
+        verbose_name="Vibrace",
     )
     sound_enabled = models.BooleanField(
         default=False,
         help_text="Whether counter sounds are enabled in the mobile app.",
+        verbose_name="Zvuky",
     )
     hide_closed_pubs = models.BooleanField(
         default=True,
         help_text="Whether known-closed pubs should be hidden in the mobile app.",
+        verbose_name="Skrývat zavřené hospody",
     )
     marketing_emails_enabled = models.BooleanField(
         default=False,
         help_text="Whether the user opted in to product/marketing e-mails.",
+        verbose_name="Marketingové e-maily",
     )
 
     # ---------- Výčep sharing defaults (new look) ----------
     # Both default to the most private option. Released clients never send
     # them, so their behavior stays exactly as before.
     class ShareDefault(models.TextChoices):
-        FRIENDS = "friends", "Friends"
-        PUBLIC = "public", "Public"
+        FRIENDS = "friends", "Kamarádi"
+        PUBLIC = "public", "Všichni"
 
     class NightAutopublish(models.TextChoices):
-        OFF = "off", "Off"
-        FRIENDS = "friends", "Friends"
-        PUBLIC = "public", "Public"
+        OFF = "off", "Vypnuto"
+        FRIENDS = "friends", "Kamarádi"
+        PUBLIC = "public", "Všichni"
 
     share_default = models.CharField(
         max_length=16,
         choices=ShareDefault.choices,
         default=ShareDefault.FRIENDS,
         help_text="Preselected audience for published nights, ratings and photos.",
+        verbose_name="Výchozí sdílení",
     )
     night_autopublish = models.CharField(
         max_length=16,
         choices=NightAutopublish.choices,
         default=NightAutopublish.OFF,
         help_text="Whether the app hangs a finished night on the Výčep by itself.",
+        verbose_name="Sám zveřejnit večer",
     )
 
     # ---------- UGC consent proof ----------
@@ -751,12 +782,14 @@ class Account(models.Model):
         default="",
         help_text="Version of the community-content terms this account accepted; "
         "empty means no acceptance recorded.",
+        verbose_name="Verze komunitních pravidel",
     )
     ugc_terms_accepted_at = models.DateTimeField(
         null=True,
         blank=True,
         help_text="When the account accepted the community-content terms version "
         "recorded in ugc_terms_version; null means never accepted.",
+        verbose_name="Komunitní pravidla přijata",
     )
 
     # ---------- community quorum trust ----------
@@ -769,6 +802,7 @@ class Account(models.Model):
         "Stamped once in the same transaction as the proof and never advanced; "
         "null means no proof yet. Server-only: omitted from normal session and "
         "profile payloads, included only in the user's own data export.",
+        verbose_name="Identita ověřena",
     )
 
     # ---------- social / "parta" preferences ----------
@@ -781,16 +815,19 @@ class Account(models.Model):
     ghost_mode = models.BooleanField(
         default=False,
         help_text="Hide my broadcast from friends: keep my own activity but skip fanout + feed visibility.",
+        verbose_name="Režim ducha",
     )
     share_drinks_with_parta = models.BooleanField(
         default=True,
         help_text="Whether accepted friends can see my live pub presence and automatic drink feed.",
+        verbose_name="Sdílí piva s partou",
     )
     table_visible_until = models.DateTimeField(
         null=True,
         blank=True,
         help_text="Short explicit opt-in: until then, people sitting in the same pub "
         "may see this profile in 'Kdo tu sedí s tebou'. Null = hidden.",
+        verbose_name="Viditelný u stolu do",
     )
     # Off by default, unlike the drink feed: what a beer cost is a different
     # order of disclosure from how many you had, and nobody opted into it when
@@ -799,33 +836,41 @@ class Account(models.Model):
     share_spend_with_parta = models.BooleanField(
         default=False,
         help_text="Whether a Souboj with an accepted friend may compare my total spend.",
+        verbose_name="Sdílí útratu s partou",
     )
     quiet_hours_enabled = models.BooleanField(
         default=True,
         help_text="Whether friend pushes are suppressed during the local quiet-hours window.",
+        verbose_name="Tiché hodiny",
     )
     quiet_hours_start = models.PositiveSmallIntegerField(
         default=23,
         help_text="Local Europe/Prague hour (0-23) the quiet window starts, inclusive.",
+        verbose_name="Tiché hodiny od",
     )
     quiet_hours_end = models.PositiveSmallIntegerField(
         default=9,
         help_text="Local Europe/Prague hour (0-23) the quiet window ends, exclusive.",
+        verbose_name="Tiché hodiny do",
     )
 
     # ---------- beer watch ----------
     # Only a ~500 m grid cell ever reaches the server for this feature.
     beer_watch_lat = models.FloatField(
-        null=True, blank=True, help_text="Latitude of the beer-watch grid cell centre."
+        null=True, blank=True, help_text="Latitude of the beer-watch grid cell centre.",
+        verbose_name="Hlídání piva: šířka",
     )
     beer_watch_lng = models.FloatField(
-        null=True, blank=True, help_text="Longitude of the beer-watch grid cell centre."
+        null=True, blank=True, help_text="Longitude of the beer-watch grid cell centre.",
+        verbose_name="Hlídání piva: délka",
     )
     beer_watch_located_at = models.DateTimeField(
-        null=True, blank=True, help_text="When the app last sent the beer-watch cell."
+        null=True, blank=True, help_text="When the app last sent the beer-watch cell.",
+        verbose_name="Hlídání piva: poloha zjištěna",
     )
     beer_watch_radius_m = models.PositiveIntegerField(
-        default=3000, help_text="How far from the cell a watched beer on tap is reported."
+        default=3000, help_text="How far from the cell a watched beer on tap is reported.",
+        verbose_name="Hlídání piva: okruh (m)",
     )
 
     # ---------- subscription / restore-purchases scaffold ----------
@@ -835,6 +880,7 @@ class Account(models.Model):
         default=SubscriptionTier.FREE,
         db_index=True,
         help_text="Current entitlement tier. Free until a receipt is verified.",
+        verbose_name="Předplatné",
     )
     subscription_status = models.CharField(
         max_length=32,
@@ -842,18 +888,21 @@ class Account(models.Model):
         default=SubscriptionStatus.INACTIVE,
         db_index=True,
         help_text="Current subscription state; pending_verification means restore data was received.",
+        verbose_name="Stav předplatného",
     )
     subscription_platform = models.CharField(
         max_length=16,
         blank=True,
         default="",
         help_text="Store platform for the latest known purchase, e.g. apple or google.",
+        verbose_name="Obchod s předplatným",
     )
     subscription_product_id = models.CharField(
         max_length=128,
         blank=True,
         default="",
         help_text="Store product id for the latest known purchase.",
+        verbose_name="Produkt předplatného (technické)",
     )
     subscription_original_transaction_id = models.CharField(
         max_length=255,
@@ -861,16 +910,19 @@ class Account(models.Model):
         default="",
         db_index=True,
         help_text="Stable store purchase id used for future restore-purchases verification.",
+        verbose_name="ID nákupu (technické)",
     )
     subscription_expires_at = models.DateTimeField(
         null=True,
         blank=True,
         help_text="Expiry reported by a verified subscription provider, when available.",
+        verbose_name="Předplatné vyprší",
     )
     subscription_updated_at = models.DateTimeField(
         null=True,
         blank=True,
         help_text="When subscription metadata last changed.",
+        verbose_name="Předplatné změněno",
     )
 
     # ---------- profile (populated once the account is claimed) ----------
@@ -883,12 +935,14 @@ class Account(models.Model):
         "Casing is preserved; uniqueness is case-insensitive via the "
         "uniq_account_nickname_ci functional constraint. NULL for accounts that "
         "have not set one yet.",
+        verbose_name="Přezdívka",
     )
     display_name = models.CharField(
         max_length=120,
         blank=True,
         default="",
         help_text="Optional real name (free text).",
+        verbose_name="Jméno",
     )
     avatar = models.ImageField(
         upload_to=account_avatar_path,
@@ -898,21 +952,25 @@ class Account(models.Model):
         help_text="Uploaded profile picture, stored on local disk as a 256px "
         "square webp. Empty when the account has no avatar (client renders an "
         "initials fallback).",
+        verbose_name="Profilovka",
     )
     is_public = models.BooleanField(
         default=True,
         db_index=True,
         help_text="Public profile (opt-out). Gates global search and "
         "leaderboards; friends always see the profile regardless.",
+        verbose_name="Veřejný profil",
     )
     excluded_from_leaderboards = models.BooleanField(
         default=False,
         help_text="Manually exclude this account from global leaderboard scores and listings.",
+        verbose_name="Vyřazen ze žebříčků",
     )
     show_as_pub_regular = models.BooleanField(
         default=False,
         help_text="Opt-in: list my nickname and beer count among the regulars on the pages "
         "of pubs where I drank the most. Needs a public profile.",
+        verbose_name="Ukazovat mezi štamgasty",
     )
 
     # ---------- lifecycle / deletion ----------
@@ -922,20 +980,22 @@ class Account(models.Model):
         default=Status.ACTIVE,
         db_index=True,
         help_text="ACTIVE, or PENDING_DELETION during the soft-delete grace window.",
+        verbose_name="Stav",
     )
     deleted_at = models.DateTimeField(
         null=True,
         blank=True,
         help_text="When deletion was requested. Hard purge happens after the grace window.",
+        verbose_name="Smazání požádáno",
     )
 
     # ---------- timestamps ----------
-    created_at = models.DateTimeField(auto_now_add=True)
-    last_seen_at = models.DateTimeField(auto_now=True)
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="Vytvořeno")
+    last_seen_at = models.DateTimeField(auto_now=True, verbose_name="Naposledy v appce")
 
     class Meta:
-        verbose_name = "Account"
-        verbose_name_plural = "Accounts"
+        verbose_name = "účet"
+        verbose_name_plural = "účty"
         ordering = ["-created_at"]
         constraints = [
             # Case-insensitive unique handle as a functional PARTIAL index on
@@ -954,7 +1014,9 @@ class Account(models.Model):
         ]
 
     def __str__(self) -> str:
-        return f"Account({self.public_id} — device {self.device_id})"
+        if self.nickname:
+            return f"@{self.nickname}"
+        return self.display_name or f"Bez přezdívky, od {czech_day(self.created_at)}"
 
     # --- DRF auth duck-typing -------------------------------------------------
     # AccountTokenAuthentication returns an Account as request.user, so DRF's
@@ -1155,57 +1217,62 @@ class PushDevice(models.Model):
     class Platform(models.TextChoices):
         IOS = "ios", "iOS"
         ANDROID = "android", "Android"
-        UNKNOWN = "unknown", "Unknown"
+        UNKNOWN = "unknown", "Neznámá"
 
     class PermissionStatus(models.TextChoices):
-        GRANTED = "granted", "Granted"
-        DENIED = "denied", "Denied"
-        UNDETERMINED = "undetermined", "Undetermined"
+        GRANTED = "granted", "Povoleno"
+        DENIED = "denied", "Zakázáno"
+        UNDETERMINED = "undetermined", "Nerozhodnuto"
 
     account = models.ForeignKey(
         "pubs.Account",
         on_delete=models.CASCADE,
         related_name="push_devices",
+        verbose_name="Účet",
     )
     push_token = models.CharField(
         max_length=512,
         unique=True,
         help_text="Expo push token. Needed to send notifications; never log it.",
+        verbose_name="Push token (technické)",
     )
     platform = models.CharField(
         max_length=16,
         choices=Platform.choices,
         default=Platform.UNKNOWN,
         db_index=True,
+        verbose_name="Platforma",
     )
     permission_status = models.CharField(
         max_length=16,
         choices=PermissionStatus.choices,
         default=PermissionStatus.UNDETERMINED,
         db_index=True,
+        verbose_name="Povolení notifikací",
     )
-    enabled = models.BooleanField(default=True, db_index=True)
+    enabled = models.BooleanField(default=True, db_index=True, verbose_name="Zapnuto")
     # Parta pushes only; beer-watch pushes ignore it. Released apps never send it.
-    friend_push_enabled = models.BooleanField(default=True)
+    friend_push_enabled = models.BooleanField(default=True, verbose_name="Notifikace od kamarádů")
     # Optional ordering marker from newer installs. Old released clients omit it.
-    client_revision = models.PositiveBigIntegerField(null=True, blank=True)
-    app_version = models.CharField(max_length=64, blank=True, default="")
+    client_revision = models.PositiveBigIntegerField(null=True, blank=True, verbose_name="Revize z appky (technické)")
+    app_version = models.CharField(max_length=64, blank=True, default="", verbose_name="Verze appky")
     locale = models.CharField(
         max_length=8,
         blank=True,
         default="",
         help_text=(
             "App language of this device ('cs' or 'en'). Empty means unknown, "
-            "which renders Czech. Released app versions never send it."
+            "which renders Czech. Released app versions never send it.",
         ),
+        verbose_name="Jazyk",
     )
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
-    last_registered_at = models.DateTimeField(auto_now=True, db_index=True)
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="Vytvořeno")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="Upraveno")
+    last_registered_at = models.DateTimeField(auto_now=True, db_index=True, verbose_name="Naposledy registrováno")
 
     class Meta:
-        verbose_name = "Push device"
-        verbose_name_plural = "Push devices"
+        verbose_name = "push zařízení"
+        verbose_name_plural = "push zařízení"
         ordering = ["-last_registered_at"]
         indexes = [
             models.Index(fields=["account", "enabled"]),
@@ -1213,7 +1280,7 @@ class PushDevice(models.Model):
         ]
 
     def __str__(self) -> str:
-        return f"PushDevice({self.platform} for account {self.account_id})"
+        return f"{self.get_platform_display()}, {account_label(self)}"
 
 
 class Friendship(models.Model):
@@ -1751,6 +1818,9 @@ class PartyEvening(models.Model):
             )
         ]
 
+    def __str__(self) -> str:
+        return f"{self.pub_name}, {czech_day(self.started_at)}"
+
 
 class PartyEveningCode(models.Model):
     """A stable join-code reservation for a canonical or merged table.
@@ -2049,60 +2119,64 @@ class PublishedNight(models.Model):
     """
 
     class Visibility(models.TextChoices):
-        FRIENDS = "friends", "Friends"
-        PUBLIC = "public", "Public"
+        FRIENDS = "friends", "Kamarádi"
+        PUBLIC = "public", "Všichni"
 
     account = models.ForeignKey(
         Account,
         on_delete=models.CASCADE,
         related_name="published_nights",
+        verbose_name="Účet",
     )
-    public_id = models.UUIDField(default=uuid.uuid4, unique=True, editable=False, db_index=True)
+    public_id = models.UUIDField(default=uuid.uuid4, unique=True, editable=False, db_index=True, verbose_name="Veřejné ID (technické)")
     client_id = models.CharField(
         max_length=128,
         help_text="Client-generated idempotency key.",
+        verbose_name="ID z appky (technické)",
     )
     client_aliases = models.JSONField(
         default=list,
         blank=True,
         help_text="All released client ids that have addressed this drinking day.",
+        verbose_name="Další ID z appky (technické)",
     )
-    drinking_day = models.DateField()
-    started_at = models.DateTimeField()
-    ended_at = models.DateTimeField()
-    beer_count = models.PositiveSmallIntegerField()
-    wine_count = models.PositiveSmallIntegerField()
-    soft_drink_count = models.PositiveSmallIntegerField()
-    shot_count = models.PositiveSmallIntegerField()
-    pub_names = models.JSONField(default=list, blank=True)
-    city = models.CharField(max_length=120, blank=True, default="")
-    duration_minutes = models.PositiveIntegerField(null=True, blank=True)
+    drinking_day = models.DateField(verbose_name="Den")
+    started_at = models.DateTimeField(verbose_name="Začátek")
+    ended_at = models.DateTimeField(verbose_name="Konec")
+    beer_count = models.PositiveSmallIntegerField(verbose_name="Piva")
+    wine_count = models.PositiveSmallIntegerField(verbose_name="Víno")
+    soft_drink_count = models.PositiveSmallIntegerField(verbose_name="Nealko")
+    shot_count = models.PositiveSmallIntegerField(verbose_name="Panáky")
+    pub_names = models.JSONField(default=list, blank=True, verbose_name="Hospody")
+    city = models.CharField(max_length=120, blank=True, default="", verbose_name="Město")
+    duration_minutes = models.PositiveIntegerField(null=True, blank=True, verbose_name="Délka (min)")
     # Optional, author-written presentation. Released clients omit these
     # fields; the upsert view therefore preserves their current values unless
     # a newer client explicitly sends them.
-    title = models.CharField(max_length=120, blank=True, default="")
-    roast_line = models.CharField(max_length=280, blank=True, default="")
-    roast_basis = models.CharField(max_length=280, blank=True, default="")
+    title = models.CharField(max_length=120, blank=True, default="", verbose_name="Název")
+    roast_line = models.CharField(max_length=280, blank=True, default="", verbose_name="Hláška")
+    roast_basis = models.CharField(max_length=280, blank=True, default="", verbose_name="Podklad hlášky (technické)")
     # Consent-filtered references only. They are resolved again for every
     # viewer, so a later block/privacy change immediately removes the snapshot
     # without rewriting the post. No party code, GPS, beer name, price or game
     # payload is copied into the published row.
-    participant_ids = models.JSONField(default=list, blank=True)
+    participant_ids = models.JSONField(default=list, blank=True, verbose_name="Účastníci (technické)")
     # Empty ``photo_ids`` shows the author's shared photos from that night;
     # ``hide_photos`` records that the author published it without any.
-    photo_ids = models.JSONField(default=list, blank=True)
-    hide_photos = models.BooleanField(default=False)
-    game_ids = models.JSONField(default=list, blank=True)
-    visibility = models.CharField(max_length=16, choices=Visibility.choices, db_index=True)
-    created_at = models.DateTimeField(auto_now_add=True)
+    photo_ids = models.JSONField(default=list, blank=True, verbose_name="Fotky (technické)")
+    hide_photos = models.BooleanField(default=False, verbose_name="Skrýt fotky")
+    game_ids = models.JSONField(default=list, blank=True, verbose_name="Hry (technické)")
+    visibility = models.CharField(max_length=16, choices=Visibility.choices, db_index=True, verbose_name="Viditelnost")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="Vytvořeno")
     updated_at = models.DateTimeField(
-        help_text="Client timestamp used as the last-write-wins conflict key."
+        help_text="Client timestamp used as the last-write-wins conflict key.",
+        verbose_name="Upraveno",
     )
-    is_removed = models.BooleanField(default=False)
+    is_removed = models.BooleanField(default=False, verbose_name="Skryto")
 
     class Meta:
-        verbose_name = "Published night"
-        verbose_name_plural = "Published nights"
+        verbose_name = "večer"
+        verbose_name_plural = "večery"
         ordering = ["-created_at", "-id"]
         constraints = [
             models.UniqueConstraint(
@@ -2123,7 +2197,7 @@ class PublishedNight(models.Model):
         ]
 
     def __str__(self) -> str:
-        return f"PublishedNight({self.account_id}: {self.drinking_day})"
+        return f"{account_label(self)}, {czech_day(self.drinking_day)}"
 
 
 class PublishedNightPubReference(models.Model):
@@ -2195,26 +2269,28 @@ class PublishedNightComment(models.Model):
     and bidirectional block rules are checked for every read and write.
     """
 
-    public_id = models.UUIDField(default=uuid.uuid4, unique=True, editable=False, db_index=True)
-    client_id = models.UUIDField(help_text="Client-generated idempotency key.")
+    public_id = models.UUIDField(default=uuid.uuid4, unique=True, editable=False, db_index=True, verbose_name="Veřejné ID (technické)")
+    client_id = models.UUIDField(help_text="Client-generated idempotency key.", verbose_name="ID z appky (technické)")
     night = models.ForeignKey(
         PublishedNight,
         on_delete=models.CASCADE,
         related_name="comments",
+        verbose_name="Večer",
     )
     account = models.ForeignKey(
         Account,
         on_delete=models.CASCADE,
         related_name="published_night_comments",
+        verbose_name="Účet",
     )
-    body = models.CharField(max_length=500)
-    is_removed = models.BooleanField(default=False, db_index=True)
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
+    body = models.CharField(max_length=500, verbose_name="Text")
+    is_removed = models.BooleanField(default=False, db_index=True, verbose_name="Skryto")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="Vytvořeno")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="Upraveno")
 
     class Meta:
-        verbose_name = "Published night comment"
-        verbose_name_plural = "Published night comments"
+        verbose_name = "komentář"
+        verbose_name_plural = "komentáře"
         ordering = ["created_at", "id"]
         constraints = [
             models.UniqueConstraint(
@@ -2230,7 +2306,7 @@ class PublishedNightComment(models.Model):
         ]
 
     def __str__(self) -> str:
-        return f"PublishedNightComment({self.account_id} -> {self.night_id})"
+        return f"{account_label(self)}: {clip(self.body)}"
 
 
 def beer_photo_path(instance, filename: str) -> str:
@@ -2698,8 +2774,8 @@ class PubReport(models.Model):
     """
 
     class Reason(models.TextChoices):
-        CLOSED = "closed", "Closed / no longer operating"
-        NOT_PUB = "not_pub", "Not a pub"
+        CLOSED = "closed", "Zavřeno / už nefunguje"
+        NOT_PUB = "not_pub", "Není hospoda"
 
     account = models.ForeignKey(
         Account,
@@ -2707,11 +2783,13 @@ class PubReport(models.Model):
         null=True,
         blank=True,
         related_name="pub_reports",
+        verbose_name="Nahlásil",
     )
     cache_key = models.CharField(
         max_length=12,
         db_index=True,
         help_text="Geohash-8 of the reported place coordinates.",
+        verbose_name="Klíč místa (technické)",
     )
     external_id = models.CharField(
         max_length=128,
@@ -2719,24 +2797,26 @@ class PubReport(models.Model):
         null=True,
         db_index=True,
         help_text="Client-side provider id, e.g. Mapy.cz item id.",
+        verbose_name="ID u poskytovatele mapy (technické)",
     )
-    name = models.CharField(max_length=255)
-    lat = models.FloatField()
-    lng = models.FloatField()
-    city = models.CharField(max_length=128, blank=True, null=True)
-    address = models.CharField(max_length=255, blank=True, null=True)
-    reason = models.CharField(max_length=16, choices=Reason.choices, db_index=True)
+    name = models.CharField(max_length=255, verbose_name="Název")
+    lat = models.FloatField(verbose_name="Zeměpisná šířka")
+    lng = models.FloatField(verbose_name="Zeměpisná délka")
+    city = models.CharField(max_length=128, blank=True, null=True, verbose_name="Město")
+    address = models.CharField(max_length=255, blank=True, null=True, verbose_name="Adresa")
+    reason = models.CharField(max_length=16, choices=Reason.choices, db_index=True, verbose_name="Důvod")
     active = models.BooleanField(
         default=True,
         db_index=True,
         help_text="Inactive reports are retained for audit but no longer hide the place.",
+        verbose_name="Aktivní",
     )
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="Vytvořeno")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="Upraveno")
 
     class Meta:
-        verbose_name = "Pub Report"
-        verbose_name_plural = "Pub Reports"
+        verbose_name = "nahlášená hospoda"
+        verbose_name_plural = "nahlášené hospody"
         ordering = ["-created_at"]
         indexes = [
             models.Index(fields=["active", "lat", "lng"], name="pub_report_geo_idx"),
@@ -2753,7 +2833,7 @@ class PubReport(models.Model):
         ]
 
     def __str__(self) -> str:
-        return f"PubReport({self.name} [{self.cache_key}] — {self.reason})"
+        return f"{self.name}: {self.get_reason_display()}"
 
 
 class PubNameCorrection(models.Model):
@@ -2773,15 +2853,18 @@ class PubNameCorrection(models.Model):
         blank=True,
         related_name="pub_name_corrections",
         help_text="The account that submitted this name correction.",
+        verbose_name="Navrhl",
     )
     client_id = models.UUIDField(
         db_index=True,
         help_text="Client-generated UUID; idempotency key for offline retries.",
+        verbose_name="ID z appky (technické)",
     )
     cache_key = models.CharField(
         max_length=12,
         db_index=True,
         help_text="Geohash-8 of the corrected place coordinates.",
+        verbose_name="Klíč místa (technické)",
     )
     external_id = models.CharField(
         max_length=128,
@@ -2789,24 +2872,26 @@ class PubNameCorrection(models.Model):
         null=True,
         db_index=True,
         help_text="Client-side provider id, e.g. Mapy.cz item id.",
+        verbose_name="ID u poskytovatele mapy (technické)",
     )
-    original_name = models.CharField(max_length=255)
-    suggested_name = models.CharField(max_length=255)
-    lat = models.FloatField()
-    lng = models.FloatField()
-    city = models.CharField(max_length=128, blank=True, null=True)
-    address = models.CharField(max_length=255, blank=True, null=True)
+    original_name = models.CharField(max_length=255, verbose_name="Původní název")
+    suggested_name = models.CharField(max_length=255, verbose_name="Navržený název")
+    lat = models.FloatField(verbose_name="Zeměpisná šířka")
+    lng = models.FloatField(verbose_name="Zeměpisná délka")
+    city = models.CharField(max_length=128, blank=True, null=True, verbose_name="Město")
+    address = models.CharField(max_length=255, blank=True, null=True, verbose_name="Adresa")
     active = models.BooleanField(
         default=True,
         db_index=True,
         help_text="Inactive corrections are retained for audit but no longer rename /v1/pubs/near results.",
+        verbose_name="Aktivní",
     )
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="Vytvořeno")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="Upraveno")
 
     class Meta:
-        verbose_name = "Pub Name Correction"
-        verbose_name_plural = "Pub Name Corrections"
+        verbose_name = "oprava názvu"
+        verbose_name_plural = "opravy názvů"
         ordering = ["-updated_at"]
         indexes = [
             models.Index(
@@ -2821,9 +2906,7 @@ class PubNameCorrection(models.Model):
         ]
 
     def __str__(self) -> str:
-        return (
-            f"PubNameCorrection({self.original_name} -> {self.suggested_name} [{self.cache_key}])"
-        )
+        return f"{self.original_name} → {self.suggested_name}"
 
 
 class UserAddedPub(models.Model):
@@ -2847,8 +2930,8 @@ class UserAddedPub(models.Model):
     """
 
     class LocationSource(models.TextChoices):
-        USER_PIN = "user_pin", "User pin"
-        GOOGLE_GEOCODE = "google_geocode", "Google geocode"
+        USER_PIN = "user_pin", "Špendlík od uživatele"
+        GOOGLE_GEOCODE = "google_geocode", "Dohledáno Googlem"
 
     account = models.ForeignKey(
         Account,
@@ -2857,10 +2940,12 @@ class UserAddedPub(models.Model):
         blank=True,
         related_name="added_pubs",
         help_text="The account that submitted this pub.",
+        verbose_name="Přidal",
     )
     client_id = models.UUIDField(
         db_index=True,
         help_text="Client-generated UUID; idempotency key for offline retries.",
+        verbose_name="ID z appky (technické)",
     )
     cache_key = models.CharField(
         max_length=12,
@@ -2868,32 +2953,35 @@ class UserAddedPub(models.Model):
         help_text="Geohash-8 of (lat, lng) — ~38 m precision. Indexed but NOT "
         "unique: identity is (account, client_id), so two different pubs in the "
         "same cell coexist.",
+        verbose_name="Klíč místa (technické)",
     )
-    name = models.TextField(help_text="Pub name as submitted by the client.")
-    lat = models.FloatField()
-    lng = models.FloatField()
+    name = models.TextField(help_text="Pub name as submitted by the client.", verbose_name="Název")
+    lat = models.FloatField(verbose_name="Zeměpisná šířka")
+    lng = models.FloatField(verbose_name="Zeměpisná délka")
     location_source = models.CharField(
         max_length=16,
         choices=LocationSource.choices,
         default=LocationSource.USER_PIN,
         help_text="Provenance of the stored coordinates.",
+        verbose_name="Původ polohy",
     )
-    google_place_id = models.CharField(max_length=256, blank=True, default="")
-    location_synced_at = models.DateTimeField(null=True, blank=True)
-    location_refresh_after = models.DateTimeField(null=True, blank=True)
-    city = models.TextField(blank=True, default="")
-    address = models.TextField(blank=True, default="")
+    google_place_id = models.CharField(max_length=256, blank=True, default="", verbose_name="Google Place ID (technické)")
+    location_synced_at = models.DateTimeField(null=True, blank=True, verbose_name="Poloha ověřena")
+    location_refresh_after = models.DateTimeField(null=True, blank=True, verbose_name="Ověřit polohu znovu po")
+    city = models.TextField(blank=True, default="", verbose_name="Město")
+    address = models.TextField(blank=True, default="", verbose_name="Adresa")
     active = models.BooleanField(
         default=True,
         db_index=True,
         help_text="Inactive rows are kept for audit but hidden from /v1/pubs/near.",
+        verbose_name="Aktivní",
     )
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="Vytvořeno")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="Upraveno")
 
     class Meta:
-        verbose_name = "User Added Pub"
-        verbose_name_plural = "User Added Pubs"
+        verbose_name = "přidaná hospoda"
+        verbose_name_plural = "přidané hospody"
         ordering = ["-updated_at"]
         indexes = [
             # /v1/pubs/near filters active rows by a lat/lng bounding box; without
@@ -2908,7 +2996,7 @@ class UserAddedPub(models.Model):
         ]
 
     def __str__(self) -> str:
-        return f"UserAddedPub({self.name} [{self.cache_key}])"
+        return with_city(self.name, self.city)
 
 
 class ReleaseNote(models.Model):
@@ -2929,6 +3017,7 @@ class ReleaseNote(models.Model):
         db_index=True,
         help_text="App version this note describes, e.g. '1.2.0'. "
         "Must match the version shipped in the app's app.config.ts.",
+        verbose_name="Verze",
     )
     title = models.CharField(
         max_length=120,
@@ -2936,6 +3025,7 @@ class ReleaseNote(models.Model):
         # so a lazy proxy would store whatever language the admin was browsing in.
         default="Co je nového",
         help_text="Headline shown at the top of the popup.",
+        verbose_name="Nadpis",
     )
     title_en = models.CharField(
         max_length=120,
@@ -2943,25 +3033,28 @@ class ReleaseNote(models.Model):
         default="",
         help_text=(
             "English headline. Blank means this note has no English copy and the "
-            "app hides the popup for English users."
+            "app hides the popup for English users.",
         ),
+        verbose_name="Nadpis anglicky",
     )
     is_published = models.BooleanField(
         default=False,
         db_index=True,
         help_text="Only published notes are returned to the app. Leave off to draft.",
+        verbose_name="Zveřejněno",
     )
     published_at = models.DateTimeField(
         null=True,
         blank=True,
         help_text="Set automatically the first time the note is published.",
+        verbose_name="Datum zveřejnění",
     )
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="Vytvořeno")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="Upraveno")
 
     class Meta:
-        verbose_name = "Release Note"
-        verbose_name_plural = "Release Notes"
+        verbose_name = "co je nového"
+        verbose_name_plural = "co je nového"
         ordering = ["-created_at"]
 
     def save(self, *args, **kwargs):
@@ -2973,8 +3066,7 @@ class ReleaseNote(models.Model):
         super().save(*args, **kwargs)
 
     def __str__(self) -> str:
-        state = "published" if self.is_published else "draft"
-        return f"ReleaseNote({self.version} — {state})"
+        return f"{self.version}: {self.title}"
 
 
 class ReleaseNoteItem(models.Model):
@@ -2984,31 +3076,36 @@ class ReleaseNoteItem(models.Model):
         ReleaseNote,
         on_delete=models.CASCADE,
         related_name="items",
+        verbose_name="Co je nového",
     )
     icon = models.CharField(
         max_length=8,
         blank=True,
         default="",
         help_text="Optional emoji shown before the text, e.g. '🍺'.",
+        verbose_name="Ikona",
     )
     text = models.CharField(
         max_length=280,
         help_text="One change in plain Czech, e.g. 'Přidali jsme otevírací dobu hospod.'",
+        verbose_name="Text",
     )
     text_en = models.CharField(
         max_length=280,
         blank=True,
         default="",
         help_text="The same change in English. Blank means no English copy for this bullet.",
+        verbose_name="Text anglicky",
     )
     order = models.PositiveIntegerField(
         default=0,
         help_text="Lower numbers appear first.",
+        verbose_name="Pořadí",
     )
 
     class Meta:
-        verbose_name = "Release Note Item"
-        verbose_name_plural = "Release Note Items"
+        verbose_name = "novinka"
+        verbose_name_plural = "novinky"
         ordering = ["order", "id"]
 
     def __str__(self) -> str:
@@ -3025,18 +3122,18 @@ class FeedbackReport(models.Model):
     """
 
     class Category(models.TextChoices):
-        BUG = "bug", "Bug"
-        IDEA = "idea", "Idea"
-        OTHER = "other", "Other"
+        BUG = "bug", "Chyba"
+        IDEA = "idea", "Nápad"
+        OTHER = "other", "Jiné"
 
     class ContactType(models.TextChoices):
         EMAIL = "email", "E-mail"
         INSTAGRAM = "instagram", "Instagram"
 
     class Status(models.TextChoices):
-        NEW = "new", "New"
-        TRIAGED = "triaged", "Triaged"
-        RESOLVED = "resolved", "Resolved"
+        NEW = "new", "Nová"
+        TRIAGED = "triaged", "Rozpracovaná"
+        RESOLVED = "resolved", "Vyřešená"
 
     account = models.ForeignKey(
         Account,
@@ -3044,62 +3141,70 @@ class FeedbackReport(models.Model):
         null=True,
         blank=True,
         related_name="feedback_reports",
+        verbose_name="Účet",
     )
     client_id = models.UUIDField(
         help_text="Client-generated UUID; idempotency key for offline retries.",
+        verbose_name="ID z appky (technické)",
     )
     category = models.CharField(
         max_length=16,
         choices=Category.choices,
         db_index=True,
+        verbose_name="Typ",
     )
-    message = models.TextField(max_length=4000)
+    message = models.TextField(max_length=4000, verbose_name="Zpráva")
     contact_type = models.CharField(
         max_length=16,
         choices=ContactType.choices,
         blank=True,
         default="",
         help_text="How the user wants to be reached; empty = no contact given.",
+        verbose_name="Typ kontaktu",
     )
     contact = models.CharField(
         max_length=254,
         blank=True,
         default="",
         help_text="E-mail address or bare Instagram handle (no leading '@').",
+        verbose_name="Kontakt",
     )
-    app_version = models.CharField(max_length=64, blank=True, default="")
-    platform = models.CharField(max_length=32, blank=True, default="")
-    os_version = models.CharField(max_length=64, blank=True, default="")
+    app_version = models.CharField(max_length=64, blank=True, default="", verbose_name="Verze appky")
+    platform = models.CharField(max_length=32, blank=True, default="", verbose_name="Platforma")
+    os_version = models.CharField(max_length=64, blank=True, default="", verbose_name="Verze systému")
     attachment = models.ImageField(
         upload_to=feedback_attachment_path,
         blank=True,
         default="",
         max_length=255,
         help_text="Optional support screenshot/photo, re-encoded to WebP with metadata stripped.",
+        verbose_name="Příloha",
     )
     attachment_url = models.URLField(
         blank=True,
         default="",
         help_text="Absolute media URL captured at upload time for the Linear issue link.",
+        verbose_name="Odkaz na přílohu",
     )
     status = models.CharField(
         max_length=16,
         choices=Status.choices,
         default=Status.NEW,
         db_index=True,
+        verbose_name="Stav",
     )
 
     # ---------- Linear sync prep (filled in by sync_feedback_linear) ----------
-    linear_issue_id = models.CharField(max_length=64, blank=True, default="")
-    linear_issue_url = models.URLField(blank=True, default="")
-    linear_synced_at = models.DateTimeField(null=True, blank=True)
+    linear_issue_id = models.CharField(max_length=64, blank=True, default="", verbose_name="Úkol v Linearu (technické)")
+    linear_issue_url = models.URLField(blank=True, default="", verbose_name="Odkaz do Linearu")
+    linear_synced_at = models.DateTimeField(null=True, blank=True, verbose_name="Odesláno do Linearu")
 
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="Vytvořeno")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="Upraveno")
 
     class Meta:
-        verbose_name = "Feedback Report"
-        verbose_name_plural = "Feedback Reports"
+        verbose_name = "zpětná vazba"
+        verbose_name_plural = "zpětná vazba"
         ordering = ["-created_at"]
         indexes = [
             models.Index(fields=["created_at"], name="feedbackrep_created_idx"),
@@ -3112,7 +3217,7 @@ class FeedbackReport(models.Model):
         ]
 
     def __str__(self) -> str:
-        return f"FeedbackReport({self.category} [{self.status}] — {self.message[:40]!r})"
+        return f"{self.get_category_display()}: {clip(self.message)}"
 
 
 class ContentReport(models.Model):
@@ -3126,21 +3231,21 @@ class ContentReport(models.Model):
     """
 
     class Reason(models.TextChoices):
-        INAPPROPRIATE_NICKNAME = "inappropriate_nickname", "Inappropriate nickname"
-        INAPPROPRIATE_AVATAR = "inappropriate_avatar", "Inappropriate avatar"
+        INAPPROPRIATE_NICKNAME = "inappropriate_nickname", "Nevhodná přezdívka"
+        INAPPROPRIATE_AVATAR = "inappropriate_avatar", "Nevhodná profilovka"
         # Additive (photo diary / FotoPivař): a reported beer photo.
-        INAPPROPRIATE_PHOTO = "inappropriate_photo", "Inappropriate photo"
+        INAPPROPRIATE_PHOTO = "inappropriate_photo", "Nevhodná fotka"
         # Additive (public Tour de pub): a reported title or challenge.
-        INAPPROPRIATE_TOUR = "inappropriate_tour", "Inappropriate tour"
-        IMPERSONATION = "impersonation", "Impersonation"
+        INAPPROPRIATE_TOUR = "inappropriate_tour", "Nevhodná túra"
+        IMPERSONATION = "impersonation", "Vydává se za někoho"
         SPAM = "spam", "Spam"
-        OTHER = "other", "Other"
+        OTHER = "other", "Jiné"
 
     class Status(models.TextChoices):
-        NEW = "new", "New"
-        TRIAGED = "triaged", "Triaged"
-        ACTIONED = "actioned", "Actioned"
-        DISMISSED = "dismissed", "Dismissed"
+        NEW = "new", "Nové"
+        TRIAGED = "triaged", "Rozpracované"
+        ACTIONED = "actioned", "Vyřešené zásahem"
+        DISMISSED = "dismissed", "Zamítnuté"
 
     reporter = models.ForeignKey(
         Account,
@@ -3148,6 +3253,7 @@ class ContentReport(models.Model):
         null=True,
         blank=True,
         related_name="content_reports_made",
+        verbose_name="Nahlásil",
     )
     target_account = models.ForeignKey(
         Account,
@@ -3155,28 +3261,31 @@ class ContentReport(models.Model):
         null=True,
         blank=True,
         related_name="content_reports_received",
+        verbose_name="Nahlášený účet",
     )
-    reason = models.CharField(max_length=32, choices=Reason.choices, db_index=True)
-    comment = models.TextField(max_length=1000, blank=True, default="")
+    reason = models.CharField(max_length=32, choices=Reason.choices, db_index=True, verbose_name="Důvod")
+    comment = models.TextField(max_length=1000, blank=True, default="", verbose_name="Komentář")
     target_snapshot = models.JSONField(
         default=dict,
         blank=True,
         help_text="Nickname/display/avatar/is_public snapshot at report time.",
+        verbose_name="Profil při nahlášení",
     )
     status = models.CharField(
         max_length=16,
         choices=Status.choices,
         default=Status.NEW,
         db_index=True,
+        verbose_name="Stav",
     )
-    moderator_note = models.TextField(blank=True, default="")
-    actioned_at = models.DateTimeField(null=True, blank=True)
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
+    moderator_note = models.TextField(blank=True, default="", verbose_name="Poznámka moderátora")
+    actioned_at = models.DateTimeField(null=True, blank=True, verbose_name="Vyřešeno")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="Vytvořeno")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="Upraveno")
 
     class Meta:
-        verbose_name = "Content Report"
-        verbose_name_plural = "Content Reports"
+        verbose_name = "nahlášený obsah"
+        verbose_name_plural = "nahlášený obsah"
         ordering = ["-created_at"]
         indexes = [
             models.Index(fields=["created_at"], name="contentrep_created_idx"),
@@ -3185,7 +3294,7 @@ class ContentReport(models.Model):
         ]
 
     def __str__(self) -> str:
-        return f"ContentReport({self.reason} [{self.status}])"
+        return f"{self.get_reason_display()}: {account_label(self, 'target_account')}"
 
 
 class ClientEvent(models.Model):
@@ -3201,44 +3310,44 @@ class ClientEvent(models.Model):
 
     class Severity(models.TextChoices):
         INFO = "info", "Info"
-        WARNING = "warning", "Warning"
-        ERROR = "error", "Error"
+        WARNING = "warning", "Varování"
+        ERROR = "error", "Chyba"
 
     class Event(models.TextChoices):
-        APP_OPEN = "app_open", "App opened"
-        APP_FOREGROUND = "app_foreground", "App foregrounded"
-        SCREEN_VIEWED = "screen_viewed", "Screen viewed"
-        UI_INTERACTION = "ui_interaction", "UI interaction"
-        WALKING_DISTANCE = "walking_distance", "Walking distance"
-        COUNTER_TAB_OPENED = "counter_tab_opened", "Counter tab opened"
-        COUNTER_SESSION_STARTED = "counter_session_started", "Counter session started"
-        COUNTER_SESSION_CLOSED = "counter_session_closed", "Counter session closed"
-        COUNTER_SESSION_RESUMED = "counter_session_resumed", "Counter session resumed"
-        DRINK_ADDED = "drink_added", "Drink added"
-        DRINK_REMOVED = "drink_removed", "Drink removed"
-        DRINK_SYNCED = "drink_synced", "Drink synced"
-        DRINK_SYNC_FAILED = "drink_sync_failed", "Drink sync failed"
-        RATING_SYNCED = "rating_synced", "Rating synced"
-        RATING_SYNC_FAILED = "rating_sync_failed", "Rating sync failed"
-        VISIT_SYNCED = "visit_synced", "Visit synced"
-        VISIT_SYNC_FAILED = "visit_sync_failed", "Visit sync failed"
-        BEER_FORM_OPENED = "beer_form_opened", "Beer form opened"
-        BEER_FORM_SCAN_OPENED = "beer_form_scan_opened", "Beer form scan opened"
-        BEER_PRICE_ADDED = "beer_price_added", "Beer price added"
-        COUNTER_RETURNED_SAME_DAY = "counter_returned_same_day", "Counter returned same day"
-        COUNTER_RETURNED_LATER = "counter_returned_later", "Counter returned later"
-        CONSOLE_WARN = "console_warn", "Console warning"
-        CONSOLE_ERROR = "console_error", "Console error"
-        UNHANDLED_ERROR = "unhandled_error", "Unhandled error"
-        API_FAILURE = "api_failure", "API failure"
-        AMENITY_VOTED = "amenity_voted", "Amenity voted"
-        AMENITY_VOTE_SYNCED = "amenity_vote_synced", "Amenity vote synced"
-        AMENITY_VOTE_FAILED = "amenity_vote_failed", "Amenity vote sync failed"
-        LEADERBOARDS_OPENED = "leaderboards_opened", "Leaderboards opened"
-        ONBOARDING_STARTED = "onboarding_started", "Onboarding started"
-        ONBOARDING_AUTH_OPENED = "onboarding_auth_opened", "Onboarding auth opened"
-        ONBOARDING_COMPLETED = "onboarding_completed", "Onboarding completed"
-        ONBOARDING_SKIPPED = "onboarding_skipped", "Onboarding skipped"
+        APP_OPEN = "app_open", "Appka otevřena"
+        APP_FOREGROUND = "app_foreground", "Návrat do appky"
+        SCREEN_VIEWED = "screen_viewed", "Zobrazená obrazovka"
+        UI_INTERACTION = "ui_interaction", "Klepnutí v appce"
+        WALKING_DISTANCE = "walking_distance", "Nachozená vzdálenost"
+        COUNTER_TAB_OPENED = "counter_tab_opened", "Otevřené počítadlo"
+        COUNTER_SESSION_STARTED = "counter_session_started", "Počítadlo spuštěno"
+        COUNTER_SESSION_CLOSED = "counter_session_closed", "Počítadlo ukončeno"
+        COUNTER_SESSION_RESUMED = "counter_session_resumed", "Počítadlo obnoveno"
+        DRINK_ADDED = "drink_added", "Pivo přidáno"
+        DRINK_REMOVED = "drink_removed", "Pivo odebráno"
+        DRINK_SYNCED = "drink_synced", "Pivo odesláno"
+        DRINK_SYNC_FAILED = "drink_sync_failed", "Pivo se nepodařilo odeslat"
+        RATING_SYNCED = "rating_synced", "Hodnocení odesláno"
+        RATING_SYNC_FAILED = "rating_sync_failed", "Hodnocení se nepodařilo odeslat"
+        VISIT_SYNCED = "visit_synced", "Návštěva odeslána"
+        VISIT_SYNC_FAILED = "visit_sync_failed", "Návštěvu se nepodařilo odeslat"
+        BEER_FORM_OPENED = "beer_form_opened", "Otevřený formulář piva"
+        BEER_FORM_SCAN_OPENED = "beer_form_scan_opened", "Otevřený sken ve formuláři piva"
+        BEER_PRICE_ADDED = "beer_price_added", "Přidaná cena piva"
+        COUNTER_RETURNED_SAME_DAY = "counter_returned_same_day", "Návrat k počítadlu týž den"
+        COUNTER_RETURNED_LATER = "counter_returned_later", "Návrat k počítadlu později"
+        CONSOLE_WARN = "console_warn", "Varování v konzoli"
+        CONSOLE_ERROR = "console_error", "Chyba v konzoli"
+        UNHANDLED_ERROR = "unhandled_error", "Neošetřená chyba"
+        API_FAILURE = "api_failure", "Chyba API"
+        AMENITY_VOTED = "amenity_voted", "Hlas o vybavení"
+        AMENITY_VOTE_SYNCED = "amenity_vote_synced", "Hlas o vybavení odeslán"
+        AMENITY_VOTE_FAILED = "amenity_vote_failed", "Hlas o vybavení se nepodařilo odeslat"
+        LEADERBOARDS_OPENED = "leaderboards_opened", "Otevřené žebříčky"
+        ONBOARDING_STARTED = "onboarding_started", "Úvod spuštěn"
+        ONBOARDING_AUTH_OPENED = "onboarding_auth_opened", "Přihlášení z úvodu"
+        ONBOARDING_COMPLETED = "onboarding_completed", "Úvod dokončen"
+        ONBOARDING_SKIPPED = "onboarding_skipped", "Úvod přeskočen"
 
     account = models.ForeignKey(
         Account,
@@ -3247,24 +3356,26 @@ class ClientEvent(models.Model):
         blank=True,
         related_name="client_events",
         help_text="Anonymous account when the app had a valid token; null for unauthenticated telemetry.",
+        verbose_name="Účet",
     )
-    event = models.CharField(max_length=64, choices=Event.choices, db_index=True)
+    event = models.CharField(max_length=64, choices=Event.choices, db_index=True, verbose_name="Událost")
     severity = models.CharField(
         max_length=16,
         choices=Severity.choices,
         default=Severity.INFO,
         db_index=True,
+        verbose_name="Závažnost",
     )
-    message = models.CharField(max_length=300, blank=True, default="")
-    context = models.JSONField(default=dict, blank=True)
-    app_version = models.CharField(max_length=64, blank=True, default="", db_index=True)
-    platform = models.CharField(max_length=32, blank=True, default="", db_index=True)
-    os_version = models.CharField(max_length=64, blank=True, default="")
-    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+    message = models.CharField(max_length=300, blank=True, default="", verbose_name="Zpráva")
+    context = models.JSONField(default=dict, blank=True, verbose_name="Kontext")
+    app_version = models.CharField(max_length=64, blank=True, default="", db_index=True, verbose_name="Verze appky")
+    platform = models.CharField(max_length=32, blank=True, default="", db_index=True, verbose_name="Platforma")
+    os_version = models.CharField(max_length=64, blank=True, default="", verbose_name="Verze systému")
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True, verbose_name="Vytvořeno")
 
     class Meta:
-        verbose_name = "Client Event"
-        verbose_name_plural = "Client Events"
+        verbose_name = "událost z appky"
+        verbose_name_plural = "události z appky"
         ordering = ["-created_at"]
         indexes = [
             models.Index(fields=["event", "created_at"]),
@@ -3273,7 +3384,7 @@ class ClientEvent(models.Model):
         ]
 
     def __str__(self) -> str:
-        return f"ClientEvent({self.event} [{self.severity}] @ {self.created_at:%Y-%m-%d %H:%M})"
+        return f"{self.get_event_display()}, {czech_moment(self.created_at)}"
 
 
 class AccountUsageStats(models.Model):
@@ -3290,13 +3401,14 @@ class AccountUsageStats(models.Model):
         Account,
         on_delete=models.CASCADE,
         related_name="usage_stats",
+        verbose_name="Účet",
     )
-    app_open_count = models.PositiveIntegerField(default=0, db_index=True)
-    app_foreground_count = models.PositiveIntegerField(default=0)
-    walked_distance_m = models.PositiveIntegerField(default=0, db_index=True)
-    client_warning_count = models.PositiveIntegerField(default=0)
-    client_error_count = models.PositiveIntegerField(default=0)
-    api_failure_count = models.PositiveIntegerField(default=0)
+    app_open_count = models.PositiveIntegerField(default=0, db_index=True, verbose_name="Otevření appky")
+    app_foreground_count = models.PositiveIntegerField(default=0, verbose_name="Návraty do appky")
+    walked_distance_m = models.PositiveIntegerField(default=0, db_index=True, verbose_name="Nachozeno (m)")
+    client_warning_count = models.PositiveIntegerField(default=0, verbose_name="Varování v appce")
+    client_error_count = models.PositiveIntegerField(default=0, verbose_name="Chyby v appce")
+    api_failure_count = models.PositiveIntegerField(default=0, verbose_name="Chyby API")
     # --- Mapér gamification ("Zmapuj hospodu", §7.2) ---
     # Server-authoritative XP + counters, stored here (NOT on the hot Account row)
     # and incremented with F() inside the vote transaction. level/title/progress are
@@ -3310,34 +3422,34 @@ class AccountUsageStats(models.Model):
     # Do NOT add a decrement on the retract/delete paths — the durable AmenityXpLedger
     # / AccountPubCompletion markers already make re-farming impossible, and a number
     # that drops when a user fixes their own mistake is a deliberate non-goal (§7.3).
-    mapper_xp = models.PositiveIntegerField(default=0, db_index=True)
+    mapper_xp = models.PositiveIntegerField(default=0, db_index=True, verbose_name="Mapér XP")
     # Pivař is a separate monotonic XP ladder for drink-diary documentation.
     # It is F()-incremented in the same transaction as the source row; level and
     # title are derived on read. Deletes intentionally never claw XP back.
-    pivar_xp = models.PositiveIntegerField(default=0, db_index=True)
+    pivar_xp = models.PositiveIntegerField(default=0, db_index=True, verbose_name="Pivař XP")
     # Distinct pubs (cache_keys) the account has EVER cast an amenity vote on.
-    mapped_pubs_count = models.PositiveIntegerField(default=0)
+    mapped_pubs_count = models.PositiveIntegerField(default=0, verbose_name="Zmapované hospody")
     # Times this account was the FIRST mapper of a (pub, amenity) aggregate.
-    first_mapper_count = models.PositiveIntegerField(default=0)
+    first_mapper_count = models.PositiveIntegerField(default=0, verbose_name="Zmapováno jako první")
     # Total amenity vote rows this account has ever paid first-fact XP on.
-    amenity_votes_count = models.PositiveIntegerField(default=0)
+    amenity_votes_count = models.PositiveIntegerField(default=0, verbose_name="Hlasy o vybavení")
     # Pubs this account's votes brought to 100% completeness (one-time per pub).
-    completed_pubs_count = models.PositiveIntegerField(default=0)
+    completed_pubs_count = models.PositiveIntegerField(default=0, verbose_name="Dokončené hospody")
     # FotoPivař contest rounds this account has WON (rank 1 at close). Monotonic
     # like every counter above: a later photo/entry/account cleanup never
     # decrements it (the "FotoPivař" badge is a lifetime achievement).
-    photo_contest_wins_count = models.PositiveIntegerField(default=0)
-    last_app_open_at = models.DateTimeField(null=True, blank=True, db_index=True)
-    last_event_at = models.DateTimeField(null=True, blank=True, db_index=True)
-    last_app_version = models.CharField(max_length=64, blank=True, default="")
-    last_platform = models.CharField(max_length=32, blank=True, default="")
-    last_os_version = models.CharField(max_length=64, blank=True, default="")
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
+    photo_contest_wins_count = models.PositiveIntegerField(default=0, verbose_name="Výhry ve fotosoutěži")
+    last_app_open_at = models.DateTimeField(null=True, blank=True, db_index=True, verbose_name="Naposledy otevřeno")
+    last_event_at = models.DateTimeField(null=True, blank=True, db_index=True, verbose_name="Poslední událost")
+    last_app_version = models.CharField(max_length=64, blank=True, default="", verbose_name="Poslední verze appky")
+    last_platform = models.CharField(max_length=32, blank=True, default="", verbose_name="Poslední platforma")
+    last_os_version = models.CharField(max_length=64, blank=True, default="", verbose_name="Poslední verze systému")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="Vytvořeno")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="Upraveno")
 
     class Meta:
-        verbose_name = "Account Usage Stats"
-        verbose_name_plural = "Account Usage Stats"
+        verbose_name = "používání appky"
+        verbose_name_plural = "používání appky"
         ordering = ["-walked_distance_m", "-app_open_count"]
 
     @property
@@ -3345,7 +3457,7 @@ class AccountUsageStats(models.Model):
         return round(self.walked_distance_m / 1000, 2)
 
     def __str__(self) -> str:
-        return f"AccountUsageStats({self.account.public_id} — {self.walked_distance_km} km)"
+        return account_label(self)
 
 
 class PubCommunityData(models.Model):
@@ -3369,18 +3481,20 @@ class PubCommunityData(models.Model):
         max_length=12,
         db_index=True,
         help_text="Geohash-8 of (lat, lng) — ~38 m precision; matches PubHours.cache_key.",
+        verbose_name="Klíč místa (technické)",
     )
-    name = models.CharField(max_length=255)
-    name_key = models.CharField(max_length=255)
-    lat = models.FloatField()
-    lng = models.FloatField()
-    city = models.CharField(max_length=128, blank=True, null=True)
+    name = models.CharField(max_length=255, verbose_name="Hospoda")
+    name_key = models.CharField(max_length=255, verbose_name="Klíč názvu (technické)")
+    lat = models.FloatField(verbose_name="Zeměpisná šířka")
+    lng = models.FloatField(verbose_name="Zeměpisná délka")
+    city = models.CharField(max_length=128, blank=True, null=True, verbose_name="Město")
     external_id = models.CharField(
         max_length=128,
         blank=True,
         null=True,
         db_index=True,
         help_text="Client-side provider id, e.g. Mapy.cz item id.",
+        verbose_name="ID u poskytovatele mapy (technické)",
     )
 
     # ---------- opening hours ----------
@@ -3391,13 +3505,15 @@ class PubCommunityData(models.Model):
             "Structured weekly hours as submitted: "
             '{"mo": [["11:00","23:00"]], "tu": [], ...} — all 7 keys '
             "mo/tu/we/th/fr/sa/su; an empty list means closed that day. "
-            "None means no community hours have been contributed yet."
+            "None means no community hours have been contributed yet.",
         ),
+        verbose_name="Otevírací doba",
     )
     opening_hours_raw = models.TextField(
         blank=True,
         default="",
         help_text="OSM opening_hours grammar string derived from hours_json.",
+        verbose_name="Otevírací doba (zápis OSM)",
     )
 
     # ---------- beers on tap ----------
@@ -3405,8 +3521,9 @@ class PubCommunityData(models.Model):
         default=list,
         blank=True,
         help_text=(
-            'List of beers on tap: [{"name": str, "price_czk": int|null, "volume_ml": int|null}].'
+            'List of beers on tap: [{"name": str, "price_czk": int|null, "volume_ml": int|null}].',
         ),
+        verbose_name="Piva na čepu",
     )
     historical_beers = models.JSONField(
         default=list,
@@ -3414,15 +3531,17 @@ class PubCommunityData(models.Model):
         help_text=(
             "Previously confirmed beers that are no longer on the current tap list. "
             "Kept separately so released clients can continue reading `beers` as the "
-            "current menu."
+            "current menu.",
         ),
+        verbose_name="Dřív na čepu",
     )
     beer_menu_rotates = models.BooleanField(
         default=False,
         help_text=(
             "Whether the pub intentionally changes its taps instead of keeping a "
-            "regular beer menu. The stored beers remain the latest confirmed snapshot."
+            "regular beer menu. The stored beers remain the latest confirmed snapshot.",
         ),
+        verbose_name="Střídá piva",
     )
 
     # ---------- contributor / timestamps ----------
@@ -3433,23 +3552,26 @@ class PubCommunityData(models.Model):
         blank=True,
         related_name="community_data",
         help_text="The most recent contributor.",
+        verbose_name="Naposledy upravil",
     )
     hours_updated_at = models.DateTimeField(
         null=True,
         blank=True,
         help_text="When opening hours were last contributed (None = never).",
+        verbose_name="Otevírací doba upravena",
     )
     beers_updated_at = models.DateTimeField(
         null=True,
         blank=True,
         help_text="When the beer list was last contributed (None = never).",
+        verbose_name="Piva upravena",
     )
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="Vytvořeno")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="Upraveno")
 
     class Meta:
-        verbose_name = "Pub Community Data"
-        verbose_name_plural = "Pub Community Data"
+        verbose_name = "komunitní data hospody"
+        verbose_name_plural = "komunitní data"
         ordering = ["-updated_at"]
         constraints = [
             models.UniqueConstraint(
@@ -3458,7 +3580,7 @@ class PubCommunityData(models.Model):
         ]
 
     def __str__(self) -> str:
-        return f"PubCommunityData({self.name} [{self.cache_key}])"
+        return with_city(self.name, self.city)
 
     def save(self, *args, **kwargs) -> None:
         self.name_key = normalize_pub_name(self.name)
@@ -3479,27 +3601,29 @@ class PubExternalBeerMenu(models.Model):
     class Source(models.TextChoices):
         PIVAROVA_MAPA = "pivarova_mapa", gettext_lazy("Pivařova mapa")
 
-    cache_key = models.CharField(max_length=12, db_index=True)
-    name = models.CharField(max_length=255)
-    lat = models.FloatField()
-    lng = models.FloatField()
-    city = models.CharField(max_length=128, blank=True, default="")
-    source = models.CharField(max_length=32, choices=Source.choices, db_index=True)
-    source_id = models.CharField(max_length=128)
-    source_url = models.URLField(max_length=500)
+    cache_key = models.CharField(max_length=12, db_index=True, verbose_name="Klíč místa (technické)")
+    name = models.CharField(max_length=255, verbose_name="Hospoda")
+    lat = models.FloatField(verbose_name="Zeměpisná šířka")
+    lng = models.FloatField(verbose_name="Zeměpisná délka")
+    city = models.CharField(max_length=128, blank=True, default="", verbose_name="Město")
+    source = models.CharField(max_length=32, choices=Source.choices, db_index=True, verbose_name="Zdroj")
+    source_id = models.CharField(max_length=128, verbose_name="ID u zdroje (technické)")
+    source_url = models.URLField(max_length=500, verbose_name="Odkaz na zdroj")
     beers = models.JSONField(
         default=list,
         help_text='Reviewed fallback rows: [{"name": str, "price_czk": number, "volume_ml": int}].',
+        verbose_name="Piva",
     )
     verified_at = models.DateTimeField(
         null=True,
         blank=True,
         help_text="Newest source verification timestamp represented by this snapshot.",
+        verbose_name="Ověřeno",
     )
-    fetched_at = models.DateTimeField(default=timezone.now)
-    active = models.BooleanField(default=True, db_index=True)
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
+    fetched_at = models.DateTimeField(default=timezone.now, verbose_name="Staženo")
+    active = models.BooleanField(default=True, db_index=True, verbose_name="Aktivní")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="Vytvořeno")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="Upraveno")
 
     class Meta:
         constraints = [
@@ -3508,11 +3632,11 @@ class PubExternalBeerMenu(models.Model):
             )
         ]
         indexes = [models.Index(fields=["cache_key", "active"])]
-        verbose_name = "External Beer Menu"
-        verbose_name_plural = "External Beer Menus"
+        verbose_name = "nápojový lístek"
+        verbose_name_plural = "nápojové lístky"
 
     def __str__(self) -> str:
-        return f"{self.name} [{self.source}:{self.source_id}]"
+        return with_city(self.name, self.city)
 
 
 class PubPriceIndex(models.Model):
@@ -3630,27 +3754,30 @@ class BeerBrand(models.Model):
         unique=True,
         db_index=True,
         help_text="Stable ASCII identifier, e.g. pilsner-urquell.",
+        verbose_name="Klíč (technické)",
     )
-    name = models.CharField(max_length=120, help_text="Canonical display name.")
+    name = models.CharField(max_length=120, help_text="Canonical display name.", verbose_name="Název")
     aliases = models.JSONField(
         default=list,
         blank=True,
         help_text="Common typed aliases used for matching and suggestions.",
+        verbose_name="Další názvy",
     )
     rank = models.PositiveSmallIntegerField(
         default=1000,
         db_index=True,
         help_text="Lower ranks appear earlier in suggestions.",
+        verbose_name="Pořadí v nabídce",
     )
-    source_label = models.CharField(max_length=160, blank=True, default="")
-    source_url = models.URLField(max_length=500, blank=True, default="")
-    active = models.BooleanField(default=True, db_index=True)
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
+    source_label = models.CharField(max_length=160, blank=True, default="", verbose_name="Zdroj")
+    source_url = models.URLField(max_length=500, blank=True, default="", verbose_name="Odkaz na zdroj")
+    active = models.BooleanField(default=True, db_index=True, verbose_name="Aktivní")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="Vytvořeno")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="Upraveno")
 
     class Meta:
-        verbose_name = "Beer Brand"
-        verbose_name_plural = "Beer Brands"
+        verbose_name = "pivovar"
+        verbose_name_plural = "pivovary"
         ordering = ["rank", "name"]
 
     def __str__(self) -> str:
@@ -3671,34 +3798,38 @@ class BeerProduct(models.Model):
         unique=True,
         db_index=True,
         help_text="Stable ASCII identifier, e.g. velkopopovicky-kozel-11.",
+        verbose_name="Klíč (technické)",
     )
     brand = models.ForeignKey(
         BeerBrand,
         on_delete=models.CASCADE,
         related_name="products",
+        verbose_name="Pivovar",
     )
-    brand_key = models.SlugField(max_length=80, db_index=True)
-    brand_name = models.CharField(max_length=120)
-    name = models.CharField(max_length=160, help_text="Canonical beer product display name.")
+    brand_key = models.SlugField(max_length=80, db_index=True, verbose_name="Klíč pivovaru (technické)")
+    brand_name = models.CharField(max_length=120, verbose_name="Název pivovaru")
+    name = models.CharField(max_length=160, help_text="Canonical beer product display name.", verbose_name="Název")
     aliases = models.JSONField(
         default=list,
         blank=True,
         help_text="Common typed aliases used for matching and suggestions.",
+        verbose_name="Další názvy",
     )
     rank = models.PositiveSmallIntegerField(
         default=1000,
         db_index=True,
         help_text="Lower ranks appear earlier in suggestions.",
+        verbose_name="Pořadí v nabídce",
     )
-    source_label = models.CharField(max_length=160, blank=True, default="")
-    source_url = models.URLField(max_length=500, blank=True, default="")
-    active = models.BooleanField(default=True, db_index=True)
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
+    source_label = models.CharField(max_length=160, blank=True, default="", verbose_name="Zdroj")
+    source_url = models.URLField(max_length=500, blank=True, default="", verbose_name="Odkaz na zdroj")
+    active = models.BooleanField(default=True, db_index=True, verbose_name="Aktivní")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="Vytvořeno")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="Upraveno")
 
     class Meta:
-        verbose_name = "Beer Product"
-        verbose_name_plural = "Beer Products"
+        verbose_name = "pivo"
+        verbose_name_plural = "piva"
         ordering = ["rank", "name"]
         indexes = [
             models.Index(fields=["brand_key", "active"]),
@@ -3711,23 +3842,23 @@ class BeerProduct(models.Model):
 class BeerProductMergeAudit(models.Model):
     """Append-only audit record for an administrator-initiated product merge."""
 
-    source_product_id = models.PositiveBigIntegerField()
-    source_key = models.SlugField(max_length=100, unique=True)
-    source_name = models.CharField(max_length=160)
-    target_product_id = models.PositiveBigIntegerField()
-    target_key = models.SlugField(max_length=100, db_index=True)
-    target_name = models.CharField(max_length=160)
-    actor = models.CharField(max_length=160, blank=True, default="")
-    rewired = models.JSONField(default=dict, blank=True)
-    created_at = models.DateTimeField(auto_now_add=True)
+    source_product_id = models.PositiveBigIntegerField(verbose_name="ID sloučeného piva (technické)")
+    source_key = models.SlugField(max_length=100, unique=True, verbose_name="Klíč sloučeného piva (technické)")
+    source_name = models.CharField(max_length=160, verbose_name="Sloučené pivo")
+    target_product_id = models.PositiveBigIntegerField(verbose_name="ID cílového piva (technické)")
+    target_key = models.SlugField(max_length=100, db_index=True, verbose_name="Klíč cílového piva (technické)")
+    target_name = models.CharField(max_length=160, verbose_name="Cílové pivo")
+    actor = models.CharField(max_length=160, blank=True, default="", verbose_name="Provedl")
+    rewired = models.JSONField(default=dict, blank=True, verbose_name="Přepojené záznamy")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="Vytvořeno")
 
     class Meta:
-        verbose_name = "Beer Product Merge Audit"
-        verbose_name_plural = "Beer Product Merge Audits"
+        verbose_name = "sloučení piv"
+        verbose_name_plural = "sloučení piv"
         ordering = ["-created_at"]
 
     def __str__(self) -> str:
-        return f"{self.source_key} -> {self.target_key}"
+        return f"{self.source_name} → {self.target_name}"
 
 
 class PubBeerBrand(models.Model):
@@ -3740,44 +3871,47 @@ class PubBeerBrand(models.Model):
     """
 
     class Source(models.TextChoices):
-        COMMUNITY = "community", "Community menu"
-        DRINK = "drink", "Drink log"
+        COMMUNITY = "community", "Lístek od komunity"
+        DRINK = "drink", "Vypité pivo"
 
     cache_key = models.CharField(
         max_length=12,
         db_index=True,
         help_text="Geohash-8 of (lat, lng) — matches PubCommunityData.cache_key.",
+        verbose_name="Klíč místa (technické)",
     )
-    name = models.TextField(help_text="Pub name as submitted by the client.")
-    lat = models.FloatField()
-    lng = models.FloatField()
-    city = models.TextField(blank=True, default="")
-    external_id = models.TextField(blank=True, default="")
+    name = models.TextField(help_text="Pub name as submitted by the client.", verbose_name="Hospoda")
+    lat = models.FloatField(verbose_name="Zeměpisná šířka")
+    lng = models.FloatField(verbose_name="Zeměpisná délka")
+    city = models.TextField(blank=True, default="", verbose_name="Město")
+    external_id = models.TextField(blank=True, default="", verbose_name="ID u poskytovatele mapy (technické)")
     brand = models.ForeignKey(
         BeerBrand,
         on_delete=models.CASCADE,
         related_name="pub_links",
+        verbose_name="Pivovar",
     )
-    brand_key = models.SlugField(max_length=80, db_index=True)
-    brand_name = models.CharField(max_length=120)
-    last_price_czk = models.PositiveSmallIntegerField(null=True, blank=True)
-    last_volume_ml = models.PositiveSmallIntegerField(null=True, blank=True)
-    source = models.CharField(max_length=16, choices=Source.choices)
-    active = models.BooleanField(default=True, db_index=True)
+    brand_key = models.SlugField(max_length=80, db_index=True, verbose_name="Klíč pivovaru (technické)")
+    brand_name = models.CharField(max_length=120, verbose_name="Název pivovaru")
+    last_price_czk = models.PositiveSmallIntegerField(null=True, blank=True, verbose_name="Poslední cena (Kč)")
+    last_volume_ml = models.PositiveSmallIntegerField(null=True, blank=True, verbose_name="Poslední objem (ml)")
+    source = models.CharField(max_length=16, choices=Source.choices, verbose_name="Zdroj")
+    active = models.BooleanField(default=True, db_index=True, verbose_name="Aktivní")
     account = models.ForeignKey(
         Account,
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
         related_name="pub_beer_brands",
+        verbose_name="Účet",
     )
-    last_seen_at = models.DateTimeField(default=timezone.now, db_index=True)
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
+    last_seen_at = models.DateTimeField(default=timezone.now, db_index=True, verbose_name="Naposledy viděno")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="Vytvořeno")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="Upraveno")
 
     class Meta:
-        verbose_name = "Pub Beer Brand"
-        verbose_name_plural = "Pub Beer Brands"
+        verbose_name = "pivovar v hospodě"
+        verbose_name_plural = "pivovary v hospodách"
         ordering = ["-last_seen_at"]
         constraints = [
             models.UniqueConstraint(
@@ -3791,7 +3925,7 @@ class PubBeerBrand(models.Model):
         ]
 
     def __str__(self) -> str:
-        return f"{self.brand_name} @ {self.name} [{self.cache_key}]"
+        return f"{self.brand_name}, {self.name}"
 
 
 class PubBeerProduct(models.Model):
@@ -3803,51 +3937,55 @@ class PubBeerProduct(models.Model):
     """
 
     class Source(models.TextChoices):
-        COMMUNITY = "community", "Community menu"
-        DRINK = "drink", "Drink log"
+        COMMUNITY = "community", "Lístek od komunity"
+        DRINK = "drink", "Vypité pivo"
 
     cache_key = models.CharField(
         max_length=12,
         db_index=True,
         help_text="Geohash-8 of (lat, lng) — matches PubCommunityData.cache_key.",
+        verbose_name="Klíč místa (technické)",
     )
-    name = models.TextField(help_text="Pub name as submitted by the client.")
-    lat = models.FloatField()
-    lng = models.FloatField()
-    city = models.TextField(blank=True, default="")
-    external_id = models.TextField(blank=True, default="")
+    name = models.TextField(help_text="Pub name as submitted by the client.", verbose_name="Hospoda")
+    lat = models.FloatField(verbose_name="Zeměpisná šířka")
+    lng = models.FloatField(verbose_name="Zeměpisná délka")
+    city = models.TextField(blank=True, default="", verbose_name="Město")
+    external_id = models.TextField(blank=True, default="", verbose_name="ID u poskytovatele mapy (technické)")
     brand = models.ForeignKey(
         BeerBrand,
         on_delete=models.CASCADE,
         related_name="pub_product_links",
+        verbose_name="Pivovar",
     )
     product = models.ForeignKey(
         BeerProduct,
         on_delete=models.CASCADE,
         related_name="pub_links",
+        verbose_name="Pivo",
     )
-    brand_key = models.SlugField(max_length=80, db_index=True)
-    brand_name = models.CharField(max_length=120)
-    product_key = models.SlugField(max_length=100, db_index=True)
-    product_name = models.CharField(max_length=160)
-    last_price_czk = models.PositiveSmallIntegerField(null=True, blank=True)
-    last_volume_ml = models.PositiveSmallIntegerField(null=True, blank=True)
-    source = models.CharField(max_length=16, choices=Source.choices)
-    active = models.BooleanField(default=True, db_index=True)
+    brand_key = models.SlugField(max_length=80, db_index=True, verbose_name="Klíč pivovaru (technické)")
+    brand_name = models.CharField(max_length=120, verbose_name="Název pivovaru")
+    product_key = models.SlugField(max_length=100, db_index=True, verbose_name="Klíč piva (technické)")
+    product_name = models.CharField(max_length=160, verbose_name="Název piva")
+    last_price_czk = models.PositiveSmallIntegerField(null=True, blank=True, verbose_name="Poslední cena (Kč)")
+    last_volume_ml = models.PositiveSmallIntegerField(null=True, blank=True, verbose_name="Poslední objem (ml)")
+    source = models.CharField(max_length=16, choices=Source.choices, verbose_name="Zdroj")
+    active = models.BooleanField(default=True, db_index=True, verbose_name="Aktivní")
     account = models.ForeignKey(
         Account,
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
         related_name="pub_beer_products",
+        verbose_name="Účet",
     )
-    last_seen_at = models.DateTimeField(default=timezone.now, db_index=True)
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
+    last_seen_at = models.DateTimeField(default=timezone.now, db_index=True, verbose_name="Naposledy viděno")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="Vytvořeno")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="Upraveno")
 
     class Meta:
-        verbose_name = "Pub Beer Product"
-        verbose_name_plural = "Pub Beer Products"
+        verbose_name = "pivo v hospodě"
+        verbose_name_plural = "piva v hospodách"
         ordering = ["-last_seen_at"]
         constraints = [
             models.UniqueConstraint(
@@ -3862,7 +4000,7 @@ class PubBeerProduct(models.Model):
         ]
 
     def __str__(self) -> str:
-        return f"{self.product_name} @ {self.name} [{self.cache_key}]"
+        return f"{self.product_name}, {self.name}"
 
 
 class BeerWatch(models.Model):
@@ -4051,23 +4189,27 @@ class DrinkLog(models.Model):
         on_delete=models.CASCADE,
         related_name="drinks",
         help_text="The user who logged this drink.",
+        verbose_name="Účet",
     )
     client_id = models.UUIDField(
         help_text="Client-generated UUID; idempotency key for offline retries.",
+        verbose_name="ID z appky (technické)",
     )
     evening_client_id = models.UUIDField(
         null=True,
         blank=True,
         help_text=(
             "Optional client-generated evening UUID (PubVisit.client_id). "
-            "Released clients omit it."
+            "Released clients omit it.",
         ),
+        verbose_name="ID večera z appky (technické)",
     )
     cache_key = models.CharField(
         max_length=12,
         null=True,
         db_index=True,
         help_text="Geohash-8 of pub (lat, lng), or null outside a pub.",
+        verbose_name="Klíč místa (technické)",
     )
     # TextField (not bounded CharField): free text from the client. SQLite (dev /
     # tests) silently truncates an over-length CharField while Postgres (prod)
@@ -4077,35 +4219,37 @@ class DrinkLog(models.Model):
         blank=True,
         default="",
         help_text="Pub name as the client saw it, or empty outside a pub.",
+        verbose_name="Hospoda",
     )
-    lat = models.FloatField(null=True)
-    lng = models.FloatField(null=True)
-    city = models.TextField(blank=True, default="", help_text="Optional city hint from the client.")
+    lat = models.FloatField(null=True, verbose_name="Zeměpisná šířka")
+    lng = models.FloatField(null=True, verbose_name="Zeměpisná délka")
+    city = models.TextField(blank=True, default="", help_text="Optional city hint from the client.", verbose_name="Město")
     external_id = models.TextField(
         blank=True,
         default="",
         help_text="Client-side provider id, e.g. Mapy.cz item id.",
+        verbose_name="ID u poskytovatele mapy (technické)",
     )
 
     class DrinkType(models.TextChoices):
-        BEER = "beer", "Beer"
-        SOFT_DRINK = "soft_drink", "Soft drink"
-        SHOT = "shot", "Shot"
-        WINE = "wine", "Wine"
+        BEER = "beer", "Pivo"
+        SOFT_DRINK = "soft_drink", "Nealko"
+        SHOT = "shot", "Panák"
+        WINE = "wine", "Víno"
 
     class PlaceContext(models.TextChoices):
-        PUB = "pub", "Pub"
-        PRIVATE = "private", "Private"
-        OUTDOORS = "outdoors", "Outdoors"
-        OTHER = "other", "Other"
+        PUB = "pub", "Hospoda"
+        PRIVATE = "private", "Soukromě"
+        OUTDOORS = "outdoors", "Venku"
+        OTHER = "other", "Jinde"
 
     class ServingType(models.TextChoices):
-        UNKNOWN = "unknown", "Unknown"
-        DRAFT = "draft", "Draft"
-        BOTTLE = "bottle", "Bottle"
-        CAN = "can", "Can"
-        PLASTIC_BOTTLE = "plastic_bottle", "Plastic bottle"
-        OTHER = "other", "Other"
+        UNKNOWN = "unknown", "Neznámé"
+        DRAFT = "draft", "Čepované"
+        BOTTLE = "bottle", "Láhev"
+        CAN = "can", "Plechovka"
+        PLASTIC_BOTTLE = "plastic_bottle", "PET láhev"
+        OTHER = "other", "Jiné"
 
     place_context = models.CharField(
         max_length=16,
@@ -4113,12 +4257,14 @@ class DrinkLog(models.Model):
         default=PlaceContext.PUB,
         db_index=True,
         help_text="Where the drink was consumed. Defaults to pub for released clients.",
+        verbose_name="Kde",
     )
     serving_type = models.CharField(
         max_length=16,
         choices=ServingType.choices,
         default=ServingType.UNKNOWN,
         help_text="How the drink was served; unknown when the client did not provide it.",
+        verbose_name="Podání",
     )
 
     drink_type = models.CharField(
@@ -4127,12 +4273,13 @@ class DrinkLog(models.Model):
         default=DrinkType.BEER,
         db_index=True,
         help_text="Drink category. Defaults to beer for released clients and existing rows.",
+        verbose_name="Druh pití",
     )
 
     # ``beer_name`` stays as the physical column and API export key for backward
     # compatibility. For non-beer rows it stores the generic drink name; callers
     # must use ``drink_type`` before treating it as a beer/catalog value.
-    beer_name = models.TextField(help_text="Beer name (1..80 chars, enforced by the serializer).")
+    beer_name = models.TextField(help_text="Beer name (1..80 chars, enforced by the serializer).", verbose_name="Pivo")
     beer_brand = models.ForeignKey(
         BeerBrand,
         on_delete=models.SET_NULL,
@@ -4140,6 +4287,7 @@ class DrinkLog(models.Model):
         blank=True,
         related_name="drinks",
         help_text="Matched canonical brand, if the submitted beer name was recognized.",
+        verbose_name="Pivovar",
     )
     beer_brand_key = models.SlugField(
         max_length=80,
@@ -4147,12 +4295,14 @@ class DrinkLog(models.Model):
         default="",
         db_index=True,
         help_text="Denormalized BeerBrand.key for future stats/filter queries.",
+        verbose_name="Klíč pivovaru (technické)",
     )
     beer_brand_name = models.CharField(
         max_length=120,
         blank=True,
         default="",
         help_text="Denormalized BeerBrand.name as it was at log time.",
+        verbose_name="Název pivovaru",
     )
     beer_product = models.ForeignKey(
         BeerProduct,
@@ -4161,6 +4311,7 @@ class DrinkLog(models.Model):
         blank=True,
         related_name="drinks",
         help_text="Matched canonical product, if the submitted beer name was recognized.",
+        verbose_name="Pivo z katalogu",
     )
     beer_product_key = models.SlugField(
         max_length=100,
@@ -4168,31 +4319,37 @@ class DrinkLog(models.Model):
         default="",
         db_index=True,
         help_text="Denormalized BeerProduct.key for future stats/filter queries.",
+        verbose_name="Klíč piva (technické)",
     )
     beer_product_name = models.CharField(
         max_length=160,
         blank=True,
         default="",
         help_text="Denormalized BeerProduct.name as it was at log time.",
+        verbose_name="Název piva z katalogu",
     )
     price_czk = models.PositiveSmallIntegerField(
         null=True,
         help_text="Price paid in CZK (1..1000), or null when unknown outside a pub.",
+        verbose_name="Cena (Kč)",
     )
     volume_ml = models.PositiveSmallIntegerField(
         null=True,
         blank=True,
         help_text="Glass volume in ml (one of 300/330/400/500/1000) or null if unknown.",
+        verbose_name="Objem (ml)",
     )
     is_suspect = models.BooleanField(
         default=False,
         help_text="Whether this row is excluded from public aggregates by abuse controls.",
+        verbose_name="Podezřelé",
     )
     suspect_reason = models.CharField(
         max_length=32,
         blank=True,
         default="",
         help_text="Abuse flag reason: daily_cap, burst, backdated, or manual.",
+        verbose_name="Důvod podezření",
     )
 
     # A beer is written ONCE, here, and an evening is a lens over these rows —
@@ -4208,21 +4365,24 @@ class DrinkLog(models.Model):
         blank=True,
         related_name="logged_drinks",
         help_text="The shared evening this drink was logged during, if any.",
+        verbose_name="Společný večer",
     )
     xp_awarded = models.PositiveIntegerField(
         default=0,
         help_text="Pivař XP this drink earned when it was logged; summed for a night's receipt.",
+        verbose_name="Získané XP",
     )
 
     # ---------- timestamps ----------
     drank_at = models.DateTimeField(
         help_text="When the beer was drunk (client-supplied ISO8601, or server now() if omitted).",
+        verbose_name="Vypito",
     )
-    created_at = models.DateTimeField(auto_now_add=True)
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="Vytvořeno")
 
     class Meta:
-        verbose_name = "Drink Log"
-        verbose_name_plural = "Drink Log"
+        verbose_name = "vypité pivo"
+        verbose_name_plural = "vypitá piva"
         ordering = ["-drank_at"]
         indexes = [
             models.Index(fields=["account", "drank_at"]),
@@ -4256,9 +4416,7 @@ class DrinkLog(models.Model):
         ]
 
     def __str__(self) -> str:
-        location = self.name or self.place_context
-        price = f"{self.price_czk} Kč" if self.price_czk is not None else "price unknown"
-        return f"DrinkLog({self.drink_type}: {self.beer_name} @ {location} [{self.cache_key}] — {price})"
+        return f"{self.beer_name}, {account_label(self)}, {czech_day(self.drank_at)}"
 
 
 class PubRating(models.Model):
@@ -4284,19 +4442,21 @@ class PubRating(models.Model):
     """
 
     class Verdict(models.TextChoices):
-        LIKE = "like", "Like"
-        DISLIKE = "dislike", "Dislike"
+        LIKE = "like", "Palec nahoru"
+        DISLIKE = "dislike", "Palec dolů"
 
     account = models.ForeignKey(
         Account,
         on_delete=models.CASCADE,
         related_name="pub_ratings",
         help_text="The user who owns this private rating.",
+        verbose_name="Účet",
     )
     cache_key = models.CharField(
         max_length=12,
         db_index=True,
         help_text="Geohash-8 of (lat, lng) — ~38 m precision; matches PubHours.cache_key.",
+        verbose_name="Klíč místa (technické)",
     )
     # TextField (not bounded CharField): free text the client controls. SQLite
     # (dev / tests) silently truncates an over-length CharField while Postgres
@@ -4306,13 +4466,15 @@ class PubRating(models.Model):
         blank=True,
         default="",
         help_text="Pub name as the client saw it (legacy ratings may have none).",
+        verbose_name="Hospoda",
     )
-    lat = models.FloatField()
-    lng = models.FloatField()
+    lat = models.FloatField(verbose_name="Zeměpisná šířka")
+    lng = models.FloatField(verbose_name="Zeměpisná délka")
     external_id = models.TextField(
         blank=True,
         default="",
         help_text="Client-side provider id, e.g. Mapy.cz item id.",
+        verbose_name="ID u poskytovatele mapy (technické)",
     )
     verdict = models.CharField(
         max_length=10,
@@ -4320,26 +4482,30 @@ class PubRating(models.Model):
         blank=True,
         default="",
         help_text='Thumbs verdict: "like" / "dislike" / "" (none).',
+        verbose_name="Verdikt",
     )
     tag = models.TextField(
         blank=True,
         default="",
         help_text="Optional one-word tag (<=64 chars, enforced by the serializer).",
+        verbose_name="Štítek",
     )
     note = models.TextField(
         blank=True,
         default="",
         help_text="Optional free-text note (<=280 chars, enforced by the serializer).",
+        verbose_name="Poznámka",
     )
     client_updated_at = models.DateTimeField(
         help_text="Client's local updatedAt; the last-write-wins conflict key.",
+        verbose_name="Upraveno v appce",
     )
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="Vytvořeno")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="Upraveno")
 
     class Meta:
-        verbose_name = "Pub Rating"
-        verbose_name_plural = "Pub Ratings"
+        verbose_name = "hodnocení"
+        verbose_name_plural = "hodnocení"
         ordering = ["-client_updated_at"]
         constraints = [
             models.UniqueConstraint(
@@ -4349,7 +4515,7 @@ class PubRating(models.Model):
         ]
 
     def __str__(self) -> str:
-        return f"PubRating({self.name or self.cache_key} [{self.cache_key}] — {self.verdict or 'note'})"
+        return f"{self.name or 'Hospoda bez názvu'}, {account_label(self)}"
 
 
 class PubRatingTombstone(models.Model):
@@ -4401,34 +4567,39 @@ class PubFavorite(models.Model):
         on_delete=models.CASCADE,
         related_name="pub_favorites",
         help_text="The user who owns this private favourite.",
+        verbose_name="Účet",
     )
     cache_key = models.CharField(
         max_length=12,
         db_index=True,
         help_text="Geohash-8 of (lat, lng) — ~38 m precision; matches PubRating.cache_key.",
+        verbose_name="Klíč místa (technické)",
     )
     # TextField (not bounded CharField): see PubRating rationale.
     name = models.TextField(
         blank=True,
         default="",
         help_text="Pub name as the client saw it.",
+        verbose_name="Hospoda",
     )
-    lat = models.FloatField()
-    lng = models.FloatField()
+    lat = models.FloatField(verbose_name="Zeměpisná šířka")
+    lng = models.FloatField(verbose_name="Zeměpisná délka")
     external_id = models.TextField(
         blank=True,
         default="",
         help_text="Client-side provider id, e.g. Mapy.cz item id.",
+        verbose_name="ID u poskytovatele mapy (technické)",
     )
     client_updated_at = models.DateTimeField(
         help_text="Client's local updatedAt; the last-write-wins conflict key.",
+        verbose_name="Upraveno v appce",
     )
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="Vytvořeno")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="Upraveno")
 
     class Meta:
-        verbose_name = "Pub Favorite"
-        verbose_name_plural = "Pub Favorites"
+        verbose_name = "oblíbená hospoda"
+        verbose_name_plural = "oblíbené hospody"
         ordering = ["-client_updated_at"]
         constraints = [
             models.UniqueConstraint(
@@ -4438,7 +4609,7 @@ class PubFavorite(models.Model):
         ]
 
     def __str__(self) -> str:
-        return f"PubFavorite({self.name or self.cache_key} [{self.cache_key}])"
+        return f"{self.name or 'Hospoda bez názvu'}, {account_label(self)}"
 
 
 class PubFavoriteTombstone(models.Model):
@@ -4496,6 +4667,7 @@ class PubVisit(models.Model):
         on_delete=models.CASCADE,
         related_name="pub_visits",
         help_text="The user who made this visit.",
+        verbose_name="Účet",
     )
     party_evening = models.ForeignKey(
         PartyEvening,
@@ -4504,47 +4676,55 @@ class PubVisit(models.Model):
         blank=True,
         related_name="party_visits",
         help_text="The shared evening this visit was part of, if any.",
+        verbose_name="Společný večer",
     )
     client_id = models.UUIDField(
         help_text="Client-generated UUID; idempotency key for offline retries / updates.",
+        verbose_name="ID z appky (technické)",
     )
     cache_key = models.CharField(
         max_length=12,
         db_index=True,
         help_text="Geohash-8 of (lat, lng) — ~38 m precision; matches PubHours.cache_key.",
+        verbose_name="Klíč místa (technické)",
     )
     # TextField (not bounded CharField): see PubRating / DrinkLog rationale.
-    name = models.TextField(help_text="Pub name as the client saw it.")
-    lat = models.FloatField()
-    lng = models.FloatField()
-    city = models.TextField(blank=True, default="", help_text="Optional city hint from the client.")
+    name = models.TextField(help_text="Pub name as the client saw it.", verbose_name="Hospoda")
+    lat = models.FloatField(verbose_name="Zeměpisná šířka")
+    lng = models.FloatField(verbose_name="Zeměpisná délka")
+    city = models.TextField(blank=True, default="", help_text="Optional city hint from the client.", verbose_name="Město")
     external_id = models.TextField(
         blank=True,
         default="",
         help_text="Client-side provider id, e.g. Mapy.cz item id.",
+        verbose_name="ID u poskytovatele mapy (technické)",
     )
     started_at = models.DateTimeField(
         help_text="When the evening began — the identity of the visit.",
+        verbose_name="Začátek",
     )
     ended_at = models.DateTimeField(
         null=True,
         blank=True,
         help_text="When the evening ended (None = still open / unknown).",
+        verbose_name="Konec",
     )
     closed_at = models.DateTimeField(
         null=True,
         blank=True,
         help_text="Explicit client-side session closure; None preserves legacy recency inference.",
+        verbose_name="Uzavřeno",
     )
     client_updated_at = models.DateTimeField(
         help_text="Client's local updatedAt; the last-write-wins conflict key.",
+        verbose_name="Upraveno v appce",
     )
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="Vytvořeno")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="Upraveno")
 
     class Meta:
-        verbose_name = "Pub Visit"
-        verbose_name_plural = "Pub Visits"
+        verbose_name = "návštěva"
+        verbose_name_plural = "návštěvy"
         ordering = ["-started_at"]
         indexes = [
             models.Index(fields=["account", "started_at"]),
@@ -4566,7 +4746,7 @@ class PubVisit(models.Model):
         ]
 
     def __str__(self) -> str:
-        return f"PubVisit({self.name} [{self.cache_key}] @ {self.started_at:%Y-%m-%d %H:%M})"
+        return f"{self.name}, {account_label(self)}, {czech_day(self.started_at)}"
 
 
 class PubVisitReaction(models.Model):
@@ -4658,9 +4838,11 @@ class PubSearchCache(models.Model):
         max_length=12,
         db_index=True,
         help_text="Geohash-6 of the request coordinate — ~1.2 km × 0.6 km cell.",
+        verbose_name="Klíč oblasti (technické)",
     )
     radius_bucket = models.PositiveIntegerField(
         help_text="Smallest covering radius bucket in km (one of 5, 15, 50, 100).",
+        verbose_name="Okruh (km)",
     )
     items = models.JSONField(
         default=list,
@@ -4668,18 +4850,20 @@ class PubSearchCache(models.Model):
         help_text=(
             "Trimmed Mapy.cz suggest items: "
             '[{"name", "label", "position": {"lat", "lon"}, '
-            '"regionalStructure": [{"name", "type"}, ...]}].'
+            '"regionalStructure": [{"name", "type"}, ...]}].',
         ),
+        verbose_name="Výsledky",
     )
     fetched_at = models.DateTimeField(
         help_text="When the upstream Mapy.cz fetch that produced these items completed.",
+        verbose_name="Staženo",
     )
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="Vytvořeno")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="Upraveno")
 
     class Meta:
-        verbose_name = "Pub Search Cache"
-        verbose_name_plural = "Pub Search Cache"
+        verbose_name = "cache hledání"
+        verbose_name_plural = "cache hledání"
         ordering = ["-updated_at"]
         constraints = [
             models.UniqueConstraint(
@@ -4689,9 +4873,7 @@ class PubSearchCache(models.Model):
         ]
 
     def __str__(self) -> str:
-        return (
-            f"PubSearchCache({self.cache_key} @ {self.radius_bucket}km — {len(self.items)} items)"
-        )
+        return f"Hledání v okruhu {self.radius_bucket} km, {czech_day(self.updated_at)}"
 
 
 class PubContributionLog(models.Model):
@@ -4707,8 +4889,8 @@ class PubContributionLog(models.Model):
     """
 
     class Kind(models.TextChoices):
-        HOURS = "hours", "Opening hours"
-        BEERS = "beers", "Beers on tap"
+        HOURS = "hours", "Otevírací doba"
+        BEERS = "beers", "Piva na čepu"
 
     account = models.ForeignKey(
         Account,
@@ -4716,27 +4898,31 @@ class PubContributionLog(models.Model):
         null=True,
         blank=True,
         related_name="contribution_logs",
+        verbose_name="Účet",
     )
     cache_key = models.CharField(
         max_length=12,
         db_index=True,
         help_text="Geohash-8 of the contributed pub coordinates.",
+        verbose_name="Klíč místa (technické)",
     )
-    name = models.CharField(max_length=255)
-    lat = models.FloatField()
-    lng = models.FloatField()
-    kind = models.CharField(max_length=16, choices=Kind.choices, db_index=True)
+    name = models.CharField(max_length=255, verbose_name="Hospoda")
+    lat = models.FloatField(verbose_name="Zeměpisná šířka")
+    lng = models.FloatField(verbose_name="Zeměpisná délka")
+    kind = models.CharField(max_length=16, choices=Kind.choices, db_index=True, verbose_name="Druh")
     payload = models.JSONField(
         help_text="The submitted data for this kind (hours_json dict or beers list).",
+        verbose_name="Data",
     )
     client_id = models.UUIDField(
         help_text="Client-generated UUID; idempotency key for offline retries.",
+        verbose_name="ID z appky (technické)",
     )
-    created_at = models.DateTimeField(auto_now_add=True)
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="Vytvořeno")
 
     class Meta:
-        verbose_name = "Pub Contribution Log"
-        verbose_name_plural = "Pub Contribution Log"
+        verbose_name = "příspěvek"
+        verbose_name_plural = "příspěvky"
         ordering = ["-created_at"]
         constraints = [
             models.UniqueConstraint(
@@ -4746,7 +4932,7 @@ class PubContributionLog(models.Model):
         ]
 
     def __str__(self) -> str:
-        return f"PubContributionLog({self.name} [{self.cache_key}] — {self.kind})"
+        return f"{self.get_kind_display()}: {self.name}"
 
 
 class AmenityKind(models.Model):
@@ -5498,6 +5684,9 @@ class TourPlan(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
     deleted_at = models.DateTimeField(null=True, blank=True)
 
+    def __str__(self) -> str:
+        return self.title
+
 
 class TourStop(models.Model):
     plan = models.ForeignKey(TourPlan, on_delete=models.CASCADE, related_name="stops")
@@ -5556,39 +5745,44 @@ class TourPublication(models.Model):
     """
 
     class Status(models.TextChoices):
-        ACTIVE = "active", "Active"
-        HIDDEN = "hidden", "Hidden"
-        UNPUBLISHED = "unpublished", "Unpublished"
+        ACTIVE = "active", "Zveřejněná"
+        HIDDEN = "hidden", "Skrytá"
+        UNPUBLISHED = "unpublished", "Stažená"
 
-    plan = models.OneToOneField(TourPlan, on_delete=models.CASCADE, related_name="publication")
-    public_id = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
+    plan = models.OneToOneField(TourPlan, on_delete=models.CASCADE, related_name="publication", verbose_name="Plán túry")
+    public_id = models.UUIDField(default=uuid.uuid4, unique=True, editable=False, verbose_name="Veřejné ID (technické)")
     # Public links are not secrets, so a random stored token is enough.
-    token = models.CharField(max_length=32, unique=True)
-    status = models.CharField(max_length=12, choices=Status.choices, default=Status.ACTIVE, db_index=True)
-    hidden_reason = models.CharField(max_length=32, blank=True, default="")
-    revision = models.PositiveIntegerField(default=1)
-    plan_revision = models.PositiveIntegerField()
-    snapshot = models.JSONField()
-    title = models.CharField(max_length=60)
-    city = models.CharField(max_length=128, blank=True, default="")
-    start_lat = models.FloatField()
-    start_lon = models.FloatField()
-    stop_count = models.PositiveSmallIntegerField()
-    walk_m = models.PositiveIntegerField()
-    has_challenges = models.BooleanField(default=False)
+    token = models.CharField(max_length=32, unique=True, verbose_name="Token (technické)")
+    status = models.CharField(max_length=12, choices=Status.choices, default=Status.ACTIVE, db_index=True, verbose_name="Stav")
+    hidden_reason = models.CharField(max_length=32, blank=True, default="", verbose_name="Důvod skrytí")
+    revision = models.PositiveIntegerField(default=1, verbose_name="Revize (technické)")
+    plan_revision = models.PositiveIntegerField(verbose_name="Revize plánu (technické)")
+    snapshot = models.JSONField(verbose_name="Obsah túry")
+    title = models.CharField(max_length=60, verbose_name="Název")
+    city = models.CharField(max_length=128, blank=True, default="", verbose_name="Město")
+    start_lat = models.FloatField(verbose_name="Start: šířka")
+    start_lon = models.FloatField(verbose_name="Start: délka")
+    stop_count = models.PositiveSmallIntegerField(verbose_name="Zastávky")
+    walk_m = models.PositiveIntegerField(verbose_name="Chůze (m)")
+    has_challenges = models.BooleanField(default=False, verbose_name="Má výzvy")
     # Title, pubs and addresses folded to plain lowercase ASCII, so "tygr" finds "U Zlatého tygra".
-    search_text = models.TextField(blank=True, default="")
+    search_text = models.TextField(blank=True, default="", verbose_name="Text pro hledání (technické)")
     # A cache of who walked it, refreshed from TourRunMember at most every few minutes.
-    people_count = models.PositiveIntegerField(default=0)
-    people_count_at = models.DateTimeField(null=True, blank=True)
+    people_count = models.PositiveIntegerField(default=0, verbose_name="Lidí prošlo")
+    people_count_at = models.DateTimeField(null=True, blank=True, verbose_name="Lidi spočítáni")
     # A new route or an admin reset counts walkers from here on.
-    count_since = models.DateTimeField(default=timezone.now)
-    rules_accepted_at = models.DateTimeField()
-    published_at = models.DateTimeField(default=timezone.now)
-    updated_at = models.DateTimeField(auto_now=True)
+    count_since = models.DateTimeField(default=timezone.now, verbose_name="Počítáno od")
+    rules_accepted_at = models.DateTimeField(verbose_name="Pravidla přijata")
+    published_at = models.DateTimeField(default=timezone.now, verbose_name="Zveřejněno")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="Upraveno")
 
     class Meta:
+        verbose_name = "túra"
+        verbose_name_plural = "túry"
         indexes = [models.Index(fields=["status", "start_lat", "start_lon"], name="tour_publication_geo")]
+
+    def __str__(self) -> str:
+        return self.title
 
 
 class TourRun(models.Model):
@@ -5762,9 +5956,9 @@ class XpEvent(models.Model):
 class PubReach(models.TextChoices):
     """What a pub reach counter counts and where it happened."""
 
-    MAP_IMPRESSION = "map_impression", "Map pin seen"
-    DETAIL_VIEW = "detail_view", "Detail or web page opened"
-    NAVIGATION = "navigation", "Navigation tapped"
+    MAP_IMPRESSION = "map_impression", "Zobrazení na mapě"
+    DETAIL_VIEW = "detail_view", "Otevřený detail nebo stránka"
+    NAVIGATION = "navigation", "Klik na navigaci"
 
 
 class PubReachDaily(models.Model):
@@ -5776,20 +5970,20 @@ class PubReachDaily(models.Model):
     """
 
     class Channel(models.TextChoices):
-        APP = "app", "App"
+        APP = "app", "Appka"
         WEB = "web", "Web"
 
-    cache_key = models.CharField(max_length=12)
-    day = models.DateField(db_index=True)
-    channel = models.CharField(max_length=8, choices=Channel.choices)
-    metric = models.CharField(max_length=20, choices=PubReach.choices)
-    source = models.CharField(max_length=16, blank=True, default="")
-    count = models.PositiveIntegerField(default=0)
-    visitors = models.PositiveIntegerField(default=0)
+    cache_key = models.CharField(max_length=12, verbose_name="Klíč místa (technické)")
+    day = models.DateField(db_index=True, verbose_name="Den")
+    channel = models.CharField(max_length=8, choices=Channel.choices, verbose_name="Kanál")
+    metric = models.CharField(max_length=20, choices=PubReach.choices, verbose_name="Metrika")
+    source = models.CharField(max_length=16, blank=True, default="", verbose_name="Zdroj")
+    count = models.PositiveIntegerField(default=0, verbose_name="Počet")
+    visitors = models.PositiveIntegerField(default=0, verbose_name="Návštěvníci")
 
     class Meta:
-        verbose_name = "Pub reach (day)"
-        verbose_name_plural = "Pub reach (days)"
+        verbose_name = "dosah hospody za den"
+        verbose_name_plural = "dosah hospod"
         constraints = [
             models.UniqueConstraint(
                 fields=["cache_key", "day", "channel", "metric", "source"],
@@ -5798,7 +5992,7 @@ class PubReachDaily(models.Model):
         ]
 
     def __str__(self) -> str:
-        return f"PubReachDaily({self.cache_key} {self.day} {self.channel}/{self.metric} {self.count})"
+        return f"{czech_day(self.day)}, {self.get_metric_display()}: {self.count}"
 
 
 class PubReachVisitor(models.Model):
@@ -5839,20 +6033,20 @@ class WebStatsDaily(models.Model):
     """
 
     class Metric(models.TextChoices):
-        VIEW = "view", "Page view"
-        STORE_IOS = "store_ios", "App Store tap"
-        STORE_ANDROID = "store_android", "Google Play tap"
+        VIEW = "view", "Zobrazení stránky"
+        STORE_IOS = "store_ios", "Klik na App Store"
+        STORE_ANDROID = "store_android", "Klik na Google Play"
 
-    day = models.DateField(db_index=True)
-    page = models.CharField(max_length=48)
-    path = models.CharField(max_length=160, blank=True, default="")
-    lang = models.CharField(max_length=2)
-    metric = models.CharField(max_length=16, choices=Metric.choices)
-    source = models.CharField(max_length=16)
-    referrer = models.CharField(max_length=100, blank=True, default="")
-    campaign = models.CharField(max_length=48, blank=True, default="")
-    device = models.CharField(max_length=8)
-    count = models.PositiveIntegerField(default=0)
+    day = models.DateField(db_index=True, verbose_name="Den")
+    page = models.CharField(max_length=48, verbose_name="Stránka")
+    path = models.CharField(max_length=160, blank=True, default="", verbose_name="Adresa stránky")
+    lang = models.CharField(max_length=2, verbose_name="Jazyk")
+    metric = models.CharField(max_length=16, choices=Metric.choices, verbose_name="Metrika")
+    source = models.CharField(max_length=16, verbose_name="Zdroj")
+    referrer = models.CharField(max_length=100, blank=True, default="", verbose_name="Odkud přišel")
+    campaign = models.CharField(max_length=48, blank=True, default="", verbose_name="Kampaň")
+    device = models.CharField(max_length=8, verbose_name="Zařízení")
+    count = models.PositiveIntegerField(default=0, verbose_name="Počet")
 
     class Meta:
         verbose_name = "Web analytika"
@@ -5865,7 +6059,7 @@ class WebStatsDaily(models.Model):
         ]
 
     def __str__(self) -> str:
-        return f"WebStatsDaily({self.day} {self.page} {self.metric} {self.count})"
+        return f"{czech_day(self.day)}, {self.page}, {self.get_metric_display()}: {self.count}"
 
 
 class SearchConsoleDaily(models.Model):

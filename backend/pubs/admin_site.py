@@ -3,66 +3,58 @@ from datetime import timedelta
 from django.urls import reverse
 from django.utils import timezone
 
-from .models import (
-    Account,
-    ContentReport,
-    DrinkLog,
-    FeedbackReport,
-    PublishedNight,
-    TourPublication,
-)
+from . import admin_queue
+from .models import Account, DrinkLog, PublishedNight
 
 SECTIONS = [
-    ("Moderace", [
-        ("contentreport", "Nahlášený obsah", "flag", "pubs.admin_site.new_content_reports"),
-        ("feedbackreport", "Zpětná vazba", "chat", "pubs.admin_site.new_feedback"),
-        ("tourpublication", "Túry", "route", "pubs.admin_site.reported_tours"),
-        ("pubreport", "Nahlášené hospody", "wrong_location", None),
-        ("pubnamecorrection", "Opravy názvů", "edit_location_alt", None),
-        ("publishednightcomment", "Komentáře", "comment", None),
-        ("publishednight", "Večery", "nightlife", None),
-    ]),
-    ("Čísla", [
-        ("webstatsdaily", "Web analytika", "bar_chart", None),
-        ("pubreachdaily", "Dosah hospod", "visibility", None),
-    ]),
     ("Lidé", [
-        ("account", "Účty", "person", None),
-        ("pushdevice", "Push zařízení", "notifications", None),
-        ("accountusagestats", "Používání appky", "monitoring", None),
+        ("account", "Účty", "person"),
+        ("publishednight", "Večery", "nightlife"),
+        ("publishednightcomment", "Komentáře", "comment"),
+        ("drinklog", "Vypitá piva", "local_drink"),
+        ("tourpublication", "Túry", "route"),
     ]),
     ("Hospody", [
-        ("canonicalpub", "Hospody", "storefront", None),
-        ("useraddedpub", "Přidané hospody", "add_location", None),
-        ("pubhours", "Otevírací doby", "schedule", None),
-        ("pubcommunitydata", "Komunitní data", "groups", None),
-        ("pubevent", "Akce hospod", "event", None),
-        ("communityevent", "Komunitní akce", "celebration", None),
-        ("pubalias", "Aliasy", "alt_route", None),
-        ("pubmergeaudit", "Sloučení hospod", "merge", None),
+        ("canonicalpub", "Hospody", "storefront"),
+        ("pubreport", "Nahlášené hospody", "wrong_location"),
+        ("pubnamecorrection", "Opravy názvů", "edit_location_alt"),
+        ("pubevent", "Akce hospod", "event"),
+        ("communityevent", "Komunitní akce", "celebration"),
     ]),
     ("Pivo", [
-        ("beerproduct", "Piva", "sports_bar", None),
-        ("beerbrand", "Pivovary", "factory", None),
-        ("pubbeerproduct", "Piva v hospodách", "local_bar", None),
-        ("pubbeerbrand", "Pivovary v hospodách", "liquor", None),
-        ("pubexternalbeermenu", "Nápojové lístky", "menu_book", None),
-        ("beerproductmergeaudit", "Sloučení piv", "merge", None),
+        ("beerproduct", "Piva", "sports_bar"),
+        ("beerbrand", "Pivovary", "factory"),
     ]),
-    ("Deník", [
-        ("drinklog", "Vypitá piva", "local_drink", None),
-        ("pubvisit", "Návštěvy", "pin_drop", None),
-        ("pubrating", "Hodnocení", "thumb_up", None),
-        ("pubfavorite", "Oblíbené", "favorite", None),
-        ("pubcontributionlog", "Příspěvky", "volunteer_activism", None),
+    ("Čísla", [
+        ("webstatsdaily", "Web analytika", "bar_chart"),
+        ("pubreachdaily", "Dosah hospod", "visibility"),
+        ("accountusagestats", "Používání appky", "monitoring"),
     ]),
-    ("Systém", [
-        ("releasenote", "Co je nového", "campaign", None),
-        ("clientevent", "Události z appky", "bug_report", None),
-        ("enrichtask", "Obohacování", "manage_search", None),
-        ("pubsearchcache", "Cache hledání", "cached", None),
-        ("user", "Admini", "admin_panel_settings", None),
-        ("group", "Skupiny", "group_work", None),
+    ("Obsah appky", [
+        ("releasenote", "Co je nového", "campaign"),
+    ]),
+    ("Technické", [
+        ("contentreport", "Historie nahlášení", "flag"),
+        ("feedbackreport", "Historie zpětné vazby", "chat"),
+        ("pubvisit", "Návštěvy", "pin_drop"),
+        ("pubrating", "Hodnocení hospod", "thumb_up"),
+        ("pubfavorite", "Oblíbené hospody", "favorite"),
+        ("pubcontributionlog", "Příspěvky k hospodám", "volunteer_activism"),
+        ("useraddedpub", "Přidané hospody", "add_location"),
+        ("pubhours", "Otevírací doby", "schedule"),
+        ("pubcommunitydata", "Komunitní data hospod", "groups"),
+        ("pubalias", "Další názvy hospod", "alt_route"),
+        ("pubmergeaudit", "Sloučení hospod", "merge"),
+        ("pubbeerproduct", "Piva v hospodách", "local_bar"),
+        ("pubbeerbrand", "Pivovary v hospodách", "liquor"),
+        ("pubexternalbeermenu", "Nápojové lístky", "menu_book"),
+        ("beerproductmergeaudit", "Sloučení piv", "merge"),
+        ("pushdevice", "Push zařízení", "notifications"),
+        ("clientevent", "Události z appky", "bug_report"),
+        ("enrichtask", "Obohacování hospod", "manage_search"),
+        ("pubsearchcache", "Cache hledání", "cached"),
+        ("user", "Admini", "admin_panel_settings"),
+        ("group", "Skupiny adminů", "group_work"),
     ]),
 ]
 
@@ -79,69 +71,48 @@ def _can_view(request, model_name: str) -> bool:
 
 
 def navigation(request):
-    groups = [{"items": [{"title": "Nástěnka", "icon": "dashboard", "link": reverse("admin:index")}]}]
+    top = [{"title": "Nástěnka", "icon": "dashboard", "link": reverse("admin:index")}]
+    if admin_queue.visible_sources(request):
+        top.append({"title": "Ke zpracování", "icon": "inbox", "link": reverse("admin_queue"), "badge": "pubs.admin_site.queue_badge"})
+    groups = [{"items": top}]
     for title, items in SECTIONS:
         visible = [
-            {"title": label, "icon": icon, "link": _changelist(model), **({"badge": badge} if badge else {})}
-            for model, label, icon, badge in items
+            {"title": label, "icon": icon, "link": _changelist(model)}
+            for model, label, icon in items
             if _can_view(request, model)
         ]
         if visible:
-            groups.append({"title": title, "collapsible": title in ("Hospody", "Pivo", "Deník", "Systém"), "items": visible})
+            groups.append({"title": title, "collapsible": title == "Technické", "items": visible})
     return groups
 
 
-def _waiting_content_reports():
-    return ContentReport.objects.filter(status=ContentReport.Status.NEW)
-
-
-def _waiting_feedback():
-    return FeedbackReport.objects.filter(status=FeedbackReport.Status.NEW)
-
-
-def _waiting_tours():
-    return TourPublication.objects.filter(status=TourPublication.Status.HIDDEN, hidden_reason="reports")
-
-
-def _badge(count: int) -> str:
+def queue_badge(request):
+    count = admin_queue.waiting_count(request)
     return str(count) if count else ""
-
-
-def new_content_reports(request):  # noqa: ARG001
-    return _badge(_waiting_content_reports().count())
-
-
-def new_feedback(request):  # noqa: ARG001
-    return _badge(_waiting_feedback().count())
-
-
-def reported_tours(request):  # noqa: ARG001
-    return _badge(_waiting_tours().count())
 
 
 def dashboard(request, context):
     week_ago = timezone.now() - timedelta(days=7)
-    waiting = [
-        ("contentreport", "Nahlášený obsah", _waiting_content_reports, "?status__exact=new"),
-        ("feedbackreport", "Zpětná vazba", _waiting_feedback, "?status__exact=new"),
-        ("tourpublication", "Túry skryté nahlášením", _waiting_tours, "?status__exact=hidden&hidden_reason=reports"),
-    ]
     week = [
         ("account", "Nové účty", Account.objects, "created_at"),
         ("drinklog", "Vypitá piva", DrinkLog.objects, "drank_at"),
         ("publishednight", "Večery", PublishedNight.objects, "created_at"),
     ]
+    sources = admin_queue.visible_sources(request)
+    total = admin_queue.waiting_count(request)
     context.update({
-        "waiting": [
-            (label, rows().count(), _changelist(model) + query)
-            for model, label, rows, query in waiting
-            if _can_view(request, model)
-        ],
+        "queue": admin_queue.items(request, sources)[:5] if sources else None,
+        "queue_count": total,
+        "queue_more": max(total - 5, 0),
         "week": [
-            (label, rows.filter(**{f"{field}__gte": week_ago}).count(), f"{rows.count()} celkem")
+            (
+                label,
+                rows.filter(**{f"{field}__gte": week_ago}).count(),
+                f"{rows.count()} celkem",
+                _changelist(model),
+            )
             for model, label, rows, field in week
             if _can_view(request, model)
         ],
-        "feedback": _waiting_feedback().order_by("-created_at")[:6] if _can_view(request, "feedbackreport") else None,
     })
     return context

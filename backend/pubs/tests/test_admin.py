@@ -132,11 +132,7 @@ def test_dashboard_shows_what_waits_for_moderation(client):
     response = client.get("/admin/")
 
     assert response.status_code == 200
-    assert response.context["waiting"] == [
-        ("Nahlášený obsah", 1, "/admin/pubs/contentreport/?status__exact=new"),
-        ("Zpětná vazba", 1, "/admin/pubs/feedbackreport/?status__exact=new"),
-        ("Túry skryté nahlášením", 0, "/admin/pubs/tourpublication/?status__exact=hidden&hidden_reason=reports"),
-    ]
+    assert response.context["queue_count"] == 2
     page = response.content.decode()
     assert "Počítadlo se vrátí na nulu" in page
     assert "Vyřešeno" not in page
@@ -146,17 +142,18 @@ def test_dashboard_shows_what_waits_for_moderation(client):
 def test_dashboard_shows_staff_only_the_models_they_may_view(client):
     now = datetime.now(UTC)
     FeedbackReport.objects.create(client_id=uuid.uuid4(), category="bug", message="Soukromá zpráva", updated_at=now)
+    ContentReport.objects.create(reason="spam", updated_at=now)
     staff = User.objects.create_user("staff", "staff@example.com", "x", is_staff=True)
     client.force_login(staff)
 
     page = client.get("/admin/").content.decode()
 
     assert "Soukromá zpráva" not in page
-    assert "/admin/pubs/feedbackreport/" not in page
+    assert "/admin/fronta/" not in page
 
     staff.user_permissions.add(Permission.objects.get(codename="view_feedbackreport"))
     response = client.get("/admin/")
 
-    assert [label for label, _, _ in response.context["waiting"]] == ["Zpětná vazba"]
+    assert response.context["queue_count"] == 1
     assert response.context["week"] == []
     assert "Soukromá zpráva" in response.content.decode()

@@ -1,0 +1,28 @@
+{% extends "admin/base_site.html" %}
+{% load static %}
+{% block extrastyle %}{{ block.super }}<link rel="stylesheet" href="{% static "pubs/admin/workbench.css" %}">{% endblock %}
+{% block breadcrumbs %}{% endblock %}
+{% block content %}
+<div class="wb">
+  <div class="wb-head">
+    <h2>Ke zpracování · {{ filters.0.count }}</h2>
+    <nav class="wb-filters" aria-label="Filtr fronty">
+      {% for filter in filters %}
+        <a href="{% url 'admin_queue' %}{% if filter.kind %}?typ={{ filter.kind }}{% endif %}"{% if filter.kind == show %} class="on" aria-current="page"{% endif %}>{{ filter.label }} {{ filter.count }}</a>
+      {% endfor %}
+    </nav>
+  </div>
+
+  {% if items %}
+    <div class="wb-list">
+      {% for item in items %}{% include "admin/pubs/_queue_item.html" %}{% endfor %}
+    </div>
+  {% else %}
+    <div class="wb-list wb-empty"><strong>Všechno vyřízené</strong>Nic nečeká.</div>
+  {% endif %}
+
+  <p class="wb-muted">Vyřízené najdeš v historii:
+    {% for label, url in history %}<a href="{{ url }}">{{ label }}</a>{% if not forloop.last %} · {% endif %}{% endfor %}
+  </p>
+</div>
+{% endblock %}
