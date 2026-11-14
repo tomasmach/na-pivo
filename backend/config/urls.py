@@ -3,8 +3,9 @@
 from django.conf import settings
 from django.conf.urls.static import static
 from django.contrib import admin
-from django.urls import include, path
+from django.urls import include, path, re_path
 from django.views.generic import RedirectView
+from django.views.static import serve
 
 from pubs.models import BeerPage
 from pubs.profile_pages import public_profile_page
@@ -97,7 +98,10 @@ urlpatterns = [
 ]
 
 if settings.ENABLE_DJANGO_ADMIN:
-    urlpatterns.append(path("admin/", admin.site.urls))
+    urlpatterns += [
+        path("admin/", admin.site.urls),
+        re_path(r"^static/(?P<path>.*)$", serve, {"document_root": settings.STATIC_ROOT}),
+    ]
 
 # In DEBUG (local dev + the test suite) Django serves user-uploaded avatars from
 # MEDIA_ROOT so the absolute avatar_url resolves. In production Caddy serves
