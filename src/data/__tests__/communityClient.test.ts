@@ -160,6 +160,15 @@ describe('rebaseCommunityEntry', () => {
     ]);
   });
 
+  it('keeps a beer someone else added when the menu has no room left for both', () => {
+    const eleven = Array.from({ length: 11 }, (_, i) => ({ name: `Pivo ${i + 1}` }));
+    const entry = buildCommunityEntry({ ...pub, beers: [...eleven, { name: 'Moje nové' }], beersBase: eleven }, 'c1');
+    const names = rebaseCommunityEntry(entry, server([...eleven, { name: 'Cizí nové' }])).beers?.map((beer) => beer.name);
+    expect(names).toHaveLength(12);
+    expect(names).toContain('Cizí nové');
+    expect(names).not.toContain('Moje nové');
+  });
+
   it('sends the edited list as it is when the server still has the menu the editor showed', () => {
     const entry = buildCommunityEntry({ ...pub, beers: [pilsner, kozel65, { name: 'Gambrinus 10°' }], beersBase: [pilsner, kozel65] }, 'c1');
     expect(rebaseCommunityEntry(entry, server([kozel65, pilsner])).beers).toEqual(entry.beers);

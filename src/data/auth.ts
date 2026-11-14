@@ -23,6 +23,7 @@ import {
   getSessionToken,
   prepareAnonymousAccountMerge,
   revertToAnonymous,
+  runAccountMeWrite,
   setSession,
   type AccountSession,
 } from './account';
@@ -1042,7 +1043,7 @@ export async function updateProfile(params: {
   if (params.isPublic !== undefined) body.is_public = params.isPublic;
   if (params.showAsPubRegular !== undefined) body.show_as_pub_regular = params.showAsPubRegular;
 
-  const res = await authFetch('/v1/account/me', { method: 'PATCH', bearer: 'current', body });
+  const res = await runAccountMeWrite(() => authFetch('/v1/account/me', { method: 'PATCH', bearer: 'current', body }));
   return resolveProfileResult(res);
 }
 

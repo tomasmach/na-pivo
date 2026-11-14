@@ -39,8 +39,13 @@ function parse(data: Record<string, unknown>): RemoteSharing | null {
   return { shareDefault: share, nightAutopublish: auto };
 }
 
-function request(body?: Record<string, unknown>): Promise<RemoteSharing | 'refused' | null> {
-  return body ? runAccountMeWrite(() => send(body)) : send();
+async function request(body?: Record<string, unknown>): Promise<RemoteSharing | 'refused' | null> {
+  if (!body) return send();
+  const generation = boundaryGeneration;
+  const owner = await getSessionToken();
+  return runAccountMeWrite(async () =>
+    generation === boundaryGeneration && (await getSessionToken()) === owner ? send(body) : null,
+  );
 }
 
 async function send(body?: Record<string, unknown>): Promise<RemoteSharing | 'refused' | null> {

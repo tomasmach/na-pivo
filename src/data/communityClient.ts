@@ -178,7 +178,8 @@ export function rebaseCommunityEntry(entry: CommunityEntry, server: ServerPubFac
         if (at >= 0) next[at] = beer;
         else unmatched.push(beer);
       }
-      sent.beers = [...unmatched, ...next].slice(0, MAX_BEERS).map(beerToWire);
+      const room = Math.max(0, MAX_BEERS - next.length);
+      sent.beers = [...unmatched.slice(0, room), ...next].slice(0, MAX_BEERS).map(beerToWire);
     }
   }
   if (sent.hours && hoursBase) {

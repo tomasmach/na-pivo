@@ -52,6 +52,6 @@ export function addBeersToMenu(pub: Pub, menu: PubMenu, added: readonly Communit
   const nextHistory = historicalBeersAfterMenuReplacement(menu.beers, next, menu.historicalBeers);
   useCommunityStore.getState().setOverride(cell, { beers: next, historicalBeers: nextHistory });
   void enqueuePubCommunity(
-    buildCommunityEntry({ externalId: pub.id && !pub.id.startsWith('tally:') ? pub.id : null, name: pub.name, lat: pub.lat, lng: pub.lng, city: pub.city, beers: next }, generateUuidV4()),
+    buildCommunityEntry({ externalId: pub.id && !pub.id.startsWith('tally:') ? pub.id : null, name: pub.name, lat: pub.lat, lng: pub.lng, city: pub.city, beers: next, beersBase: menu.beers }, generateUuidV4()),
   );
 }
