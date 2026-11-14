@@ -17,7 +17,7 @@ import { isContextPubKey, type DrinkType, type ServingType } from '@/drinks/drin
 import { formatVolume, intlLocale, t } from '@/i18n';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { useTallyStore } from '@/stores/tallyStore';
-import { formatPrice, getCurrencyRate, parsePriceInputToCzk } from '@/utils/currency';
+import { formatPrice, parsePriceInputToCzk } from '@/utils/currency';
 
 import { Icon } from '../../components/Icon';
 import { Sheet } from '../../components/overlays';
@@ -34,6 +34,7 @@ import { logDrink } from './counterActions';
 import { beerTally, drinkTally } from './eveningData';
 import { OUTSIDE_ICON, useBackfillPick, useCountPlace, useNvPlaceStore } from './placeStore';
 import { addBeersToMenu, usePubMenu } from './pubMenu';
+import { priceInputOf } from './stamgastFormat';
 
 type Kind = 'pivo' | 'vino' | 'nealko' | 'panak';
 const OUTSIDE_CHOICES = ['private', 'outdoors'] as const;
@@ -304,8 +305,7 @@ export function ZapisSheet() {
   const price = typedCzk ?? menuPrice;
   const priceRow = !!pub && !!selected && kind === 'pivo';
   const priceFor = copy.priceFor(chosenSize?.volumeMl ? formatVolume(chosenSize.volumeMl) : '');
-  // The field takes the price in the user's currency, like the pub menu form does.
-  const inCurrency = (czk: number) => String(Math.round((czk / (getCurrencyRate(currency) ?? 1)) * 100) / 100);
+  const inCurrency = (czk: number) => priceInputOf(czk, currency);
   const currencyMark = formatPrice(0, currency).replace(/[\d\s.,]/g, '');
 
   const save = () => {

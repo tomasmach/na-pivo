@@ -14,7 +14,7 @@ import { intlLocale, t } from '@/i18n';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { rejectedFieldOf, useTallyStore, type TallyDrink } from '@/stores/tallyStore';
 import { deleteSessionDrink, fixSessionDrink, renameSessionDrinks } from '@/myBeers/drinkEdits';
-import { formatPrice } from '@/utils/currency';
+import { formatPrice, parsePriceInputToCzk } from '@/utils/currency';
 
 import { BackHeader, Screen } from '../../components/chrome';
 import { Field, Input } from '../../components/forms';
@@ -26,7 +26,7 @@ import { dialog, toast } from '../../ui/store';
 import { PubVerdictSection } from './PubVerdict';
 import { NightHangsNote, useNightHangs } from './NightHangsNote';
 import { beerTally, canFixRejectedField, dateOfDay, dayKeyOf, dayString, hourlyTempo, minutesBetween, nightsOf } from './eveningData';
-import { durationLabel, nightDayLabel, servingLine } from './stamgastFormat';
+import { durationLabel, nightDayLabel, priceInputOf, servingLine } from './stamgastFormat';
 import { NO_VALUE } from '../../format';
 import { useBackfillPick, useCountPlace } from './placeStore';
 import { useNvParams, useNvRouter } from '../../duo/details';
@@ -129,7 +129,7 @@ export function DopsatSheet() {
 
   const [rows, setRows] = useState<BeerRow[]>(() => {
     const top = beerTally(sessions)[0];
-    return [{ key: 'r0', name: top?.name ?? '', n: 1, price: typeof top?.last.priceCzk === 'number' ? String(top.last.priceCzk) : '' }];
+    return [{ key: 'r0', name: top?.name ?? '', n: 1, price: typeof top?.last.priceCzk === 'number' ? priceInputOf(top.last.priceCzk, currency) : '' }];
   });
 
   const fromClock = parseClock(from);
@@ -150,7 +150,7 @@ export function DopsatSheet() {
     for (const row of rows) {
       const name = row.name.trim();
       if (!name) continue;
-      const price = Number(row.price);
+      const priceCzk = row.price.trim() ? parsePriceInputToCzk(row.price, currency) : null;
       for (let k = 0; k < row.n; k++) {
         const at = new Date(Math.min(start.getTime() + step * i, Date.now())).toISOString();
         countDrink(
@@ -158,7 +158,7 @@ export function DopsatSheet() {
           {
             name,
             drinkType: 'beer',
-            ...(price > 0 && price <= 1000 ? { priceCzk: Math.round(price) } : {}),
+            ...(priceCzk !== null ? { priceCzk } : {}),
             ...(target.kind === 'pub' ? { volumeMl: 500 } : {}),
           },
           { at },
@@ -269,9 +269,11 @@ export function DopsatSheet() {
               </View>
               <View style={[s.row, { width: 76, height: 40, borderRadius: 12, paddingHorizontal: 10, backgroundColor: C.control, borderWidth: 1, borderColor: '#FFFFFF14' }]}>
                 <TextInput
+                  testID={`backfill-price-${i}`}
+                  accessibilityLabel={copy.colPrice}
                   value={r.price}
-                  onChangeText={(price) => setRows(rows.map((x, j) => (j === i ? { ...x, price: price.replace(/[^0-9]/g, '') } : x)))}
-                  keyboardType="number-pad"
+                  onChangeText={(price) => setRows(rows.map((x, j) => (j === i ? { ...x, price: price.replace(/[^0-9.,]/g, '').slice(0, 6) } : x)))}
+                  keyboardType="decimal-pad"
                   keyboardAppearance="dark"
                   style={[font(14, 600), { flex: 1, textAlign: 'right', padding: 0 }]}
                 />
@@ -375,16 +377,17 @@ function FixDrinkSheet({ startedAt, drink }: { startedAt: string; drink: TallyDr
   const hint = rejectedFieldHint(field);
   const [name, setName] = useState(drink.beerName);
   const [volume, setVolume] = useState(typeof drink.volumeMl === 'number' ? String(drink.volumeMl) : '');
-  const [price, setPrice] = useState(typeof drink.priceCzk === 'number' ? String(drink.priceCzk) : '');
-  const priceCzk = price ? Number(price) : undefined;
+  const currency = useSettingsStore((st) => st.priceCurrency);
+  const [price, setPrice] = useState(typeof drink.priceCzk === 'number' ? priceInputOf(drink.priceCzk, currency) : '');
+  const priceCzk = price.trim() ? parsePriceInputToCzk(price, currency) : undefined;
   const volumeMl = Number(volume) > 0 ? Number(volume) : undefined;
-  const problem = !name.trim() ? old.editDrinkEmpty : priceCzk !== undefined && (priceCzk < 1 || priceCzk > 1000) ? old.fixDrinkHintPrice : null;
+  const problem = !name.trim() ? old.editDrinkEmpty : priceCzk === null ? old.fixDrinkHintPrice : null;
   const save = () => {
     if (problem) return;
     const fix = {
       beerName: name.trim(),
       drinkType: normalizeDrinkType(drink.drinkType),
-      ...(priceCzk !== undefined ? { priceCzk } : {}),
+      ...(priceCzk != null ? { priceCzk } : {}),
       ...(volumeMl !== undefined ? { volumeMl } : {}),
       ...(drink.servingType ? { servingType: drink.servingType } : {}),
     };
@@ -409,7 +412,7 @@ function FixDrinkSheet({ startedAt, drink }: { startedAt: string; drink: TallyDr
           <Input testID="drink-fix-volume" value={volume} onChangeText={(v) => setVolume(v.replace(/[^0-9]/g, '').slice(0, 4))} keyboardType="number-pad" autoFocus={field === 'beer.volume_ml'} />
         </Field>
         <Field label={copy.fixPrice} style={s.fill}>
-          <Input testID="drink-fix-price" value={price} onChangeText={(v) => setPrice(v.replace(/[^0-9]/g, '').slice(0, 4))} keyboardType="number-pad" autoFocus={field === 'beer.price_czk'} />
+          <Input testID="drink-fix-price" value={price} onChangeText={(v) => setPrice(v.replace(/[^0-9.,]/g, '').slice(0, 6))} keyboardType="decimal-pad" autoFocus={field === 'beer.price_czk'} />
         </Field>
       </View>
     </Sheet>
