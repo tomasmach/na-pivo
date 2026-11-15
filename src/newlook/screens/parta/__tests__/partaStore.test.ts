@@ -1,17 +1,18 @@
 import { fetchFriendsDashboard } from '@/data/friendsClient';
 import { loadPartaPlansSnapshot, savePartaPlansSnapshot } from '@/data/friendsSnapshot';
-import { fetchPartaPlans } from '@/data/partaPlansClient';
+import { fetchPartaPlans, fetchPartaPulse } from '@/data/partaPlansClient';
 
-import { usePartaStore } from '../partaStore';
+import { PARTA_FULL_LOAD_MS, usePartaStore } from '../partaStore';
 
 jest.mock('@/data/friendsClient', () => ({ fetchFriendsDashboard: jest.fn(), markFriendNotificationsRead: jest.fn() }));
 jest.mock('@/data/friendsSnapshot', () => ({
   loadFriendsDashboardSnapshot: jest.fn(async () => null),
   loadPartaPlansSnapshot: jest.fn(async () => null),
+  saveFriendsDashboardSnapshot: jest.fn(async () => undefined),
   savePartaPlansSnapshot: jest.fn(async () => undefined),
   snapshotGeneration: () => 0,
 }));
-jest.mock('@/data/partaPlansClient', () => ({ fetchPartaPlans: jest.fn() }));
+jest.mock('@/data/partaPlansClient', () => ({ fetchPartaPlans: jest.fn(), fetchPartaPulse: jest.fn() }));
 
 const flush = () => new Promise((resolve) => setImmediate(resolve));
 
@@ -70,4 +71,112 @@ it('keeps fresh invitations when the saved copy is read after they arrive', asyn
   await loading;
 
   expect(usePartaStore.getState().plans).toEqual([{ id: 'fresh-plan' }]);
+});
+
+describe('refresh while Parta is open', () => {
+  const friend = { id: 'f1', displayName: 'Kuba' };
+  const sitting = { account: friend, pubName: 'U Pinkasů', cacheKey: 'u2fkbn1z', beers: 2 };
+  const dashboard = { friends: [friend], incomingRequests: [], notifications: [], presence: [], activeFriends: [], myActiveActivity: null };
+  const live = (over: object = {}) => ({
+    activeFriends: [], myActiveActivity: null, presence: [sitting], myPresence: null, homePresence: [], incomingCount: 0, unreadCount: 0, ...over,
+  });
+  let now = 1_000_000;
+
+  beforeEach(async () => {
+    jest.spyOn(Date, 'now').mockImplementation(() => now);
+    (fetchFriendsDashboard as jest.Mock).mockResolvedValue(dashboard);
+    (fetchPartaPlans as jest.Mock).mockResolvedValue([]);
+    await usePartaStore.getState().load();
+    jest.clearAllMocks();
+  });
+  afterEach(() => jest.restoreAllMocks());
+
+  it('shows who sat down and a new answer from one small request', async () => {
+    (fetchPartaPulse as jest.Mock).mockResolvedValueOnce({ live: live(), plans: [{ id: 'plan', responses: { going: 1 } }] });
+    now += 35_000;
+    await usePartaStore.getState().refresh();
+
+    expect(fetchPartaPulse).toHaveBeenCalledTimes(1);
+    expect(fetchFriendsDashboard).not.toHaveBeenCalled();
+    expect(fetchPartaPlans).not.toHaveBeenCalled();
+    expect(usePartaStore.getState().dashboard?.presence).toEqual([sitting]);
+    expect(usePartaStore.getState().dashboard?.friends).toEqual([friend]);
+    expect(usePartaStore.getState().plans).toEqual([{ id: 'plan', responses: { going: 1 } }]);
+  });
+
+  it.each([
+    ['a friend request arrived', { live: live({ incomingCount: 1 }), plans: [] }],
+    ['a notification arrived', { live: live({ unreadCount: 1 }), plans: [] }],
+    ['the backend does not send invitations yet', { live: live(), plans: null }],
+  ])('loads everything when %s', async (_case, pulse) => {
+    (fetchPartaPulse as jest.Mock).mockResolvedValueOnce(pulse);
+    now += 35_000;
+    await usePartaStore.getState().refresh();
+
+    expect(fetchFriendsDashboard).toHaveBeenCalledTimes(1);
+    expect(fetchPartaPlans).toHaveBeenCalledTimes(1);
+  });
+
+  it('loads everything every few minutes without asking for the pulse', async () => {
+    now += PARTA_FULL_LOAD_MS;
+    await usePartaStore.getState().refresh();
+
+    expect(fetchPartaPulse).not.toHaveBeenCalled();
+    expect(fetchFriendsDashboard).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps what it shows when the pulse fails', async () => {
+    (fetchPartaPulse as jest.Mock).mockResolvedValueOnce(null);
+    now += 35_000;
+    await usePartaStore.getState().refresh();
+
+    expect(fetchFriendsDashboard).not.toHaveBeenCalled();
+    expect(usePartaStore.getState().dashboard).toEqual(dashboard);
+    expect(usePartaStore.getState().failed).toBe(true);
+  });
+
+  it('keeps unread notifications older than the newest 30 quiet after one load', async () => {
+    const unread = (prefix: string, count: number) =>
+      Array.from({ length: count }, (_, i) => ({ id: `${prefix}${i}`, readAt: null }));
+    (fetchFriendsDashboard as jest.Mock).mockResolvedValueOnce({ ...dashboard, notifications: unread('old', 30) });
+    (fetchPartaPulse as jest.Mock)
+      .mockResolvedValueOnce({ live: live({ unreadCount: 35 }), plans: [] })
+      .mockResolvedValue({ live: live({ unreadCount: 5 }), plans: [] });
+    for (let i = 0; i < 4; i += 1) {
+      now += 35_000;
+      await usePartaStore.getState().refresh();
+    }
+
+    expect(fetchPartaPulse).toHaveBeenCalledTimes(4);
+    expect(fetchFriendsDashboard).toHaveBeenCalledTimes(1);
+  });
+
+  it('loads a new notification that arrives after the previous one was read', async () => {
+    (fetchFriendsDashboard as jest.Mock)
+      .mockResolvedValueOnce({ ...dashboard, notifications: [{ id: 'n1', readAt: null }] })
+      .mockResolvedValueOnce({ ...dashboard, notifications: [{ id: 'n2', readAt: null }] });
+    (fetchPartaPulse as jest.Mock).mockResolvedValue({ live: live({ unreadCount: 1 }), plans: [] });
+    now += 35_000;
+    await usePartaStore.getState().refresh();
+    now += 35_000;
+    await usePartaStore.getState().refresh();
+
+    expect(fetchFriendsDashboard).toHaveBeenCalledTimes(2);
+    expect(usePartaStore.getState().dashboard?.notifications).toEqual([{ id: 'n2', readAt: null }]);
+  });
+
+  it('runs a full load asked for while a pulse is running', async () => {
+    let finishPulse!: () => void;
+    (fetchPartaPulse as jest.Mock).mockImplementationOnce(
+      () => new Promise((resolve) => (finishPulse = () => resolve({ live: live(), plans: [] }))),
+    );
+    now += 35_000;
+    const pulse = usePartaStore.getState().refresh();
+    await flush();
+    const load = usePartaStore.getState().load();
+    finishPulse();
+    await Promise.all([pulse, load]);
+
+    expect(fetchFriendsDashboard).toHaveBeenCalledTimes(1);
+  });
 });

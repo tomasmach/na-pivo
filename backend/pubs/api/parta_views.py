@@ -675,11 +675,44 @@ class PartaActivityView(FriendActivityView):
         return response
 
 
-class PartaPlansView(APIView):
-    """GET /v1/friends/plans — every open invitation I host or am invited to.
+def parta_plans(request: Request, friend_ids: list[int], now) -> list:
+    """Every open invitation I host or am invited to, soonest first.
 
     Plans up to 14 days ahead plus new-look evenings that already started (a
     home evening tonight). Released live broadcasts are presence, not here.
+    ``friend_ids`` are my accepted friends without blocked accounts.
+    """
+    open_rows = Q(active=True, expires_at__gt=now) & (
+        Q(kind=FriendPubActivity.Kind.PLAN) | (Q(kind=FriendPubActivity.Kind.LIVE) & ~Q(place_kind=""))
+    )
+    prefetches = _friend_activity_prefetches()
+    mine = (
+        FriendPubActivity.objects.filter(open_rows, account=request.user)
+        .annotate(target_count=Count("target_recipients", distinct=True))
+        .select_related("account")
+        .prefetch_related(*prefetches)
+    )
+    theirs = (
+        _apply_friend_activity_visibility(
+            FriendPubActivity.objects.filter(
+                open_rows,
+                account_id__in=friend_ids,
+                account__status=Account.Status.ACTIVE,
+            ),
+            request.user,
+        )
+        .exclude(account__ghost_mode=True)
+        .select_related("account")
+        .prefetch_related(*prefetches)
+    )
+    rows = sorted([*mine, *theirs], key=lambda row: (row.scheduled_for or row.started_at, row.pk))
+    return PartaPlanSerializer(rows[:PLANS_LIMIT], many=True, context=_plan_context(request)).data
+
+
+class PartaPlansView(APIView):
+    """GET /v1/friends/plans — see :func:`parta_plans`.
+
+    The body holds no clock, so unchanged invitations answer a conditional GET with 304.
     """
 
     authentication_classes = [AccountTokenAuthentication]
@@ -688,39 +721,10 @@ class PartaPlansView(APIView):
     throttle_scope = "friends_dashboard"
 
     def get(self, request: Request) -> Response:
-        now = dj_timezone.now()
         blocked = _blocked_account_ids(request.user)
         friend_ids = [fid for fid in _accepted_friend_ids(request.user) if fid not in blocked]
-        open_rows = Q(active=True, expires_at__gt=now) & (
-            Q(kind=FriendPubActivity.Kind.PLAN) | (Q(kind=FriendPubActivity.Kind.LIVE) & ~Q(place_kind=""))
-        )
-        prefetches = _friend_activity_prefetches()
-        mine = (
-            FriendPubActivity.objects.filter(open_rows, account=request.user)
-            .annotate(target_count=Count("target_recipients", distinct=True))
-            .select_related("account")
-            .prefetch_related(*prefetches)
-        )
-        theirs = (
-            _apply_friend_activity_visibility(
-                FriendPubActivity.objects.filter(
-                    open_rows,
-                    account_id__in=friend_ids,
-                    account__status=Account.Status.ACTIVE,
-                ),
-                request.user,
-            )
-            .exclude(account__ghost_mode=True)
-            .select_related("account")
-            .prefetch_related(*prefetches)
-        )
-        rows = sorted([*mine, *theirs], key=lambda row: (row.scheduled_for or row.started_at, row.pk))
-        context = _plan_context(request)
         return Response(
-            {
-                "plans": PartaPlanSerializer(rows[:PLANS_LIMIT], many=True, context=context).data,
-                "server_time": now.isoformat(),
-            },
+            {"plans": parta_plans(request, friend_ids, dj_timezone.now())},
             status=status.HTTP_200_OK,
         )
 

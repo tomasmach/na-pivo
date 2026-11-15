@@ -178,6 +178,35 @@ def test_home_plan_days_ahead_and_several_plans(client, party):
 
 
 @pytest.mark.django_db
+def test_parta_live_view_carries_invitations_and_304s_until_someone_answers(client, party):
+    token, _ = party["host"]
+    guest_token, _ = party["guest"]
+    other_token, _ = party["other"]
+    plan = _home_plan(client, token, days=2).json()
+
+    live = client.get("/v1/friends/live?view=parta", **_auth(guest_token))
+    assert live.status_code == status.HTTP_200_OK
+    body = live.json()
+    assert body["parta_plans"] == client.get("/v1/friends/plans", **_auth(guest_token)).json()["plans"]
+    assert [p["id"] for p in body["parta_plans"]] == [plan["id"]]
+    assert "plans" not in body and "my_plan" not in body
+    assert {"active_friends", "presence", "home_presence", "incoming_count", "unread_count"} <= set(body)
+
+    unchanged = client.get("/v1/friends/live?view=parta", HTTP_IF_NONE_MATCH=live["ETag"], **_auth(guest_token))
+    assert unchanged.status_code == status.HTTP_304_NOT_MODIFIED
+    plans = client.get("/v1/friends/plans", **_auth(guest_token))
+    assert client.get("/v1/friends/plans", HTTP_IF_NONE_MATCH=plans["ETag"], **_auth(guest_token)).status_code == 304
+
+    answered = client.post(
+        f"/v1/friends/pub-activity/{plan['id']}/respond", data={"response": "going"}, format="json", **_auth(other_token)
+    )
+    assert answered.status_code == status.HTTP_200_OK
+    changed = client.get("/v1/friends/live?view=parta", HTTP_IF_NONE_MATCH=live["ETag"], **_auth(guest_token))
+    assert changed.status_code == status.HTTP_200_OK
+    assert changed.json()["parta_plans"][0]["responses"]["going"] == 1
+
+
+@pytest.mark.django_db
 def test_plan_beyond_two_weeks_is_rejected(client, party):
     token, _ = party["host"]
     resp = _home_plan(client, token, days=15)

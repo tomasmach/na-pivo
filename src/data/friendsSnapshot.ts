@@ -1,7 +1,7 @@
 /**
  * Persisted snapshot of the last successful Parta dashboard (Parta 3.0 §H2).
  *
- * The social graph (friends, streak, leaderboard, live cards) is expensive to
+ * The social graph (friends, shared evenings, live cards) is expensive to
  * refetch and useless when offline. On every successful `fetchFriendsDashboard`
  * we stash the already-parsed dashboard here; on mount FriendsScreen hydrates
  * from it BEFORE the network resolves, so an offline cold start shows the graph
@@ -23,7 +23,6 @@ export const FRIENDS_DASHBOARD_SNAPSHOT_KEY = 'na-pivo-friends-dashboard';
 export const PARTA_PLANS_SNAPSHOT_KEY = 'na-pivo-parta-plans';
 
 interface StoredSnapshot {
-  leaderboardVersion: 1;
   savedAt: number;
   dashboard: FriendsDashboard;
 }
@@ -62,7 +61,7 @@ export async function saveFriendsDashboardSnapshot(
 ): Promise<void> {
   if (generation !== boundaryGeneration) return;
   try {
-    const payload: StoredSnapshot = { savedAt: Date.now(), dashboard, leaderboardVersion: 1 };
+    const payload: StoredSnapshot = { savedAt: Date.now(), dashboard };
     await AsyncStorage.setItem(FRIENDS_DASHBOARD_SNAPSHOT_KEY, JSON.stringify(payload));
     // A boundary clear that landed while we were writing would otherwise leave our
     // just-written blob behind — undo it if the generation moved mid-write.
@@ -96,10 +95,6 @@ export async function loadFriendsDashboardSnapshot(): Promise<FriendsDashboardSn
         // the screen reads them unconditionally. Backfill rather than reject —
         // a cold start offline should still show the last-known graph.
         ...dashboard,
-        // Older parsers collapsed private visits to zero. Those counts cannot
-        // be recovered offline; refresh only the leaderboard from the API.
-        leaderboard: parsed.leaderboardVersion === 1 && Array.isArray(dashboard.leaderboard)
-          ? dashboard.leaderboard : [],
         presence: Array.isArray(dashboard.presence) ? dashboard.presence : [],
         myPresence: dashboard.myPresence ?? null,
       },

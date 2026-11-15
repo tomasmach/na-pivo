@@ -10,14 +10,14 @@ export function useRefreshWhileOpen(): void {
   const focused = useIsFocused();
   useEffect(() => {
     if (!focused) return;
-    let lastLoadAt = Date.now();
+    let lastRefreshAt = Date.now();
     let timer: ReturnType<typeof setInterval> | null = null;
-    const load = () => {
-      lastLoadAt = Date.now();
-      void usePartaStore.getState().load();
+    const refresh = () => {
+      lastRefreshAt = Date.now();
+      void usePartaStore.getState().refresh();
     };
     const start = () => {
-      timer ??= setInterval(load, PARTA_REFRESH_MS);
+      timer ??= setInterval(refresh, PARTA_REFRESH_MS);
     };
     const stop = () => {
       if (timer) clearInterval(timer);
@@ -26,7 +26,7 @@ export function useRefreshWhileOpen(): void {
     if (AppState.currentState === 'active') start();
     const subscription = AppState.addEventListener('change', (state) => {
       if (state !== 'active') return stop();
-      if (Date.now() - lastLoadAt >= PARTA_REFRESH_MS) load();
+      if (Date.now() - lastRefreshAt >= PARTA_REFRESH_MS) refresh();
       start();
     });
     return () => {
