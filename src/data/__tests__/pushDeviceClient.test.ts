@@ -52,3 +52,18 @@ it('forgets the registration when the device is disabled at sign-out', async () 
 
   expect(await pushDeviceRegisteredRecently(true)).toBe(false);
 });
+
+it('registers again in a new app process and after a failed attempt', async () => {
+  await registerPushDevice('ExponentPushToken[device]', 'granted', undefined, true);
+
+  let freshProcess!: typeof import('../pushDeviceClient');
+  jest.isolateModules(() => {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    freshProcess = require('../pushDeviceClient');
+  });
+  expect(await freshProcess.pushDeviceRegisteredRecently(true)).toBe(false);
+
+  global.fetch = jest.fn(async () => ({ ok: false, status: 503, json: async () => ({}) })) as unknown as typeof fetch;
+  await registerPushDevice('ExponentPushToken[device]', 'granted', undefined, true);
+  expect(await pushDeviceRegisteredRecently(true)).toBe(false);
+});
