@@ -37,6 +37,23 @@ describe('usePubNameReveal', () => {
     expect(result.current.secondsLeft).toBeNull();
   });
 
+  it('renders once per second of the countdown', async () => {
+    useSettingsStore.setState({ hidePubNames: true });
+    let renders = 0;
+    const { result } = await renderHook(() => {
+      renders += 1;
+      return usePubNameReveal('pub-a');
+    });
+    await act(async () => result.current.reveal());
+    const afterReveal = renders;
+
+    for (let step = 0; step < 20; step += 1) {
+      await act(async () => jest.advanceTimersByTime(250));
+    }
+    expect(result.current.secret).toBe(true);
+    expect(renders - afterReveal).toBe(5);
+  });
+
   it('keeps a new target secret after revealing the previous one', async () => {
     useSettingsStore.setState({ hidePubNames: true });
     const { result, rerender } = await renderHook(({ key }: { key: string }) => usePubNameReveal(key), { initialProps: { key: 'pub-a' } });
