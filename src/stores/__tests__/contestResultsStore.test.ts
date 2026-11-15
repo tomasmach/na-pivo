@@ -51,7 +51,7 @@ function snapshotWith({
       contest: { id: contestId, periodStart: '', periodEnd: '', status: 'closed' },
       winners:
         rank != null
-          ? [{ rank, account: ACCOUNT, imageUrl: 'https://x/img.jpg', caption: '', votes }]
+          ? [{ rank, account: ACCOUNT, imageUrl: 'https://x/img.jpg', thumbUrl: 'https://x/img.thumb.webp', caption: '', votes }]
           : [],
       myResult: withMyResult ? { entered, voted, rank, votes, xpAwarded, winsCount } : null,
     },

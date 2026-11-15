@@ -276,6 +276,7 @@ it('drops a photo list that was still loading for the outgoing account', async (
       id: 'photo-a',
       clientId: 'client-a',
       imageUrl: 'https://api.test/media/a.jpg',
+      thumbUrl: 'https://api.test/media/a.thumb.webp',
       caption: 'Účet A',
       pubCacheKey: '',
       pubName: '',

@@ -17,6 +17,7 @@ AccountUsageStats — aggregated per-account app usage counters.
 
 import hashlib
 import hmac
+import os
 import secrets
 import uuid
 
@@ -2322,6 +2323,16 @@ def beer_photo_path(instance, filename: str) -> str:
     return f"beer-photos/{instance.account.public_id}/{instance.public_id}.webp"
 
 
+def beer_photo_thumbnail_name(image_name: str) -> str:
+    """Storage name of a photo's list thumbnail, derived from the photo's own name.
+
+    File cleanup removes this name next to every queued photo, so a thumbnail
+    written by any path can never outlive its photo.
+    """
+    root, _ext = os.path.splitext(image_name)
+    return f"{root}.thumb.webp"
+
+
 def feedback_attachment_path(instance, filename: str) -> str:
     """Stable path for one support screenshot/photo.
 
@@ -2363,6 +2374,7 @@ class BeerPhoto(models.Model):
     )
     client_id = models.UUIDField(help_text="Client-generated idempotency key.")
     image = models.ImageField(upload_to=beer_photo_path)
+    thumbnail = models.ImageField(max_length=255, blank=True, editable=False)
     caption = models.CharField(max_length=280, blank=True, default="")
     pub_cache_key = models.CharField(max_length=12, blank=True, default="", db_index=True)
     pub_name = models.TextField(blank=True, default="")

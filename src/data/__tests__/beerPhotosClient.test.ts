@@ -69,6 +69,7 @@ const WIRE_PHOTO = {
   id: 'p1',
   client_id: 'c1',
   image_url: 'https://cdn.test/beer-photos/p1.jpg',
+  thumb_url: '/media/beer-photos/p1.thumb.webp',
   caption: 'Večer u Palmy',
   pub_cache_key: 'u2fkbnhq',
   pub_name: 'U Palmy',
@@ -83,6 +84,7 @@ const APP_PHOTO = {
   id: 'p1',
   clientId: 'c1',
   imageUrl: 'https://cdn.test/beer-photos/p1.jpg',
+  thumbUrl: 'https://api.test/media/beer-photos/p1.thumb.webp',
   caption: 'Večer u Palmy',
   pubCacheKey: 'u2fkbnhq',
   pubName: 'U Palmy',
@@ -149,6 +151,7 @@ describe('beerPhotoFromWire / resolveBeerPhotoUrl', () => {
       id: '',
       clientId: '',
       imageUrl: '',
+      thumbUrl: '',
       caption: '',
       pubCacheKey: '',
       pubName: '',
@@ -158,6 +161,11 @@ describe('beerPhotoFromWire / resolveBeerPhotoUrl', () => {
       createdAt: '',
       inContest: false,
     });
+  });
+
+  it('shows the full image in lists until the backend sends thumb_url', () => {
+    const { thumb_url: _thumb, ...older } = WIRE_PHOTO;
+    expect(beerPhotoFromWire(older).thumbUrl).toBe('https://cdn.test/beer-photos/p1.jpg');
   });
 
   it('keeps an already-absolute image_url untouched', () => {

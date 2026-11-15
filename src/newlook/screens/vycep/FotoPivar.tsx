@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Image, View, type StyleProp, type ViewStyle } from 'react-native';
+import { FlatList, Image, View, type StyleProp, type ViewStyle } from 'react-native';
 import { useFocusEffect, useRouter } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { create } from 'zustand';
 import { nvBack } from '@/newlook/navigation';
 
@@ -20,7 +21,7 @@ import { useAccountStore } from '@/stores/accountStore';
 import { loadBeerPhotos, useBeerPhotosStore, type BeerPhotoLocal } from '@/stores/beerPhotosStore';
 import { useVycepStore } from '@/stores/vycepStore';
 
-import { BackHeader, Screen } from '../../components/chrome';
+import { BackHeader, BottomFade, Screen, TopFade } from '../../components/chrome';
 import { Icon } from '../../components/Icon';
 import { Sheet } from '../../components/overlays';
 import { D, T, Button, Kicker, Press, Segmented } from '../../components/ui';
@@ -43,6 +44,7 @@ function viewerPhoto(entry: PhotoContestEntry): ViewerPhoto {
   return {
     key: entry.id,
     uri: entry.imageUrl,
+    thumb: entry.thumbUrl,
     title: entry.beerName || entry.pubName || t.nv.vycep.photoFallbackTitle,
     pubName: entry.beerName ? entry.pubName : '',
     // The entry carries when it joined the round, not when the photo was taken.
@@ -160,6 +162,8 @@ function ViewerRound({ id }: { id: string }) {
 export function FotoPivarScreen() {
   const router = useNvRouter();
   const width = usePaneWidth();
+  const insets = useSafeAreaInsets();
+  const [footerH, setFooterH] = useState(52);
   const { snap, failed } = useContestStore();
   useFocusEffect(
     useCallback(() => {
@@ -186,6 +190,7 @@ export function FotoPivarScreen() {
     () => (tab === 'vedou' ? ranked : [...ranked].sort((a, b) => b.createdAt.localeCompare(a.createdAt))),
     [ranked, tab],
   );
+  const blocks = useMemo(() => Array.from({ length: Math.ceil(entries.length / 4) }, (_, b) => entries.slice(b * 4, b * 4 + 4)), [entries]);
   const mine = ranked.filter((e) => e.isMine);
   const best = mine[0] ?? null;
   const days = snap?.contest ? daysUntil(snap.contest.periodEnd) : null;
@@ -271,7 +276,7 @@ export function FotoPivarScreen() {
                 const me = w.account.id === myId;
                 return (
                   <View key={w.rank} style={{ flex: 1, gap: 6 }}>
-                    <Image source={{ uri: w.imageUrl }} style={{ width: '100%', height: 110, borderRadius: 18, borderWidth: me ? 2 : 0, borderColor: C.yellow, backgroundColor: C.card }} />
+                    <Image source={{ uri: w.thumbUrl }} style={{ width: '100%', height: 110, borderRadius: 18, borderWidth: me ? 2 : 0, borderColor: C.yellow, backgroundColor: C.card }} />
                     <View style={[s.row, { justifyContent: 'space-between' }]}>
                       <T s={13} w={700} c={C.text2} numberOfLines={1} style={s.fill}>
                         {t.nv.vycep.winner(w.rank, me ? t.nv.vycep.me : handleOf(w.account))}
@@ -290,125 +295,154 @@ export function FotoPivarScreen() {
     );
   }
 
+  const footer = parta ? <Button label={t.nv.vycep.enter} icon="plus" onPress={() => router.push('/nv/prihlasit-fotku')} /> : <Button label={t.nv.vycep.shoot} icon="camera" onPress={() => router.push('/nv/do-denicku')} />;
+  const footerBottom = Math.max(insets.bottom, 16);
+
   return (
-    <Screen
-      footer={parta ? <Button label={t.nv.vycep.enter} icon="plus" onPress={() => router.push('/nv/prihlasit-fotku')} /> : <Button label={t.nv.vycep.shoot} icon="camera" onPress={() => router.push('/nv/do-denicku')} />}
-      gap={16}
-      padTop={0}
-    >
-      <BackHeader />
-      <View style={[s.row, { justifyContent: 'space-between', alignItems: 'flex-end' }]}>
-        <D s={44}>{t.nv.vycep.contestTitle}</D>
-        <Press onPress={() => setEnded(true)} style={[s.row, { gap: 6, marginBottom: 6 }]}>
-          <Icon name="trophy" size={16} color={C.yellow} />
-          <T s={15} w={600}>
-            {t.nv.vycep.lastRound}
-          </T>
-        </Press>
-      </View>
-      <View style={[s.row, { gap: 14 }]}>
-        <D s={80} lh={0.9} c={C.yellow}>
-          {days === null ? NO_VALUE : String(days)}
-        </D>
-        <View style={[s.fill, { gap: 2 }]}>
-          <T s={18} w={700}>
-            {t.nv.vycep.daysLeft(days ?? 0)}
-          </T>
-          <T s={13} c={C.muted}>
-            {t.nv.vycep.contestHint}
-          </T>
-        </View>
-      </View>
-      <Press onPress={() => (parta ? router.push('/nv/sdileni-souhlas') : router.push('/nv/pivni-fotky'))} style={[s.row, { gap: 12, padding: 10, paddingRight: 14, borderRadius: 20, backgroundColor: C.card }]}>
-        {parta || mine.length === 0 ? (
-          <View style={[{ width: 44, height: 44, borderRadius: 22, backgroundColor: C.control }, s.center]}>
-            <Icon name={parta ? 'users' : 'camera'} size={20} color={C.yellow} />
-          </View>
-        ) : (
-          <View style={s.row}>
-            {mine.slice(0, 3).map((e, i) => (
-              <Image key={e.id} source={{ uri: e.imageUrl }} style={{ width: 40, height: 44, borderRadius: 10, marginLeft: i ? -12 : 0, borderWidth: 2, borderColor: C.card, backgroundColor: C.control }} />
+    <View style={{ flex: 1, backgroundColor: C.bg }}>
+      <FlatList
+        data={blocks}
+        keyExtractor={(block) => block[0].id}
+        renderItem={({ item }) => (
+          <View style={[s.row, { gap: 10, alignItems: 'flex-start' }]}>
+            {[0, 1].map((c) => (
+              <View key={c} style={{ width: col, gap: 14 }}>
+                {item
+                  .filter((_, i) => i % 2 === c)
+                  .map((e, i) => (
+                    <EntryTile key={e.id} entry={e} width={col} height={(c + i) % 2 ? 170 : 210} onOpen={openEntry} />
+                  ))}
+              </View>
             ))}
           </View>
         )}
-        <View style={[s.fill, { gap: 2 }]}>
-          <T s={16} w={700}>
-            {parta ? t.nv.vycep.partaOnly : mine.length ? t.nv.vycep.myPhotos(mine.length) : t.nv.vycep.myNone}
-          </T>
-          <T s={12} c={C.muted}>
-            {parta ? t.nv.vycep.partaOnlySub : best ? t.nv.vycep.myBest(best.votes, ranked.indexOf(best) + 1) : t.nv.vycep.myNoneSub}
-          </T>
-        </View>
-        <Icon name="chevron-right" size={16} color={C.muted} />
-      </Press>
-      <Segmented
-        height={38}
-        options={[
-          { key: 'nove', label: t.nv.vycep.tabNew },
-          { key: 'vedou', label: t.nv.vycep.tabTop },
-        ]}
-        value={tab}
-        onChange={setTab}
+        ItemSeparatorComponent={BlockGap}
+        initialNumToRender={2}
+        maxToRenderPerBatch={2}
+        windowSize={3}
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={{ paddingTop: insets.top + 8, paddingHorizontal: SCREEN_X, paddingBottom: footerBottom + footerH + 56 }}
+        ListHeaderComponentStyle={{ gap: 16, marginBottom: 16 }}
+        ListHeaderComponent={
+          <>
+            <BackHeader />
+            <View style={[s.row, { justifyContent: 'space-between', alignItems: 'flex-end' }]}>
+              <D s={44}>{t.nv.vycep.contestTitle}</D>
+              <Press onPress={() => setEnded(true)} style={[s.row, { gap: 6, marginBottom: 6 }]}>
+                <Icon name="trophy" size={16} color={C.yellow} />
+                <T s={15} w={600}>
+                  {t.nv.vycep.lastRound}
+                </T>
+              </Press>
+            </View>
+            <View style={[s.row, { gap: 14 }]}>
+              <D s={80} lh={0.9} c={C.yellow}>
+                {days === null ? NO_VALUE : String(days)}
+              </D>
+              <View style={[s.fill, { gap: 2 }]}>
+                <T s={18} w={700}>
+                  {t.nv.vycep.daysLeft(days ?? 0)}
+                </T>
+                <T s={13} c={C.muted}>
+                  {t.nv.vycep.contestHint}
+                </T>
+              </View>
+            </View>
+            <Press onPress={() => (parta ? router.push('/nv/sdileni-souhlas') : router.push('/nv/pivni-fotky'))} style={[s.row, { gap: 12, padding: 10, paddingRight: 14, borderRadius: 20, backgroundColor: C.card }]}>
+              {parta || mine.length === 0 ? (
+                <View style={[{ width: 44, height: 44, borderRadius: 22, backgroundColor: C.control }, s.center]}>
+                  <Icon name={parta ? 'users' : 'camera'} size={20} color={C.yellow} />
+                </View>
+              ) : (
+                <View style={s.row}>
+                  {mine.slice(0, 3).map((e, i) => (
+                    <Image key={e.id} source={{ uri: e.thumbUrl }} style={{ width: 40, height: 44, borderRadius: 10, marginLeft: i ? -12 : 0, borderWidth: 2, borderColor: C.card, backgroundColor: C.control }} />
+                  ))}
+                </View>
+              )}
+              <View style={[s.fill, { gap: 2 }]}>
+                <T s={16} w={700}>
+                  {parta ? t.nv.vycep.partaOnly : mine.length ? t.nv.vycep.myPhotos(mine.length) : t.nv.vycep.myNone}
+                </T>
+                <T s={12} c={C.muted}>
+                  {parta ? t.nv.vycep.partaOnlySub : best ? t.nv.vycep.myBest(best.votes, ranked.indexOf(best) + 1) : t.nv.vycep.myNoneSub}
+                </T>
+              </View>
+              <Icon name="chevron-right" size={16} color={C.muted} />
+            </Press>
+            <Segmented
+              height={38}
+              options={[
+                { key: 'nove', label: t.nv.vycep.tabNew },
+                { key: 'vedou', label: t.nv.vycep.tabTop },
+              ]}
+              value={tab}
+              onChange={setTab}
+            />
+            {failed && !snap ? (
+              <View style={{ backgroundColor: C.card, borderRadius: 24, padding: 16, gap: 12 }}>
+                <T s={15} w={600}>
+                  {t.nv.vycep.contestLoadError}
+                </T>
+                <Button label={t.nv.vycep.retry} kind="raised" height={44} onPress={() => loadContest()} />
+              </View>
+            ) : snap && entries.length === 0 ? (
+              <T s={15} c={C.muted}>
+                {t.nv.vycep.contestEmpty}
+              </T>
+            ) : null}
+          </>
+        }
       />
-      {failed && !snap ? (
-        <View style={{ backgroundColor: C.card, borderRadius: 24, padding: 16, gap: 12 }}>
-          <T s={15} w={600}>
-            {t.nv.vycep.contestLoadError}
-          </T>
-          <Button label={t.nv.vycep.retry} kind="raised" height={44} onPress={() => loadContest()} />
-        </View>
-      ) : snap && entries.length === 0 ? (
-        <T s={15} c={C.muted}>
-          {t.nv.vycep.contestEmpty}
+      <TopFade />
+      <BottomFade height={footerH + 68} denseFrom={footerBottom + footerH} />
+      <View onLayout={(e) => setFooterH(e.nativeEvent.layout.height)} style={{ position: 'absolute', left: SCREEN_X, right: SCREEN_X, bottom: footerBottom }}>
+        {footer}
+      </View>
+    </View>
+  );
+}
+
+function BlockGap() {
+  return <View style={{ height: 14 }} />;
+}
+
+function EntryTile({ entry: e, width, height, onOpen }: { entry: PhotoContestEntry; width: number; height: number; onOpen: (entry: PhotoContestEntry) => void }) {
+  const router = useNvRouter();
+  const sub = [e.beerName, e.pubName].filter(Boolean).join(' · ') || e.caption;
+  const name = e.isMine ? t.nv.vycep.me : handleOf(e.account);
+  return (
+    <View style={{ gap: 6 }}>
+      <View>
+        <Press onPress={() => onOpen(e)} accessibilityRole="imagebutton" accessibilityLabel={name}>
+          <Image source={{ uri: e.thumbUrl }} style={{ width, height, borderRadius: 20, backgroundColor: C.card }} />
+        </Press>
+        <Press hitSlop={8} accessibilityLabel={t.nv.vycep.entryMenu} onPress={() => entryMenu(e)} style={[{ position: 'absolute', right: 10, top: 10, width: 28, height: 28, borderRadius: 14, backgroundColor: C.onYellowMuted }, s.center]}>
+          <Icon name="ellipsis" size={14} />
+        </Press>
+        <RoundButton entry={e} style={{ position: 'absolute', left: 10, bottom: 10 }} />
+      </View>
+      <Press
+        disabled={e.isMine}
+        onPress={() => router.push({ pathname: '/nv/kamos/[id]', params: { id: e.account.id } })}
+        accessibilityRole={e.isMine ? undefined : 'button'}
+        style={{ alignSelf: 'flex-start', maxWidth: '100%' }}
+      >
+        <T s={14} w={700} numberOfLines={1}>
+          {name}
+        </T>
+      </Press>
+      {sub ? (
+        <T s={12} c={C.muted} numberOfLines={2} style={{ marginTop: -4 }}>
+          {sub}
         </T>
       ) : null}
-      <View style={[s.row, { gap: 10, alignItems: 'flex-start' }]}>
-        {[0, 1].map((c) => (
-          <View key={c} style={{ width: col, gap: 14 }}>
-            {entries
-              .filter((_, i) => i % 2 === c)
-              .map((e, i) => {
-                const h = (c + i) % 2 ? 170 : 210;
-                const sub = [e.beerName, e.pubName].filter(Boolean).join(' · ') || e.caption;
-                const name = e.isMine ? t.nv.vycep.me : handleOf(e.account);
-                return (
-                  <View key={e.id} style={{ gap: 6 }}>
-                    <View>
-                      <Press onPress={() => openEntry(e)} accessibilityRole="imagebutton" accessibilityLabel={name}>
-                        <Image source={{ uri: e.imageUrl }} style={{ width: col, height: h, borderRadius: 20, backgroundColor: C.card }} />
-                      </Press>
-                      <Press hitSlop={8} accessibilityLabel={t.nv.vycep.entryMenu} onPress={() => entryMenu(e)} style={[{ position: 'absolute', right: 10, top: 10, width: 28, height: 28, borderRadius: 14, backgroundColor: C.onYellowMuted }, s.center]}>
-                        <Icon name="ellipsis" size={14} />
-                      </Press>
-                      <RoundButton entry={e} style={{ position: 'absolute', left: 10, bottom: 10 }} />
-                    </View>
-                    <Press
-                      disabled={e.isMine}
-                      onPress={() => router.push({ pathname: '/nv/kamos/[id]', params: { id: e.account.id } })}
-                      accessibilityRole={e.isMine ? undefined : 'button'}
-                      style={{ alignSelf: 'flex-start', maxWidth: '100%' }}
-                    >
-                      <T s={14} w={700} numberOfLines={1}>
-                        {name}
-                      </T>
-                    </Press>
-                    {sub ? (
-                      <T s={12} c={C.muted} numberOfLines={2} style={{ marginTop: -4 }}>
-                        {sub}
-                      </T>
-                    ) : null}
-                  </View>
-                );
-              })}
-          </View>
-        ))}
-      </View>
-    </Screen>
+    </View>
   );
 }
 
 function photoUri(photo: BeerPhotoLocal): string | null {
-  return photo.imageUrl ?? photo.localUri ?? null;
+  return photo.thumbUrl || photo.imageUrl || photo.localUri || null;
 }
 
 export function PrihlasitFotkuSheet() {

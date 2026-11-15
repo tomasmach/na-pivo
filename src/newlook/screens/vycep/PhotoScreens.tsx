@@ -31,6 +31,7 @@ type PhotoItem = {
   key: string;
   id: string | null;
   uri: string | null;
+  thumb: string | null;
   caption: string;
   pubName: string;
   beerName: string;
@@ -47,6 +48,7 @@ function fromLocal(photo: BeerPhotoLocal): PhotoItem {
     key: photo.id ?? photo.clientId,
     id: photo.id,
     uri: photo.imageUrl ?? photo.localUri ?? null,
+    thumb: photo.thumbUrl || photo.imageUrl || photo.localUri || null,
     caption: photo.caption,
     pubName: photo.pubName,
     beerName: photo.beerName ?? '',
@@ -64,6 +66,7 @@ function fromRemote(photo: BeerPhoto, myIds: Set<string>): PhotoItem {
     key: photo.id,
     id: photo.id,
     uri: photo.imageUrl || null,
+    thumb: photo.thumbUrl || null,
     caption: photo.caption,
     pubName: photo.pubName,
     beerName: photo.beerName ?? '',
@@ -186,7 +189,7 @@ export function PivniFotkyScreen() {
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 4 }}>
             {m.photos.map((p) => (
               <Press key={p.key} onPress={() => router.push({ pathname: '/nv/fotka/[n]', params: { n: p.key } })}>
-                {p.uri ? <Image source={{ uri: p.uri }} style={{ width: size, height: size, borderRadius: 8 }} /> : <View style={{ width: size, height: size, borderRadius: 8, backgroundColor: C.card }} />}
+                {p.thumb ? <Image source={{ uri: p.thumb }} style={{ width: size, height: size, borderRadius: 8 }} /> : <View style={{ width: size, height: size, borderRadius: 8, backgroundColor: C.card }} />}
                 {p.state ? (
                   <View style={[s.row, { position: 'absolute', left: 8, bottom: 8, height: 26, borderRadius: 13, paddingHorizontal: 9, gap: 5, backgroundColor: C.onYellowMuted }]}>
                     <Icon name={p.state === 'upload' ? 'upload' : 'rotate-cw'} size={12} color={p.state === 'upload' ? C.white : C.yellow} />

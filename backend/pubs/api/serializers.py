@@ -1902,6 +1902,7 @@ class BeerPhotoSerializer(serializers.ModelSerializer):
 
     id = serializers.UUIDField(source="public_id", read_only=True)
     image_url = serializers.SerializerMethodField()
+    thumb_url = serializers.SerializerMethodField()
     pub_cache_key = serializers.SerializerMethodField()
     pub_name = serializers.SerializerMethodField()
     pub_city = serializers.SerializerMethodField()
@@ -1915,6 +1916,7 @@ class BeerPhotoSerializer(serializers.ModelSerializer):
             "id",
             "client_id",
             "image_url",
+            "thumb_url",
             "caption",
             "pub_cache_key",
             "pub_name",
@@ -1936,6 +1938,9 @@ class BeerPhotoSerializer(serializers.ModelSerializer):
 
     def get_image_url(self, obj: BeerPhoto) -> str | None:
         return _photo_image_url(obj.image, self.context.get("request"))
+
+    def get_thumb_url(self, obj: BeerPhoto) -> str | None:
+        return _photo_image_url(obj.thumbnail, self.context.get("request"))
 
     def get_pub_cache_key(self, obj: BeerPhoto) -> str | None:
         return obj.pub_cache_key or None
@@ -2005,6 +2010,7 @@ class PhotoContestEntrySerializer(serializers.ModelSerializer):
     account = PhotoContestAccountSerializer(read_only=True)
     photo_id = serializers.UUIDField(source="photo.public_id", read_only=True)
     image_url = serializers.SerializerMethodField()
+    thumb_url = serializers.SerializerMethodField()
     caption = serializers.CharField(source="photo.caption", read_only=True)
     pub_name = serializers.SerializerMethodField()
     pub_city = serializers.SerializerMethodField()
@@ -2020,6 +2026,7 @@ class PhotoContestEntrySerializer(serializers.ModelSerializer):
             "account",
             "photo_id",
             "image_url",
+            "thumb_url",
             "caption",
             "pub_name",
             "pub_city",
@@ -2036,6 +2043,9 @@ class PhotoContestEntrySerializer(serializers.ModelSerializer):
 
     def get_image_url(self, obj: PhotoContestEntry) -> str | None:
         return _photo_image_url(obj.photo.image, self.context.get("request"))
+
+    def get_thumb_url(self, obj: PhotoContestEntry) -> str | None:
+        return _photo_image_url(obj.photo.thumbnail, self.context.get("request"))
 
     def get_pub_name(self, obj: PhotoContestEntry) -> str | None:
         return obj.photo.pub_name or None
@@ -2063,16 +2073,20 @@ class PhotoContestWinnerSerializer(serializers.ModelSerializer):
     rank = serializers.IntegerField(source="final_rank", read_only=True)
     account = PhotoContestAccountSerializer(read_only=True)
     image_url = serializers.SerializerMethodField()
+    thumb_url = serializers.SerializerMethodField()
     caption = serializers.CharField(source="photo.caption", read_only=True)
     votes = serializers.IntegerField(source="final_votes", read_only=True)
 
     class Meta:
         model = PhotoContestEntry
-        fields = ["rank", "account", "image_url", "caption", "votes"]
+        fields = ["rank", "account", "image_url", "thumb_url", "caption", "votes"]
         read_only_fields = fields
 
     def get_image_url(self, obj: PhotoContestEntry) -> str | None:
         return _photo_image_url(obj.photo.image, self.context.get("request"))
+
+    def get_thumb_url(self, obj: PhotoContestEntry) -> str | None:
+        return _photo_image_url(obj.photo.thumbnail, self.context.get("request"))
 
 
 class PhotoContestEnterSerializer(serializers.Serializer):

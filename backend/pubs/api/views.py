@@ -256,10 +256,11 @@ from pubs.models import (
     XpEvent,
     account_deletion_fingerprint,
     account_deletion_fingerprint_matches,
+    beer_photo_thumbnail_name,
     hash_account_token,
 )
 from pubs.photo_contest import _rank_xp, current_photo_contest
-from pubs.photos import BeerPhotoError, process_beer_photo
+from pubs.photos import BeerPhotoError, process_beer_photo, store_beer_photo_thumbnail
 from pubs.pivar import pivar_snapshot
 from pubs.price_index import upsert_pub_price_index
 from pubs.user_added_pub_geocoding import resolve_user_added_pub_location
@@ -9104,7 +9105,7 @@ class BeerPhotoView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
         try:
-            content = process_beer_photo(upload)
+            processed = process_beer_photo(upload)
         except BeerPhotoError as exc:
             return _coded_error(exc)
 
@@ -9124,7 +9125,7 @@ class BeerPhotoView(APIView):
         )
         # upload_to ignores the supplied name and builds the stable
         # beer-photos/<account>/<photo>.webp path from the instance's uuids.
-        photo.image.save("photo.webp", content, save=False)
+        photo.image.save("photo.webp", processed.image, save=False)
 
         def _discard_unsaved_file(cleanup_account: Account | None) -> None:
             """Make even a never-committed upload durably removable."""
@@ -9140,7 +9141,9 @@ class BeerPhotoView(APIView):
                     type(exc).__name__,
                 )
                 try:
+                    thumbnail_name = beer_photo_thumbnail_name(photo.image.name)
                     photo.image.delete(save=False)
+                    photo.thumbnail.storage.delete(thumbnail_name)
                 except Exception as storage_exc:  # noqa: BLE001
                     logger.error(
                         "beer_photos: unsaved file cleanup failed (%s)",
@@ -9149,6 +9152,11 @@ class BeerPhotoView(APIView):
                 return
             if cleanup_id is not None:
                 schedule_beer_photo_file_deletions([cleanup_id])
+
+        try:
+            store_beer_photo_thumbnail(photo, processed.thumbnail)
+        except OSError as exc:
+            logger.warning("beer_photos: thumbnail write failed (%s)", type(exc).__name__)
 
         try:
             with transaction.atomic():

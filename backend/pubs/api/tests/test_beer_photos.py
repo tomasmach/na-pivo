@@ -177,6 +177,7 @@ def test_upload_happy_path_stores_downscaled_webp(client, tmp_media):
         "id",
         "client_id",
         "image_url",
+        "thumb_url",
         "caption",
         "pub_cache_key",
         "pub_name",
@@ -204,6 +205,12 @@ def test_upload_happy_path_stores_downscaled_webp(client, tmp_media):
     with Image.open(stored) as img:
         assert img.format == "WEBP"
         assert img.size == (1600, 960)
+    thumbnail = Path(photo.thumbnail.path)
+    assert thumbnail.parent == stored.parent
+    assert body["thumb_url"] == f"http://testserver/media/{photo.thumbnail.name}"
+    with Image.open(thumbnail) as img:
+        assert img.format == "WEBP"
+        assert img.size == (1067, 640)
 
 
 @pytest.mark.django_db
@@ -234,8 +241,9 @@ def test_upload_retry_same_client_id_is_idempotent(client):
     # The retry returns the EXISTING photo unchanged (image not re-processed).
     assert second.json()["photo"]["id"] == first.json()["photo"]["id"]
     assert second.json()["photo"]["caption"] == "Večer u Tygra"
-    media_files = list(Path(BeerPhoto.objects.get().image.path).parent.iterdir())
-    assert len(media_files) == 1
+    photo = BeerPhoto.objects.get()
+    media_files = set(Path(photo.image.path).parent.iterdir())
+    assert media_files == {Path(photo.image.path), Path(photo.thumbnail.path)}
 
 
 @pytest.mark.django_db
@@ -388,7 +396,9 @@ def test_delete_photo_removes_row_and_file(client):
     photo_id = created.json()["photo"]["id"]
     client_id = created.json()["photo"]["client_id"]
     stored = Path(BeerPhoto.objects.get().image.path)
+    thumbnail = Path(BeerPhoto.objects.get().thumbnail.path)
     assert stored.exists()
+    assert thumbnail.exists()
 
     foreign = client.delete(f"/v1/beer-photos/{photo_id}", **_auth(token_other))
     deleted = client.delete(f"/v1/beer-photos/{photo_id}", **_auth(token))
@@ -402,6 +412,7 @@ def test_delete_photo_removes_row_and_file(client):
     assert replay.status_code == status.HTTP_410_GONE, replay.content
     assert BeerPhoto.objects.count() == 0
     assert not stored.exists()
+    assert not thumbnail.exists()
 
 
 @pytest.mark.django_db
@@ -502,7 +513,7 @@ def test_worker_failure_does_not_starve_new_media_cleanup(monkeypatch):
 
     call_command("retry_beer_photo_deletions", "--batch-size", "1")
 
-    assert attempts == [broken.image_name, fresh.image_name]
+    assert attempts == [broken.image_name, fresh.image_name, "beer-photos/fresh.thumb.webp"]
     assert BeerPhotoFileDeletion.objects.filter(pk=broken.pk).exists()
     assert not BeerPhotoFileDeletion.objects.filter(pk=fresh.pk).exists()
 
@@ -526,7 +537,7 @@ def test_worker_retries_failed_media_only_after_cooldown(monkeypatch):
     )
     call_command("retry_beer_photo_deletions", "--batch-size", "1")
 
-    assert attempts == [cleanup.image_name]
+    assert attempts == [cleanup.image_name, "beer-photos/retry-after-cooldown.thumb.webp"]
     assert not BeerPhotoFileDeletion.objects.filter(pk=cleanup.pk).exists()
 
 
@@ -802,3 +813,96 @@ def test_ugc_gate_does_not_block_private_photo_post_without_acceptance(client):
 
     assert resp.status_code == status.HTTP_201_CREATED, resp.content
     assert BeerPhoto.objects.get().visibility == BeerPhoto.Visibility.PRIVATE
+
+
+@pytest.mark.django_db(transaction=True)
+def test_account_hard_delete_removes_photo_and_thumbnail(client):
+    from pubs import accounts
+
+    token, account = _register(client, "janek")
+    _post_photo(client, token)
+    photo = BeerPhoto.objects.get()
+    stored, thumbnail = Path(photo.image.path), Path(photo.thumbnail.path)
+    assert stored.exists() and thumbnail.exists()
+
+    accounts.hard_delete(account)
+
+    assert not stored.exists()
+    assert not thumbnail.exists()
+    assert not BeerPhotoFileDeletion.objects.exists()
+
+
+@pytest.mark.django_db
+def test_upload_survives_thumbnail_write_failure_and_backfill_creates_it(client, monkeypatch):
+    token, _account = _register(client, "janek")
+
+    def broken(_photo, _content):
+        raise OSError("media volume full")
+
+    with monkeypatch.context() as patched:
+        patched.setattr("pubs.api.views.store_beer_photo_thumbnail", broken)
+        resp = _post_photo(client, token, image=_upload(_jpeg_bytes(size=(1200, 2000))))
+
+    assert resp.status_code == status.HTTP_201_CREATED, resp.content
+    assert resp.json()["photo"]["thumb_url"] is None
+    assert resp.json()["photo"]["image_url"]
+
+    call_command("create_beer_photo_thumbnails")
+
+    photo = BeerPhoto.objects.get()
+    assert photo.thumbnail.name.endswith(".thumb.webp")
+    with Image.open(photo.thumbnail.path) as img:
+        assert img.size == (640, 1067)
+    listed = client.get("/v1/beer-photos", **_auth(token)).json()["photos"][0]
+    assert listed["thumb_url"] == f"http://testserver/media/{photo.thumbnail.name}"
+
+
+@pytest.mark.django_db
+def test_thumbnail_backfill_skips_missing_files_without_starving_the_rest(client):
+    token, account = _register(client, "janek")
+    missing = _create_photo(account, "soubor chybí")
+    _post_photo(client, token)
+    stored = BeerPhoto.objects.exclude(pk=missing.pk).get()
+    Path(stored.thumbnail.path).unlink()
+    BeerPhoto.objects.filter(pk=stored.pk).update(thumbnail="")
+    small = BeerPhoto.objects.create(
+        account=account,
+        client_id=uuid.uuid4(),
+        image=f"beer-photos/{account.public_id}/{uuid.uuid4()}.webp",
+    )
+    Path(small.image.path).parent.mkdir(parents=True, exist_ok=True)
+    Image.new("RGB", (300, 400), (10, 10, 10)).save(small.image.path, format="WEBP")
+
+    call_command("create_beer_photo_thumbnails", "--limit", "1")
+    call_command("create_beer_photo_thumbnails", "--limit", "1")
+
+    stored.refresh_from_db()
+    small.refresh_from_db()
+    missing.refresh_from_db()
+    assert missing.thumbnail.name == ""
+    assert Path(stored.thumbnail.path).exists()
+    with Image.open(small.thumbnail.path) as img:
+        assert img.size == (300, 400)
+
+
+@pytest.mark.django_db
+def test_thumbnail_backfill_removes_thumbnail_of_photo_deleted_meanwhile(client, monkeypatch):
+    from pubs.management.commands import create_beer_photo_thumbnails as command
+
+    token, _account = _register(client, "janek")
+    _post_photo(client, token)
+    photo = BeerPhoto.objects.get()
+    thumbnail = Path(photo.thumbnail.path)
+    thumbnail.unlink()
+    BeerPhoto.objects.filter(pk=photo.pk).update(thumbnail="")
+    photo.refresh_from_db()
+    original_store = command.store_beer_photo_thumbnail
+
+    def store_then_lose_row(target, content):
+        original_store(target, content)
+        BeerPhoto.objects.filter(pk=target.pk).delete()
+
+    monkeypatch.setattr(command, "store_beer_photo_thumbnail", store_then_lose_row)
+
+    assert command.create_thumbnail(photo) is False
+    assert not thumbnail.exists()

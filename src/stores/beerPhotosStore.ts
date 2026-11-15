@@ -43,6 +43,8 @@ export interface BeerPhotoLocal {
   clientId: string;
   /** Absolute remote URL once synced; null while only local (render localUri). */
   imageUrl: string | null;
+  /** List-size remote URL; absent on entries persisted by older builds. */
+  thumbUrl?: string;
   caption: string;
   pubCacheKey: string;
   pubName: string;
@@ -83,6 +85,7 @@ function fromServerPhoto(photo: BeerPhoto): BeerPhotoLocal {
     id: photo.id,
     clientId: photo.clientId,
     imageUrl: photo.imageUrl,
+    thumbUrl: photo.thumbUrl,
     caption: photo.caption,
     pubCacheKey: photo.pubCacheKey,
     pubName: photo.pubName,
