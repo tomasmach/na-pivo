@@ -8,7 +8,7 @@ from pubs.beer_photo_deletions import (
     enqueue_beer_photo_file_deletion,
     retry_beer_photo_file_deletion,
 )
-from pubs.models import BeerPhoto
+from pubs.models import Account, BeerPhoto
 from pubs.photos import BeerPhotoError, beer_photo_thumbnail, store_beer_photo_thumbnail
 
 logger = logging.getLogger("pubs.beer_photo_thumbnails")
@@ -57,5 +57,6 @@ def create_thumbnail(photo: BeerPhoto) -> bool:
     if BeerPhoto.objects.filter(pk=photo.pk, thumbnail="").update(thumbnail=photo.thumbnail.name):
         return True
     if not BeerPhoto.objects.filter(pk=photo.pk).exists():
-        retry_beer_photo_file_deletion(enqueue_beer_photo_file_deletion(photo, account=None))
+        owner = Account.objects.filter(pk=photo.account_id).first()
+        retry_beer_photo_file_deletion(enqueue_beer_photo_file_deletion(photo, account=owner))
     return False

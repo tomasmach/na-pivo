@@ -937,5 +937,6 @@ def test_thumbnail_backfill_keeps_cleanup_of_a_late_thumbnail_it_could_not_delet
 
     assert thumbnail.exists()
     cleanup = BeerPhotoFileDeletion.objects.get(image_name=photo.image.name)
+    assert cleanup.account_id == photo.account_id
     assert retry_beer_photo_file_deletion(cleanup.pk) is True
     assert not thumbnail.exists()
