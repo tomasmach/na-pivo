@@ -651,6 +651,20 @@ describe('unlink', () => {
     expect(mockEnsureAccount).not.toHaveBeenCalled();
   });
 
+  it('keeps the sharing defaults, which a setting saved during the request may have changed', async () => {
+    useVycepStore.setState({ ...DEFAULT_SHARING_PREFS });
+    const sharing = { shareDefault: 'public', nightAutopublish: 'friends' } as const;
+    mockedAuth.unlinkProvider.mockResolvedValue(okResult(signedInProfile({ sharing })));
+
+    await useAccountStore.getState().unlink('google');
+    await new Promise((resolve) => setImmediate(resolve));
+
+    expect(useVycepStore.getState()).toMatchObject({
+      shareDefault: DEFAULT_SHARING_PREFS.shareDefault,
+      nightAutopublish: DEFAULT_SHARING_PREFS.nightAutopublish,
+    });
+  });
+
   it('does not touch the profile on failure', async () => {
     const existing = signedInProfile();
     useAccountStore.setState({ profile: existing });

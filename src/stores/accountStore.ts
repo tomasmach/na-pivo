@@ -296,7 +296,6 @@ export const useAccountStore = create<AccountState>((set, get) => {
       claimProfileWrite(takeProfileTicket());
       set({ profile: result.profile });
       applyAccountSettings(result.profile.settings);
-      adoptServerSharing(result.profile.sharing, sharingReadTicket());
     }
     return result;
   };
