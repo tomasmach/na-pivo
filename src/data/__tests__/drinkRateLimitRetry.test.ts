@@ -293,14 +293,14 @@ it('lets the replacement account GET drinks immediately after private data is cl
   await noteDrinkThrottled(reply(429, '60'));
   global.fetch = jest.fn(async () => ({ ...reply(200), json: async () => ({ drinks: [] }) }));
 
-  expect(await fetchDrinks()).toBeNull();
+  expect(await fetchDrinks(null)).toBeNull();
   expect(global.fetch).not.toHaveBeenCalled();
   const previousGeneration = getDrinkRateLimitGeneration();
   await clearLocalPrivateAccountData();
   // A response from a request sent by the old account may arrive afterward.
   await noteDrinkThrottled(reply(429, '60'), previousGeneration);
   expect(await storage.getItem('na-pivo-drinks-retry-after')).toBeNull();
-  expect(await fetchDrinks()).toEqual([]);
+  expect(await fetchDrinks(null)).toMatchObject({ body: { drinks: [] } });
   expect(global.fetch).toHaveBeenCalledTimes(1);
 });
 

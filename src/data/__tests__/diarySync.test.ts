@@ -1,5 +1,9 @@
+import AsyncStorage from '@react-native-async-storage/async-storage';
+
+import { clearDiaryCache, DIARY_CACHE_KEY } from '../diaryCache';
 import {
   deriveReconciledDiaryStats,
+  diaryIdsHash,
   mergeServerDiaryHistory,
   reconcileDiarySnapshot,
   restoreAccountDiary,
@@ -22,8 +26,14 @@ jest.mock('@react-native-async-storage/async-storage', () =>
 jest.mock('@/data/account', () => ({ generateUuidV4: jest.fn(() => 'uuid') }));
 jest.mock('@/data/visitsSync', () => ({ deleteVisitByClientId: jest.fn(), syncVisit: jest.fn() }));
 
-jest.mock('../drinksClient', () => ({ fetchDrinks: jest.fn() }));
-jest.mock('../visitsClient', () => ({ fetchVisits: jest.fn() }));
+jest.mock('../drinksClient', () => ({
+  fetchDrinks: jest.fn(),
+  isWireDrink: (drink: { drank_at?: unknown }) => typeof drink.drank_at === 'string',
+}));
+jest.mock('../visitsClient', () => ({
+  fetchVisits: jest.fn(),
+  isWireVisit: (visit: { started_at?: unknown }) => typeof visit.started_at === 'string',
+}));
 jest.mock('../drinksQueue', () => ({ flushDrinksQueue: jest.fn(async () => undefined) }));
 jest.mock('../deleteDrinksQueue', () => ({
   flushDeleteDrinksQueue: jest.fn(async () => undefined),
@@ -94,7 +104,37 @@ function localSession(clientId: string, pubKey: string, drinkIds: string[]): Tal
   };
 }
 
-beforeEach(() => {
+/** What a backend without `?since=` support answers. */
+function released(key: 'drinks' | 'visits', rows: unknown[]) {
+  return { accountId: 'acc', body: { [key]: rows } };
+}
+
+function answer(
+  key: 'drinks' | 'visits',
+  rows: { client_id: string }[],
+  { all, since, removed = [], live = rows, accountId = 'acc' }: {
+    all: boolean;
+    since: string;
+    removed?: string[];
+    live?: { client_id: string }[];
+    accountId?: string;
+  },
+) {
+  return {
+    accountId,
+    body: {
+      [key]: rows,
+      removed,
+      full: all,
+      next_since: since,
+      total: live.length,
+      ids_hash: diaryIdsHash(live),
+    },
+  };
+}
+
+beforeEach(async () => {
+  await clearDiaryCache();
   jest.clearAllMocks();
   useTallyStore.setState({ current: null, history: [], restoredAccountId: null });
   useCommunityStore.setState({ overrides: {} });
@@ -103,8 +143,8 @@ beforeEach(() => {
 it('loads an authoritative beer and visit snapshot on a new device', async () => {
   const drinks = [remoteDrink('d1', PUB_A), remoteDrink('d2', PUB_B)];
   const visits = [remoteVisit('v1', PUB_A), remoteVisit('v2', PUB_B)];
-  (fetchDrinks as jest.Mock).mockResolvedValue(drinks);
-  (fetchVisits as jest.Mock).mockResolvedValue(visits);
+  (fetchDrinks as jest.Mock).mockResolvedValue(released('drinks', drinks));
+  (fetchVisits as jest.Mock).mockResolvedValue(released('visits', visits));
 
   await expect(reconcileDiarySnapshot()).resolves.toEqual({ drinks, visits });
   expect(flushDrinksQueue).toHaveBeenCalledTimes(1);
@@ -134,14 +174,14 @@ it('gives the diary the server beer names but keeps a name the user is changing'
   (fetchDrinks as jest.Mock).mockImplementation(async () => {
     // The user renames this beer while the snapshot is on its way.
     useTallyStore.getState().updateDrinkNameInSession(session.startedAt, 'renamed', 'Bernard 11');
-    return [
+    return released('drinks', [
       remote('radek', 'Radegast Ryze Hořká 12°'),
       remote('edited', 'Primátor 11°'),
       remote('renamed', 'Pilsner Urquell'),
       remote('same', 'Kozel 11'),
-    ];
+    ]);
   });
-  (fetchVisits as jest.Mock).mockResolvedValue([]);
+  (fetchVisits as jest.Mock).mockResolvedValue(released('visits', []));
   (getQueuedUpdateIds as jest.Mock).mockResolvedValueOnce(new Set(['edited']));
 
   await reconcileDiarySnapshot();
@@ -169,8 +209,8 @@ it('spells the pub\'s local menu like the server, without making it newer', asyn
     },
   });
   const drink = remoteDrink('radek', PUB_A);
-  (fetchDrinks as jest.Mock).mockResolvedValue([{ ...drink, beer: { ...drink.beer, name: radegast.name } }]);
-  (fetchVisits as jest.Mock).mockResolvedValue([]);
+  (fetchDrinks as jest.Mock).mockResolvedValue(released('drinks', [{ ...drink, beer: { ...drink.beer, name: radegast.name } }]));
+  (fetchVisits as jest.Mock).mockResolvedValue(released('visits', []));
 
   await reconcileDiarySnapshot();
 
@@ -186,8 +226,8 @@ it('keeps a name whose queued edit lands while the snapshot is read', async () =
   session.drinks[0].beerName = 'Primátor 11';
   useTallyStore.setState({ current: null, history: [session] });
   const drink = remoteDrink('edited', PUB_A);
-  (fetchDrinks as jest.Mock).mockResolvedValue([{ ...drink, beer: { ...drink.beer, name: 'Plzeň' } }]);
-  (fetchVisits as jest.Mock).mockResolvedValue([]);
+  (fetchDrinks as jest.Mock).mockResolvedValue(released('drinks', [{ ...drink, beer: { ...drink.beer, name: 'Plzeň' } }]));
+  (fetchVisits as jest.Mock).mockResolvedValue(released('visits', []));
   // Queued when the pull starts, delivered by another flush before it ends.
   (getQueuedUpdateIds as jest.Mock)
     .mockResolvedValueOnce(new Set(['edited']))
@@ -200,11 +240,11 @@ it('keeps a name whose queued edit lands while the snapshot is read', async () =
 
 it('leaves out a removed drink whose deletion is still queued', async () => {
   const visits = [remoteVisit('v1', PUB_A)];
-  (fetchDrinks as jest.Mock).mockResolvedValue([
+  (fetchDrinks as jest.Mock).mockResolvedValue(released('drinks', [
     remoteDrink('kept', PUB_A),
     remoteDrink('removed', PUB_A),
-  ]);
-  (fetchVisits as jest.Mock).mockResolvedValue(visits);
+  ]));
+  (fetchVisits as jest.Mock).mockResolvedValue(released('visits', visits));
   (getQueuedDeleteIds as jest.Mock).mockResolvedValueOnce(new Set(['removed']));
 
   const snapshot = await reconcileDiarySnapshot();
@@ -214,14 +254,135 @@ it('leaves out a removed drink whose deletion is still queued', async () => {
 });
 
 it('leaves out a wiped evening whose visit DELETE is still queued', async () => {
-  (fetchDrinks as jest.Mock).mockResolvedValue([]);
-  (fetchVisits as jest.Mock).mockResolvedValue([remoteVisit('kept', PUB_A), remoteVisit('wiped', PUB_B)]);
+  (fetchDrinks as jest.Mock).mockResolvedValue(released('drinks', []));
+  (fetchVisits as jest.Mock).mockResolvedValue(released('visits', [remoteVisit('kept', PUB_A), remoteVisit('wiped', PUB_B)]));
   (getQueuedVisitDeleteIds as jest.Mock).mockResolvedValueOnce(new Set(['wiped']));
 
   const snapshot = await reconcileDiarySnapshot();
 
   expect(snapshot?.visits).toEqual([remoteVisit('kept', PUB_A)]);
   expect(deriveReconciledDiaryStats(snapshot!, []).distinctPubs).toBe(1);
+});
+
+describe('downloading only what changed', () => {
+  const drinkAt = (id: string, hour: number, name = 'Plzeň') => {
+    const drink = remoteDrink(id, PUB_A);
+    return { ...drink, drank_at: `2026-07-19T${hour}:00:00Z`, beer: { ...drink.beer, name } };
+  };
+  const cursors = (mock: unknown) => (mock as jest.Mock).mock.calls.map(([cursor]) => cursor);
+
+  it('asks for the changes since the last read and keeps the whole diary', async () => {
+    const session = localSession('s1', PUB_A, ['d2']);
+    session.drinks[0].beerName = 'Radek 12';
+    session.drinks[0].syncStatus = 'sent';
+    useTallyStore.setState({ current: null, history: [session] });
+    const visit = remoteVisit('v1', PUB_A);
+    (fetchDrinks as jest.Mock).mockResolvedValueOnce(
+      answer('drinks', [drinkAt('d1', 18), drinkAt('d2', 19, 'Radek 12')], { all: true, since: '100' }),
+    );
+    (fetchVisits as jest.Mock).mockResolvedValueOnce(answer('visits', [visit], { all: true, since: '100' }));
+    await reconcileDiarySnapshot();
+
+    const renamed = drinkAt('d2', 19, 'Radegast Ryze Hořká 12°');
+    const added = drinkAt('d3', 20);
+    (fetchDrinks as jest.Mock).mockResolvedValueOnce(
+      answer('drinks', [renamed, added], { all: false, since: '200', removed: ['d1'], live: [renamed, added] }),
+    );
+    (fetchVisits as jest.Mock).mockResolvedValueOnce(answer('visits', [], { all: false, since: '200', live: [visit] }));
+
+    const snapshot = await reconcileDiarySnapshot();
+
+    expect(cursors(fetchDrinks)).toEqual([null, { accountId: 'acc', since: '100' }]);
+    expect(cursors(fetchVisits)).toEqual([null, { accountId: 'acc', since: '100' }]);
+    expect(snapshot).toEqual({ drinks: [added, renamed], visits: [visit] });
+    expect(useTallyStore.getState().history[0].drinks[0].beerName).toBe('Radegast Ryze Hořká 12°');
+  });
+
+  it('downloads everything again when the changes do not add up', async () => {
+    const all = [drinkAt('d1', 18), drinkAt('d2', 19), drinkAt('d3', 20)];
+    (fetchDrinks as jest.Mock)
+      .mockResolvedValueOnce(answer('drinks', all.slice(0, 2), { all: true, since: '100' }))
+      .mockResolvedValueOnce(answer('drinks', [], { all: false, since: '200', live: all }))
+      .mockResolvedValueOnce(answer('drinks', all, { all: true, since: '300' }));
+    (fetchVisits as jest.Mock).mockResolvedValue(answer('visits', [], { all: true, since: '100' }));
+    await reconcileDiarySnapshot();
+
+    const snapshot = await reconcileDiarySnapshot();
+
+    expect(cursors(fetchDrinks)).toEqual([null, { accountId: 'acc', since: '100' }, null]);
+    expect(snapshot?.drinks).toEqual([...all].reverse());
+  });
+
+  it('never mixes the diaries of two accounts', async () => {
+    (fetchDrinks as jest.Mock)
+      .mockResolvedValueOnce(answer('drinks', [drinkAt('mine', 18)], { all: true, since: '100' }))
+      .mockResolvedValueOnce(answer('drinks', [drinkAt('theirs', 19)], { all: true, since: '500', accountId: 'other' }))
+      .mockResolvedValueOnce(answer('drinks', [], { all: false, since: '600', accountId: 'other', live: [drinkAt('theirs', 19)] }));
+    (fetchVisits as jest.Mock)
+      .mockResolvedValueOnce(answer('visits', [], { all: true, since: '100' }))
+      .mockResolvedValueOnce(answer('visits', [], { all: true, since: '500', accountId: 'other' }))
+      .mockResolvedValueOnce(answer('visits', [], { all: false, since: '600', accountId: 'other' }));
+    await reconcileDiarySnapshot();
+
+    expect((await reconcileDiarySnapshot())?.drinks).toEqual([drinkAt('theirs', 19)]);
+    expect((await reconcileDiarySnapshot())?.drinks).toEqual([drinkAt('theirs', 19)]);
+    expect(cursors(fetchDrinks)[2]).toEqual({ accountId: 'other', since: '500' });
+  });
+
+  it('keeps no copy when the backend still sends the old full list', async () => {
+    (fetchDrinks as jest.Mock).mockResolvedValue(released('drinks', [drinkAt('d1', 18)]));
+    (fetchVisits as jest.Mock).mockResolvedValue(released('visits', []));
+
+    await reconcileDiarySnapshot();
+    await reconcileDiarySnapshot();
+
+    expect(cursors(fetchDrinks)).toEqual([null, null]);
+    expect(await AsyncStorage.getItem(DIARY_CACHE_KEY)).toBeNull();
+  });
+
+  it('does not keep a diary read while the account changed', async () => {
+    (fetchDrinks as jest.Mock).mockImplementationOnce(async () => {
+      await clearDiaryCache();
+      return answer('drinks', [drinkAt('d1', 18)], { all: true, since: '100' });
+    });
+    (fetchVisits as jest.Mock).mockResolvedValue(answer('visits', [], { all: true, since: '100' }));
+    await reconcileDiarySnapshot();
+    (fetchDrinks as jest.Mock).mockResolvedValueOnce(answer('drinks', [], { all: true, since: '200' }));
+
+    await reconcileDiarySnapshot();
+
+    expect(cursors(fetchDrinks)).toEqual([null, null]);
+  });
+
+  it('continues from the copy saved by the last launch and ignores a damaged one', async () => {
+    const stored = drinkAt('d1', 18);
+    await AsyncStorage.setItem(
+      DIARY_CACHE_KEY,
+      JSON.stringify({ accountId: 'acc', drinks: { since: '100', rows: [stored] }, visits: { since: '100', rows: [] } }),
+    );
+    (fetchDrinks as jest.Mock).mockResolvedValueOnce(answer('drinks', [], { all: false, since: '200', live: [stored] }));
+    (fetchVisits as jest.Mock).mockResolvedValueOnce(answer('visits', [], { all: false, since: '200' }));
+
+    expect((await reconcileDiarySnapshot())?.drinks).toEqual([stored]);
+    expect(cursors(fetchDrinks)).toEqual([{ accountId: 'acc', since: '100' }]);
+
+    await clearDiaryCache();
+    await AsyncStorage.setItem(DIARY_CACHE_KEY, '{"accountId":"acc","drinks":');
+    (fetchDrinks as jest.Mock).mockResolvedValueOnce(answer('drinks', [stored], { all: true, since: '300' }));
+    (fetchVisits as jest.Mock).mockResolvedValueOnce(answer('visits', [], { all: true, since: '300' }));
+
+    expect((await reconcileDiarySnapshot())?.drinks).toEqual([stored]);
+    expect(cursors(fetchDrinks)[1]).toBeNull();
+  });
+
+  it('counts client IDs the way the backend does', () => {
+    const ids = [
+      'e5e40835-f85f-58b8-8805-49f48d519a6c',
+      '9a7b6c5d-4e3f-2a1b-0c9d-8e7f6a5b4c3d',
+      'ffffffff-0000-4000-8000-000000000000',
+    ];
+    expect(diaryIdsHash(ids.map((client_id) => ({ client_id })))).toBe('805f7491');
+  });
 });
 
 it('merges offline writes by client ID without double-counting synced rows', () => {

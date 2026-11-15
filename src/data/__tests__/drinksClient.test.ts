@@ -1,6 +1,7 @@
 import {
   buildDrinkEntry,
   fetchDrinks,
+  isWireDrink,
   submitDrink,
   deleteDrink,
   updateDrinkName,
@@ -159,38 +160,41 @@ describe('buildDrinkEntry', () => {
   });
 });
 
+it('reads only well-formed drinks from the server', () => {
+  const wireDrink = {
+    client_id: 'client-1',
+    cache_key: 'u2fkbn0x',
+    name: 'U Tygra',
+    lat: 50.0876,
+    lng: 14.4214,
+    city: 'Praha',
+    external_id: '',
+    place_context: 'pub',
+    drink_type: 'beer',
+    beer: { name: 'Plzeň', price_czk: 62, volume_ml: 500, serving_type: 'unknown' },
+    drank_at: '2026-07-19T18:00:00Z',
+    is_suspect: false,
+  };
+
+  expect([wireDrink, { nope: true }, { ...wireDrink, drank_at: null }].filter(isWireDrink)).toEqual([wireDrink]);
+});
+
 describe('fetchDrinks', () => {
-  it('loads and validates the private account snapshot', async () => {
+  function okBody(body: unknown) {
+    return jest.fn(async () => ({ ok: true, status: 200, json: async () => body }));
+  }
+
+  it('asks for everything without a cursor and returns the body with its account', async () => {
     setBackend('https://api.example.com');
-    const wireDrink = {
-      client_id: 'client-1',
-      cache_key: 'u2fkbn0x',
-      name: 'U Tygra',
-      lat: 50.0876,
-      lng: 14.4214,
-      city: 'Praha',
-      external_id: '',
-      place_context: 'pub',
-      drink_type: 'beer',
-      beer: {
-        name: 'Plzeň',
-        price_czk: 62,
-        volume_ml: 500,
-        serving_type: 'unknown',
-      },
-      drank_at: '2026-07-19T18:00:00Z',
-      is_suspect: false,
-    };
-    const fetchSpy = jest.fn(async () => ({
-      ok: true,
-      status: 200,
-      json: async () => ({ drinks: [wireDrink, { nope: true }] }),
-    }));
+    const fetchSpy = okBody({ drinks: [{ client_id: 'client-1' }] });
     global.fetch = fetchSpy as unknown as typeof fetch;
 
-    await expect(fetchDrinks()).resolves.toEqual([wireDrink]);
+    await expect(fetchDrinks(null)).resolves.toEqual({
+      accountId: 'a',
+      body: { drinks: [{ client_id: 'client-1' }] },
+    });
     expect(fetchSpy).toHaveBeenCalledWith(
-      'https://api.example.com/v1/drinks',
+      'https://api.example.com/v1/drinks?since=',
       expect.objectContaining({
         method: 'GET',
         headers: { Authorization: 'Bearer tok' },
@@ -198,21 +202,32 @@ describe('fetchDrinks', () => {
     );
   });
 
-  it('returns null on a failed or malformed snapshot', async () => {
+  it('continues from the cursor only for the same account', async () => {
     setBackend('https://api.example.com');
-    global.fetch = jest.fn(async () => ({
-      ok: true,
-      status: 200,
-      json: async () => ({ drinks: 'nope' }),
-    })) as unknown as typeof fetch;
-    await expect(fetchDrinks()).resolves.toBeNull();
+    const fetchSpy = okBody({ drinks: [] });
+    global.fetch = fetchSpy as unknown as typeof fetch;
+
+    await fetchDrinks({ accountId: 'a', since: '1789000000000000' });
+    await fetchDrinks({ accountId: 'someone-else', since: '1789000000000000' });
+
+    expect((fetchSpy.mock.calls as unknown as [string][]).map(([url]) => url)).toEqual([
+      'https://api.example.com/v1/drinks?since=1789000000000000',
+      'https://api.example.com/v1/drinks?since=',
+    ]);
+  });
+
+  it('returns null on a failed request', async () => {
+    setBackend('https://api.example.com');
+    global.fetch = jest.fn(async () => ({ ok: false, status: 500, json: async () => ({}) })) as unknown as typeof fetch;
+    await expect(fetchDrinks(null)).resolves.toBeNull();
 
     global.fetch = jest.fn(async () => {
       throw new Error('offline');
     }) as unknown as typeof fetch;
-    await expect(fetchDrinks()).resolves.toBeNull();
+    await expect(fetchDrinks(null)).resolves.toBeNull();
   });
 });
+
 
 describe('submitDrink', () => {
   const entry = buildDrinkEntry(INPUT, 'client-1');
