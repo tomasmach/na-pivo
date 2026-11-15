@@ -135,19 +135,34 @@ describe('refresh while Parta is open', () => {
     expect(usePartaStore.getState().failed).toBe(true);
   });
 
-  it('loads once for unread notifications older than the newest 30 and then keeps them quiet', async () => {
+  it('keeps unread notifications older than the newest 30 quiet after one load', async () => {
+    const unread = (prefix: string, count: number) =>
+      Array.from({ length: count }, (_, i) => ({ id: `${prefix}${i}`, readAt: null }));
+    (fetchFriendsDashboard as jest.Mock).mockResolvedValueOnce({ ...dashboard, notifications: unread('old', 30) });
     (fetchPartaPulse as jest.Mock)
       .mockResolvedValueOnce({ live: live({ unreadCount: 35 }), plans: [] })
-      .mockResolvedValueOnce({ live: live({ unreadCount: 5 }), plans: [] })
-      .mockResolvedValueOnce({ live: live({ unreadCount: 5 }), plans: [] })
-      .mockResolvedValueOnce({ live: live({ unreadCount: 5 }), plans: [] });
+      .mockResolvedValue({ live: live({ unreadCount: 5 }), plans: [] });
     for (let i = 0; i < 4; i += 1) {
       now += 35_000;
       await usePartaStore.getState().refresh();
     }
 
     expect(fetchPartaPulse).toHaveBeenCalledTimes(4);
+    expect(fetchFriendsDashboard).toHaveBeenCalledTimes(1);
+  });
+
+  it('loads a new notification that arrives after the previous one was read', async () => {
+    (fetchFriendsDashboard as jest.Mock)
+      .mockResolvedValueOnce({ ...dashboard, notifications: [{ id: 'n1', readAt: null }] })
+      .mockResolvedValueOnce({ ...dashboard, notifications: [{ id: 'n2', readAt: null }] });
+    (fetchPartaPulse as jest.Mock).mockResolvedValue({ live: live({ unreadCount: 1 }), plans: [] });
+    now += 35_000;
+    await usePartaStore.getState().refresh();
+    now += 35_000;
+    await usePartaStore.getState().refresh();
+
     expect(fetchFriendsDashboard).toHaveBeenCalledTimes(2);
+    expect(usePartaStore.getState().dashboard?.notifications).toEqual([{ id: 'n2', readAt: null }]);
   });
 
   it('runs a full load asked for while a pulse is running', async () => {

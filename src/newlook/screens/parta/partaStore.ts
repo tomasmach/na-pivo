@@ -63,7 +63,10 @@ export const usePartaStore = create<PartaState>((set, get) => ({
     inFlight = (async () => {
       const generation = snapshotGeneration();
       // An account switch must not show the previous account's crew.
-      if (generation !== get().generation) set({ dashboard: null, plans: null, pingIds: [], meetups: null, generation });
+      if (generation !== get().generation) {
+        lastPulseUnread = 0;
+        set({ dashboard: null, plans: null, pingIds: [], meetups: null, generation });
+      }
       set({ loading: true });
       const sameAccount = () => generation === snapshotGeneration();
       const dashboardRequest = fetchFriendsDashboard();
@@ -93,6 +96,7 @@ export const usePartaStore = create<PartaState>((set, get) => ({
         // Opening Parta is what clears the tab dot, as in the old screen.
         const unread = dashboard.notifications.filter((n) => n.readAt == null).map((n) => n.id);
         if (unread.length) void markFriendNotificationsRead(unread);
+        lastPulseUnread = Math.max(0, lastPulseUnread - unread.length);
         usePartaSignalStore.getState().setSignal({
           pendingRequests: dashboard.incomingRequests.length,
           unread: 0,
