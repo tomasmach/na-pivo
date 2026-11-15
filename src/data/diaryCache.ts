@@ -18,6 +18,7 @@ export interface DiaryCache {
   accountId: string;
   drinks: DiaryCopy;
   visits: DiaryCopy;
+  fullReadAt: number;
 }
 
 /** Ask for changes since `since`, valid only for the same account. */
@@ -59,7 +60,8 @@ export async function loadDiaryCache(): Promise<DiaryCache | null> {
     const drinks = readCopy(parsed?.drinks);
     const visits = readCopy(parsed?.visits);
     if (typeof parsed?.accountId !== 'string' || !drinks || !visits) return null;
-    memory = { accountId: parsed.accountId, drinks, visits };
+    const fullReadAt = typeof parsed.fullReadAt === 'number' && Number.isFinite(parsed.fullReadAt) ? parsed.fullReadAt : 0;
+    memory = { accountId: parsed.accountId, drinks, visits, fullReadAt };
     return memory;
   } catch {
     return null;

@@ -205,10 +205,14 @@ function newestFirst<T>(rows: T[], at: (row: T) => string): T[] {
     .map(({ row }) => row);
 }
 
+export const DIARY_FULL_READ_EVERY_MS = 24 * 60 * 60 * 1000;
+
 /** The account's whole server diary, downloading only what changed since the last read. */
 async function pullDiary(): Promise<{ drinks: WireDrink[]; visits: WireVisit[] } | null> {
   const generation = diaryCacheGeneration();
-  const cache = await loadDiaryCache();
+  const stored = await loadDiaryCache();
+  const sinceFullRead = stored ? Date.now() - stored.fullReadAt : Infinity;
+  const cache = sinceFullRead >= 0 && sinceFullRead < DIARY_FULL_READ_EVERY_MS ? stored : null;
   const accountId = cache?.accountId ?? null;
   const [drinks, visits] = await Promise.all([
     pullCopy(fetchDrinks, 'drinks', accountId, cache?.drinks ?? null),
@@ -221,6 +225,7 @@ async function pullDiary(): Promise<{ drinks: WireDrink[]; visits: WireVisit[] }
         accountId: drinks.accountId,
         drinks: { since: drinks.since, rows: drinks.rows },
         visits: { since: visits.since, rows: visits.rows },
+        fullReadAt: cache?.fullReadAt ?? Date.now(),
       },
       generation,
     );

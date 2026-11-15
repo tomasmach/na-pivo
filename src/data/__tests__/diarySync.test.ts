@@ -358,7 +358,7 @@ describe('downloading only what changed', () => {
     const stored = drinkAt('d1', 18);
     await AsyncStorage.setItem(
       DIARY_CACHE_KEY,
-      JSON.stringify({ accountId: 'acc', drinks: { since: '100', rows: [stored] }, visits: { since: '100', rows: [] } }),
+      JSON.stringify({ accountId: 'acc', drinks: { since: '100', rows: [stored] }, visits: { since: '100', rows: [] }, fullReadAt: Date.now() }),
     );
     (fetchDrinks as jest.Mock).mockResolvedValueOnce(answer('drinks', [], { all: false, since: '200', live: [stored] }));
     (fetchVisits as jest.Mock).mockResolvedValueOnce(answer('visits', [], { all: false, since: '200' }));
@@ -373,6 +373,35 @@ describe('downloading only what changed', () => {
 
     expect((await reconcileDiarySnapshot())?.drinks).toEqual([stored]);
     expect(cursors(fetchDrinks)[1]).toBeNull();
+  });
+
+  it('downloads the whole diary again once a day, also from a copy saved before that rule', async () => {
+    const hour = 60 * 60 * 1000;
+    const start = Date.parse('2026-07-20T10:00:00Z');
+    const now = jest.spyOn(Date, 'now').mockReturnValue(start);
+    const stored = drinkAt('d1', 18);
+    await AsyncStorage.setItem(
+      DIARY_CACHE_KEY,
+      JSON.stringify({ accountId: 'acc', drinks: { since: '100', rows: [stored] }, visits: { since: '100', rows: [] } }),
+    );
+    (fetchDrinks as jest.Mock)
+      .mockResolvedValueOnce(answer('drinks', [stored], { all: true, since: '200' }))
+      .mockResolvedValueOnce(answer('drinks', [], { all: false, since: '300', live: [stored] }))
+      .mockResolvedValueOnce(answer('drinks', [stored], { all: true, since: '400' }));
+    (fetchVisits as jest.Mock)
+      .mockResolvedValueOnce(answer('visits', [], { all: true, since: '200' }))
+      .mockResolvedValueOnce(answer('visits', [], { all: false, since: '300' }))
+      .mockResolvedValueOnce(answer('visits', [], { all: true, since: '400' }));
+
+    await reconcileDiarySnapshot();
+    now.mockReturnValue(start + 23 * hour);
+    await reconcileDiarySnapshot();
+    now.mockReturnValue(start + 25 * hour);
+    await reconcileDiarySnapshot();
+
+    expect(cursors(fetchDrinks)).toEqual([null, { accountId: 'acc', since: '200' }, null]);
+    expect(cursors(fetchVisits)).toEqual([null, { accountId: 'acc', since: '200' }, null]);
+    now.mockRestore();
   });
 
   it('counts client IDs the way the backend does', () => {
