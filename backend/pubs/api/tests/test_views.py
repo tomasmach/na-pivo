@@ -491,3 +491,22 @@ def test_multiple_pubs_in_one_request(client):
     assert results[1]["key"] == key2
     assert results[1]["status"] == "ok"
     assert results[1]["opening_hours"] == "Mo-Fr 11:00-22:00"
+
+
+@pytest.mark.django_db
+def test_pub_hours_get_queues_a_miss_instead_of_fetching(client, settings):
+    settings.SYNC_ENRICH_BUDGET = 3
+    with patch("pubs.api.cache.FirmyHoursSource") as source:
+        resp = client.get("/v1/pub-hours", {"name": _FLEKY_NAME, "lat": _FLEKY_LAT, "lng": _FLEKY_LNG})
+
+    assert resp.status_code == status.HTTP_200_OK
+    assert resp.json()["results"][0]["status"] == "pending"
+    source.assert_not_called()
+    assert EnrichTask.objects.filter(cache_key=_FLEKY_KEY).exists()
+
+
+@pytest.mark.django_db
+def test_pub_hours_get_rejects_a_pub_without_coordinates(client):
+    resp = client.get("/v1/pub-hours", {"name": _FLEKY_NAME, "lat": "abc"})
+
+    assert resp.status_code == status.HTTP_400_BAD_REQUEST

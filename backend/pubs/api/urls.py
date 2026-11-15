@@ -4,6 +4,7 @@ URL patterns for the pubs v1 API.
 Routes
 ------
 POST   pub-hours/   → PubHoursView
+GET    pub-hours    → PubHoursView (one pub)
 POST   pubs/        → UserAddedPubView
 POST   pub-reports/ → PubReportView
 POST   pub-name-corrections/ → PubNameCorrectionView

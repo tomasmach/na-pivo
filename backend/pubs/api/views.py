@@ -326,6 +326,7 @@ from .serializers import (
     PubFavoriteRequestSerializer,
     PubHoursRequestSerializer,
     PubHoursResponseSerializer,
+    PubInputSerializer,
     PublishedNightCommentRequestSerializer,
     PublishedNightCommentSerializer,
     PublishedNightFeedQuerySerializer,
@@ -1546,10 +1547,14 @@ class HealthView(APIView):
 class PubHoursView(APIView):
     """
     POST /v1/pub-hours
+    GET  /v1/pub-hours?name=&lat=&lng=&city=
 
     Accept a list of pubs and return opening hours + isOpenNow for each.
     Pubs are served from cache when fresh; otherwise enriched synchronously
     up to sync_budget, with the remainder queued as EnrichTask rows.
+
+    The GET answers one pub in the same shape, never fetches synchronously,
+    and can be revalidated with If-None-Match.
     """
 
     authentication_classes: list = []
@@ -1557,15 +1562,21 @@ class PubHoursView(APIView):
     throttle_classes = [ScopedRateThrottle]
     throttle_scope = "pub_hours"
 
+    def get(self, request: Request) -> Response:
+        req_serializer = PubInputSerializer(data=request.query_params)
+        if not req_serializer.is_valid():
+            return Response(req_serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        return self._answer([req_serializer.validated_data], sync_budget=0)
+
     def post(self, request: Request) -> Response:
         req_serializer = PubHoursRequestSerializer(data=request.data)
         if not req_serializer.is_valid():
             return Response(req_serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
         validated = req_serializer.validated_data
-        pubs: list[dict] = validated["pubs"]
-        sync_budget: int | None = validated.get("sync_budget")  # None → use settings default
+        return self._answer(validated["pubs"], sync_budget=validated.get("sync_budget"))
 
+    def _answer(self, pubs: list[dict], sync_budget: int | None) -> Response:
         try:
             results = get_or_enrich(pubs, sync_budget=sync_budget)
         except Exception as exc:  # noqa: BLE001
