@@ -89,7 +89,7 @@ from django.db.models.lookups import LessThan
 from django.utils import timezone as dj_timezone
 from django.utils.translation import gettext, gettext_lazy
 from rest_framework import status
-from rest_framework.exceptions import AuthenticationFailed
+from rest_framework.exceptions import APIException, AuthenticationFailed
 from rest_framework.parsers import JSONParser, MultiPartParser
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.request import Request
@@ -4662,7 +4662,10 @@ class ClientEventsView(APIView):
     throttle_scope = "client_events"
 
     def throttle_cost(self, request: Request) -> int:
-        batch = request.data.get("events") if isinstance(request.data, dict) else None
+        try:
+            batch = request.data.get("events") if isinstance(request.data, dict) else None
+        except APIException:
+            return 1
         if isinstance(batch, list) and 1 <= len(batch) <= CLIENT_EVENT_BATCH_MAX:
             return len(batch)
         return 1

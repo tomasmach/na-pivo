@@ -815,6 +815,22 @@ def test_every_event_of_a_batch_counts_toward_the_rate_limit(client, monkeypatch
 
 
 @pytest.mark.django_db
+def test_a_body_that_is_not_json_still_counts_toward_the_rate_limit(client, monkeypatch):
+    from rest_framework.throttling import ScopedRateThrottle
+
+    rates = dict(ScopedRateThrottle.THROTTLE_RATES)
+    rates["client_events"] = "1/min"
+    monkeypatch.setattr(ScopedRateThrottle, "THROTTLE_RATES", rates)
+
+    statuses = [
+        client.post("/v1/client-events", data="{", content_type="application/json").status_code
+        for _ in range(2)
+    ]
+
+    assert statuses == [status.HTTP_400_BAD_REQUEST, status.HTTP_429_TOO_MANY_REQUESTS]
+
+
+@pytest.mark.django_db
 @pytest.mark.parametrize("events", [[], "app_open", [{"event": "app_open"}] * 26])
 def test_a_batch_outside_the_limits_is_refused(client, events):
     resp = client.post("/v1/client-events", data={"events": events}, format="json")
