@@ -141,7 +141,7 @@ def test_released_app_without_since_keeps_the_exact_full_snapshot(client):
 
 @pytest.mark.django_db
 @pytest.mark.parametrize("path,key", [("/v1/drinks", "drinks"), ("/v1/pub-visits", "visits")])
-@pytest.mark.parametrize("since", ["", "garbage", "-5", "9" * 19, "{future}"])
+@pytest.mark.parametrize("since", ["", "garbage", "-5", "²", "9" * 18, "9" * 19, "{future}"])
 def test_first_unreadable_or_future_since_answers_everything(client, path, key, since):
     token, account = _anonymous(client)
     ids = [_drink(client, token), _drink(client, token)] if key == "drinks" else [_visit(client, token)]

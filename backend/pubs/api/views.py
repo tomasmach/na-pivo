@@ -403,12 +403,12 @@ def _diary_changes_since(request: Request) -> tuple[bool, datetime | None]:
     raw = request.query_params.get("since")
     if raw is None:
         return False, None
-    if not raw.isdigit() or len(raw) > 18:
+    if not re.fullmatch(r"[0-9]{1,18}", raw):
         return True, None
-    since = _EPOCH + timedelta(microseconds=int(raw))
-    if since > dj_timezone.now():
+    since = timedelta(microseconds=int(raw))
+    if since > dj_timezone.now() - _EPOCH:
         return True, None
-    return True, since - DIARY_CHANGES_OVERLAP
+    return True, _EPOCH + since - DIARY_CHANGES_OVERLAP
 
 
 def _diary_changes_envelope(
