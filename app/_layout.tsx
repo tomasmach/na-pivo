@@ -356,7 +356,7 @@ export default function RootLayout() {
         setTelemetryReady(true);
         // Account hydration may restore the legacy CZK/EUR preference after the
         // launch-time location check, so let the cached country win once more.
-        void refreshCurrencyFromLastKnownLocation();
+        afterFirstScreen(() => void refreshCurrencyFromLastKnownLocation());
         void trackClientEvent({ event: 'app_open', severity: 'info' });
         // A Parta invite deep link tapped before the account existed was stashed;
         // now that an account is ready, claim it (fires a Parta refresh on success).
