@@ -32,6 +32,7 @@ jest.mock('../telemetryClient', () => ({
 
 const PRIVATE_KEYS = [
   'na-pivo-tally',
+  'na-pivo-diary-copy-v1',
   'na-pivo-pub-ratings',
   'na-pivo-pub-amenities',
   'na-pivo-visits-seeded',
