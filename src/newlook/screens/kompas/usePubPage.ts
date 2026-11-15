@@ -24,8 +24,7 @@ import { useNvParams } from '../../duo/details';
 
 const CELL = /^[0123456789bcdefghjkmnpqrstuvwxyz]{8}$/;
 const POSITION_MAX_AGE_MS = 5 * 60 * 1000;
-const HOURS_RETRY_MS = 4000;
-const HOURS_RETRY_LIMIT = 4;
+const HOURS_RETRY_DELAYS_MS = [10_000, 30_000, 90_000];
 
 function first(value: string | string[] | undefined): string {
   return (Array.isArray(value) ? value[0] : value) ?? '';
@@ -114,7 +113,7 @@ export function usePubDetails(initial: Pub | null, key: string) {
     const opened = initial;
     let timer: ReturnType<typeof setTimeout> | null = null;
     let attempts = 0;
-    // A cache miss answers "pending" while the server fills the pub in, so it asks a few more times.
+    // A cache miss answers "pending" until the server's worker, which runs every few minutes, fills the pub in.
     const load = () => {
       attempts += 1;
       void fetchPubHours([opened], controller.signal).then((response) => {
@@ -122,7 +121,8 @@ export function usePubDetails(initial: Pub | null, key: string) {
         setHoursLoaded(true);
         const d = response.get(opened.id);
         if (!d) return;
-        if (d.status === 'pending' && attempts < HOURS_RETRY_LIMIT) timer = setTimeout(load, HOURS_RETRY_MS);
+        const retryIn = HOURS_RETRY_DELAYS_MS[attempts - 1];
+        if (d.status === 'pending' && retryIn !== undefined) timer = setTimeout(load, retryIn);
         setPub((current) =>
           current
             ? {

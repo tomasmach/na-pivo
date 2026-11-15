@@ -9,11 +9,13 @@
 
 import {
   parseActivity,
+  parseFriendsLive,
   parseProfile,
   requestJson,
   type FriendActionResult,
   type FriendProfile,
   type FriendPubActivity,
+  type FriendsLiveSlice,
   type RawFriendActivity,
   type RawFriendProfile,
 } from './friendsClient';
@@ -177,6 +179,32 @@ export async function fetchPartaPlans(signal?: AbortSignal): Promise<PartaPlan[]
   if (!res.ok) return null;
   const rows = Array.isArray(res.data.plans) ? res.data.plans : [];
   return rows.map(parsePartaPlan).filter((plan): plan is PartaPlan => plan !== null);
+}
+
+export interface PartaPulse {
+  live: FriendsLiveSlice;
+  /** Null from a backend that does not send invitations with the live slice yet. */
+  plans: PartaPlan[] | null;
+}
+
+let lastPulse: { etag: string; data: Record<string, unknown> } | null = null;
+
+/**
+ * What an open Parta polls: who sits where, the request and unread counts, and the
+ * invitations, in one conditional request that costs no body while nothing changed.
+ * Null when it could not load.
+ */
+export async function fetchPartaPulse(signal?: AbortSignal): Promise<PartaPulse | null> {
+  const res = await requestJson('/v1/friends/live?view=parta', { signal, etag: lastPulse?.etag });
+  if (!res.ok) return null;
+  if (!res.notModified) lastPulse = res.etag ? { etag: res.etag, data: res.data } : null;
+  const data = res.notModified ? lastPulse?.data : res.data;
+  if (!data) return null;
+  const rows = Array.isArray(data.parta_plans) ? data.parta_plans : null;
+  return {
+    live: parseFriendsLive(data),
+    plans: rows ? rows.map(parsePartaPlan).filter((plan): plan is PartaPlan => plan !== null) : null,
+  };
 }
 
 /** `'gone'` when the plan was called off, ended or is not mine to see. */

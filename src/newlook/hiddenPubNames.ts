@@ -17,12 +17,19 @@ export function usePubNameReveal(key: string | null) {
 
   useEffect(() => {
     if (until === null) return;
-    const timer = setInterval(() => {
+    let timer: ReturnType<typeof setTimeout>;
+    const nextSecond = () => {
+      const left = until - Date.now();
+      timer = setTimeout(tick, left <= 0 ? 0 : left % 1000 || 1000);
+    };
+    const tick = () => {
       const at = Date.now();
       setNow(at);
       if (at >= until) setShown(null);
-    }, 250);
-    return () => clearInterval(timer);
+      else nextSecond();
+    };
+    nextSecond();
+    return () => clearTimeout(timer);
   }, [until]);
 
   const active = until !== null && now < until;
