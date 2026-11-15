@@ -389,6 +389,69 @@ def _optional_snapshot_page(request: Request, queryset, *, max_limit: int = 500)
     }
 
 
+_EPOCH = datetime(1970, 1, 1, tzinfo=UTC)
+# A write saved just before a read can commit after it. Rows changed this long
+# before the caller's token are sent again, so such a row is never skipped.
+DIARY_CHANGES_OVERLAP = timedelta(minutes=10)
+
+
+def _diary_changes_since(request: Request) -> tuple[bool, datetime | None]:
+    """Read ``?since=``: whether the caller syncs changes, and from when.
+
+    No parameter keeps the released full snapshot. An empty, unreadable or
+    future token answers with everything, so a client always recovers.
+    """
+    raw = request.query_params.get("since")
+    if raw is None:
+        return False, None
+    if not re.fullmatch(r"[0-9]{1,18}", raw):
+        return True, None
+    since = timedelta(microseconds=int(raw))
+    if since > dj_timezone.now() - _EPOCH:
+        return True, None
+    return True, _EPOCH + since - DIARY_CHANGES_OVERLAP
+
+
+def _diary_changes_envelope(
+    key: str,
+    items: list[dict],
+    *,
+    started: datetime,
+    full: bool,
+    live_ids: list[uuid.UUID],
+    removed: list[str],
+) -> dict:
+    """Changed rows plus what the client needs to check its copy is complete."""
+    ids_hash = sum(client_id.int >> 96 for client_id in live_ids) % 2**32
+    return {
+        key: items,
+        "removed": removed,
+        "full": full,
+        "next_since": str((started - _EPOCH) // timedelta(microseconds=1)),
+        "total": len(live_ids),
+        "ids_hash": f"{ids_hash:08x}",
+    }
+
+
+def _diary_removed_since(
+    account: Account,
+    resource: str,
+    since: datetime,
+    live_ids: list[uuid.UUID],
+) -> list[str]:
+    """Deleted IDs since ``since``; a visit added again after its deletion is live."""
+    live = set(live_ids)
+    return [
+        str(client_id)
+        for client_id in OfflineMutationTombstone.objects.filter(
+            account=account,
+            resource=resource,
+            deleted_at__gt=since,
+        ).values_list("client_id", flat=True)
+        if client_id not in live
+    ]
+
+
 auth_logger = logging.getLogger("pubs.api.auth")
 
 DEFAULT_BLOCKED_REPORT_RADIUS_KM = 25.0
@@ -2851,6 +2914,30 @@ def _party_evening_for_drink(
 _DAILY_HARD_CAP_REASON = "daily_hard_cap"
 
 
+def _drink_item(drink: DrinkLog) -> dict:
+    """Serialize one DrinkLog to the wire shape the mobile app expects."""
+    return {
+        "client_id": str(drink.client_id),
+        "evening_client_id": str(drink.evening_client_id) if drink.evening_client_id else None,
+        "cache_key": drink.cache_key,
+        "name": drink.name,
+        "lat": drink.lat,
+        "lng": drink.lng,
+        "city": drink.city,
+        "external_id": drink.external_id,
+        "place_context": drink.place_context,
+        "drink_type": drink.drink_type,
+        "beer": {
+            "name": drink.beer_name,
+            "price_czk": drink.price_czk,
+            "volume_ml": drink.volume_ml,
+            "serving_type": drink.serving_type,
+        },
+        "drank_at": drink.drank_at.isoformat(),
+        "is_suspect": drink.is_suspect,
+    }
+
+
 class DrinksView(APIView):
     """
     GET    /v1/drinks
@@ -2911,37 +2998,35 @@ class DrinksView(APIView):
         The mobile app reconciles this owner-only list with its offline queue by
         ``client_id`` after sign-in. Keeping the read on the existing endpoint is
         additive for released clients and mirrors GET /v1/pub-visits.
+
+        ``?since=<next_since>`` answers with only the drinks changed since that
+        read, the IDs deleted since, and the count and hash of all IDs so the
+        app can tell its copy is complete. Without it the answer is unchanged.
         """
+        drinks = DrinkLog.objects.filter(account=request.user)
+        changes, since = _diary_changes_since(request)
         try:
-            drinks, page = _optional_snapshot_page(
-                request,
-                DrinkLog.objects.filter(account=request.user),
-            )
-            items = [
-                {
-                    "client_id": str(drink.client_id),
-                    "evening_client_id": (
-                        str(drink.evening_client_id) if drink.evening_client_id else None
+            if changes:
+                started = dj_timezone.now()
+                changed = drinks if since is None else drinks.filter(updated_at__gt=since)
+                live_ids = list(drinks.order_by().values_list("client_id", flat=True))
+                body = _diary_changes_envelope(
+                    "drinks",
+                    [_drink_item(drink) for drink in changed],
+                    started=started,
+                    full=since is None,
+                    live_ids=live_ids,
+                    removed=(
+                        []
+                        if since is None
+                        else _diary_removed_since(
+                            request.user, OfflineMutationTombstone.Resource.DRINK, since, live_ids
+                        )
                     ),
-                    "cache_key": drink.cache_key,
-                    "name": drink.name,
-                    "lat": drink.lat,
-                    "lng": drink.lng,
-                    "city": drink.city,
-                    "external_id": drink.external_id,
-                    "place_context": drink.place_context,
-                    "drink_type": drink.drink_type,
-                    "beer": {
-                        "name": drink.beer_name,
-                        "price_czk": drink.price_czk,
-                        "volume_ml": drink.volume_ml,
-                        "serving_type": drink.serving_type,
-                    },
-                    "drank_at": drink.drank_at.isoformat(),
-                    "is_suspect": drink.is_suspect,
-                }
-                for drink in drinks
-            ]
+                )
+                return Response(body, status=status.HTTP_200_OK)
+            rows, page = _optional_snapshot_page(request, drinks)
+            items = [_drink_item(drink) for drink in rows]
         except ValueError:
             return Response({"detail": "Invalid pagination."}, status=status.HTTP_400_BAD_REQUEST)
         except Exception as exc:  # noqa: BLE001
@@ -4290,6 +4375,28 @@ def _visit_item(visit: PubVisit) -> dict:
     }
 
 
+def _visit_items(visits) -> list[dict]:
+    """Visits as the app reads them, with repaired pub identities projected.
+
+    Released maps recreate missing catalogue markers from these fields. Reads
+    show the repaired pub while history, export data and client conflict
+    timestamps keep the original.
+    """
+    items = [_visit_item(visit) for visit in visits]
+    identities = resolve_pub_identities(items)
+    for item, identity in zip(items, identities, strict=True):
+        if identity.canonical_id is not None:
+            item.update(
+                cache_key=identity.cache_key,
+                name=identity.name,
+                lat=identity.lat,
+                lng=identity.lng,
+                city=identity.city,
+                external_id=identity.external_id,
+            )
+    return items
+
+
 def _export_visit_item(visit: PubVisit) -> dict:
     """Account-export variant of :func:`_visit_item`: no join code, only the
     linked evening's stable public id."""
@@ -4320,26 +4427,39 @@ class PubVisitView(APIView):
     throttle_scope = "pub_visits"
 
     def get(self, request: Request) -> Response:
+        """``?since=`` works as on GET /v1/drinks. A visit also counts as
+        changed when the pub it resolves to was merged or edited since."""
+        visits = PubVisit.objects.filter(account=request.user).select_related("party_evening")
+        changes, since = _diary_changes_since(request)
         try:
-            visits, page = _optional_snapshot_page(
-                request,
-                PubVisit.objects.filter(account=request.user).select_related("party_evening"),
-            )
-            items = [_visit_item(visit) for visit in visits]
-            # Released maps recreate missing catalogue markers from these
-            # fields. Project repaired pub identities on reads while retaining
-            # original history, export data and client conflict timestamps.
-            identities = resolve_pub_identities(items)
-            for item, identity in zip(items, identities, strict=True):
-                if identity.canonical_id is not None:
-                    item.update(
-                        cache_key=identity.cache_key,
-                        name=identity.name,
-                        lat=identity.lat,
-                        lng=identity.lng,
-                        city=identity.city,
-                        external_id=identity.external_id,
+            if changes:
+                started = dj_timezone.now()
+                changed = visits
+                if since is not None:
+                    repaired_pubs = PubAlias.objects.filter(
+                        cache_key__in=visits.values("cache_key"),
+                    ).filter(Q(updated_at__gt=since) | Q(canonical_pub__updated_at__gt=since))
+                    changed = visits.filter(
+                        Q(updated_at__gt=since) | Q(cache_key__in=repaired_pubs.values("cache_key"))
                     )
+                live_ids = list(visits.order_by().values_list("client_id", flat=True))
+                body = _diary_changes_envelope(
+                    "visits",
+                    _visit_items(changed),
+                    started=started,
+                    full=since is None,
+                    live_ids=live_ids,
+                    removed=(
+                        []
+                        if since is None
+                        else _diary_removed_since(
+                            request.user, OfflineMutationTombstone.Resource.PUB_VISIT, since, live_ids
+                        )
+                    ),
+                )
+                return Response(body, status=status.HTTP_200_OK)
+            rows, page = _optional_snapshot_page(request, visits)
+            items = _visit_items(rows)
         except ValueError:
             return Response({"detail": "Invalid pagination."}, status=status.HTTP_400_BAD_REQUEST)
         except Exception as exc:  # noqa: BLE001
@@ -4516,7 +4636,8 @@ class PubVisitView(APIView):
                     )
                     if marker.client_updated_at is None or revision > marker.client_updated_at:
                         marker.client_updated_at = revision
-                        marker.save(update_fields=["client_updated_at"])
+                        marker.deleted_at = dj_timezone.now()
+                        marker.save(update_fields=["client_updated_at", "deleted_at"])
                     visits = visits.filter(client_updated_at__lte=marker.client_updated_at)
                 newest_id = (
                     PubVisit.objects.filter(account=account)

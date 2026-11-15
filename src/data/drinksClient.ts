@@ -31,6 +31,7 @@ import { getBackendEndpoint } from './backendConfig';
 import { chainAbortSignal, classifyQueueHttpFailure } from './apiFetch';
 import { getDrinkRateLimitGeneration, noteDrinkThrottled, shouldPauseDrinkSync } from './drinksRateLimit';
 import type { CommunityBeer } from './communityHours';
+import type { DiaryCursor, DiaryRead } from './diaryCache';
 import { trackClientEvent } from './telemetryClient';
 import {
   isDrinkType,
@@ -118,7 +119,7 @@ export type SubmitDrinkOutcome = SubmitDrinkResult | 'limited';
 
 const REQUEST_TIMEOUT_MS = 8000;
 
-function isWireDrink(value: unknown): value is WireDrink {
+export function isWireDrink(value: unknown): value is WireDrink {
   const drink = value as Partial<WireDrink>;
   const beer = drink?.beer as Partial<WireDrink['beer']> | undefined;
   return (
@@ -144,8 +145,14 @@ function isWireDrink(value: unknown): value is WireDrink {
   );
 }
 
-/** GET the account's full private drink snapshot. Best-effort and never throws. */
-export async function fetchDrinks(signal?: AbortSignal): Promise<WireDrink[] | null> {
+/**
+ * GET the account's private drinks changed since the cursor, or all of them
+ * when the cursor belongs to another account. Best-effort and never throws.
+ */
+export async function fetchDrinks(
+  cursor: DiaryCursor | null,
+  signal?: AbortSignal,
+): Promise<DiaryRead | null> {
   if (signal?.aborted) return null;
   const rateLimitGeneration = getDrinkRateLimitGeneration();
   if (await shouldPauseDrinkSync()) return null;
@@ -156,10 +163,11 @@ export async function fetchDrinks(signal?: AbortSignal): Promise<WireDrink[] | n
 
   const session = await ensureAccount(signal);
   if (!session || signal?.aborted) return null;
+  const since = cursor?.accountId === session.accountId ? cursor.since : '';
 
   const abort = chainAbortSignal(signal, REQUEST_TIMEOUT_MS);
   try {
-    const resp = await fetch(endpoint, {
+    const resp = await fetch(`${endpoint}?since=${encodeURIComponent(since)}`, {
       method: 'GET',
       headers: { Authorization: `Bearer ${session.token}` },
       signal: abort.signal,
@@ -173,10 +181,7 @@ export async function fetchDrinks(signal?: AbortSignal): Promise<WireDrink[] | n
     }
     if (resp.status === 429) await noteDrinkThrottled(resp, rateLimitGeneration, session.accountId);
     if (!resp.ok) return null;
-
-    const data = (await resp.json()) as { drinks?: unknown };
-    if (!data || !Array.isArray(data.drinks)) return null;
-    return data.drinks.filter(isWireDrink);
+    return { accountId: session.accountId, body: await resp.json() };
   } catch {
     return null;
   } finally {

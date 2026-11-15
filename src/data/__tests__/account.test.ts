@@ -738,7 +738,7 @@ it('keeps a drink cooldown for the same account but clears it when an anonymous 
   expect(await AsyncStorage.getItem('na-pivo-drinks-retry-after')).toBeNull();
   setBackend('https://api.example.com');
   global.fetch = mockFetchOk({ drinks: [] });
-  await expect(fetchDrinks()).resolves.toEqual([]);
+  await expect(fetchDrinks(null)).resolves.toMatchObject({ body: { drinks: [] } });
   expect(global.fetch).toHaveBeenCalledTimes(1);
   expect(await shouldPauseDrinkSync()).toBe(false);
 });
@@ -835,7 +835,7 @@ it('finishes an account claim when removing the previous drink cooldown fails', 
   setBackend('https://api.example.com');
   global.fetch = mockFetchOk({ drinks: [] });
   const { fetchDrinks: restartedFetchDrinks } = require('../drinksClient') as typeof import('../drinksClient');
-  await expect(restartedFetchDrinks()).resolves.toEqual([]);
+  await expect(restartedFetchDrinks(null)).resolves.toMatchObject({ body: { drinks: [] } });
   expect(global.fetch).toHaveBeenCalledTimes(1);
 });
 
@@ -879,7 +879,7 @@ describe('clearCachedAnonymousAccount', () => {
     global.fetch = mockFetchOk({ id: 'anon-2', token: 'new-token' });
     expect((await ensureAccount())?.accountId).toBe('anon-2');
     global.fetch = mockFetchOk({ drinks: [] });
-    await expect(fetchDrinks()).resolves.toEqual([]);
+    await expect(fetchDrinks(null)).resolves.toMatchObject({ body: { drinks: [] } });
     expect(await shouldPauseDrinkSync()).toBe(false);
     await noteDrinkThrottled(throttled, generation);
     expect(await shouldPauseDrinkSync()).toBe(false);

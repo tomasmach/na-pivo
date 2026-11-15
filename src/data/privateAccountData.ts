@@ -6,6 +6,7 @@ import { clearAddedPubsQueue } from './addedPubsQueue';
 import { clearBeerPhotoLocalFiles, clearBeerPhotosQueue } from './beerPhotosQueue';
 import { clearCommunityQueue } from './communityQueue';
 import { clearDeleteDrinksQueue } from './deleteDrinksQueue';
+import { clearDiaryCache } from './diaryCache';
 import { clearDrinksQueue } from './drinksQueue';
 import { clearDrinkRateLimit } from './drinksRateLimit';
 import {
@@ -202,6 +203,7 @@ export async function clearLocalPrivateAccountData(): Promise<void> {
     clearVisitsQueue(),
     clearBeerPhotosQueue(),
     clearVisitsSnapshot(),
+    clearDiaryCache(),
     clearFriendsQueue(),
     clearFriendsDashboardSnapshot(),
     clearNightsQueue(),

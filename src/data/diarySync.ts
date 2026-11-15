@@ -8,11 +8,21 @@
  * takes the server's beer names, which the backend unifies across spellings.
  */
 
-import { fetchDrinks, type WireDrink } from './drinksClient';
+import {
+  diaryCacheGeneration,
+  isDiaryRow,
+  loadDiaryCache,
+  saveDiaryCache,
+  type DiaryCopy,
+  type DiaryCursor,
+  type DiaryRead,
+  type DiaryRow,
+} from './diaryCache';
+import { fetchDrinks, isWireDrink, type WireDrink } from './drinksClient';
 import { flushDrinksQueue } from './drinksQueue';
 import { flushDeleteDrinksQueue, getQueuedDeleteIds } from './deleteDrinksQueue';
 import { flushUpdateDrinksQueue, getQueuedUpdateIds } from './updateDrinksQueue';
-import { fetchVisits, type WireVisit } from './visitsClient';
+import { fetchVisits, isWireVisit, type WireVisit } from './visitsClient';
 import { flushVisitsQueue, getQueuedVisitDeleteIds } from './visitsQueue';
 import {
   contextFromPubKey,
@@ -115,6 +125,118 @@ function renameLocalMenus(fixes: ReadonlyMap<string, BeerNameFix>): void {
   byCell.forEach((names, cell) => renameOverrideBeers(cell, names));
 }
 
+interface DiaryChanges {
+  rows: DiaryRow[];
+  removed: string[];
+  /** False only for an answer to `since`; older backends always send everything. */
+  full: boolean;
+  nextSince: string | null;
+  total: number | null;
+  idsHash: string | null;
+}
+
+interface PulledCopy {
+  accountId: string;
+  since: string | null;
+  rows: DiaryRow[];
+  whole: boolean;
+}
+
+function readChanges(read: DiaryRead, key: 'drinks' | 'visits'): DiaryChanges | null {
+  const body = read.body as Record<string, unknown> | null;
+  const rows = body?.[key];
+  if (!body || !Array.isArray(rows)) return null;
+  const full = body.full !== false;
+  return {
+    rows: rows.filter(isDiaryRow),
+    removed:
+      !full && Array.isArray(body.removed)
+        ? body.removed.filter((id): id is string => typeof id === 'string')
+        : [],
+    full,
+    nextSince: typeof body.next_since === 'string' ? body.next_since : null,
+    total: typeof body.total === 'number' ? body.total : null,
+    idsHash: typeof body.ids_hash === 'string' ? body.ids_hash : null,
+  };
+}
+
+/** Sum of the first 32 bits of every client ID, as the backend counts it. */
+export function diaryIdsHash(rows: readonly DiaryRow[]): string {
+  let sum = 0;
+  for (const row of rows) sum += parseInt(row.client_id.slice(0, 8), 16) || 0;
+  return (sum % 2 ** 32).toString(16).padStart(8, '0');
+}
+
+function withChanges(rows: readonly DiaryRow[], changes: DiaryChanges): DiaryRow[] | null {
+  const byId = new Map(rows.map((row) => [row.client_id, row]));
+  for (const id of changes.removed) byId.delete(id);
+  for (const row of changes.rows) byId.set(row.client_id, row);
+  const merged = [...byId.values()];
+  if (changes.total === null || changes.idsHash === null) return merged;
+  return merged.length === changes.total && diaryIdsHash(merged) === changes.idsHash ? merged : null;
+}
+
+/**
+ * Bring one copy up to date with the changes since its last read. A copy that
+ * does not add up to the server's count and hash is downloaded whole instead.
+ */
+async function pullCopy(
+  fetchRows: (cursor: DiaryCursor | null) => Promise<DiaryRead | null>,
+  key: 'drinks' | 'visits',
+  accountId: string | null,
+  copy: DiaryCopy | null,
+): Promise<PulledCopy | null> {
+  const read = await fetchRows(accountId && copy ? { accountId, since: copy.since } : null);
+  const changes = read && readChanges(read, key);
+  if (!read || !changes) return null;
+  if (changes.full) return { accountId: read.accountId, since: changes.nextSince, rows: changes.rows, whole: true };
+  const rows = read.accountId === accountId && copy ? withChanges(copy.rows, changes) : null;
+  if (rows) return { accountId: read.accountId, since: changes.nextSince, rows, whole: false };
+
+  const again = await fetchRows(null);
+  const whole = again && readChanges(again, key);
+  if (!again || !whole?.full) return null;
+  return { accountId: again.accountId, since: whole.nextSince, rows: whole.rows, whole: true };
+}
+
+function newestFirst<T>(rows: T[], at: (row: T) => string): T[] {
+  return rows
+    .map((row) => ({ row, ms: Date.parse(at(row)) || 0 }))
+    .sort((a, b) => b.ms - a.ms)
+    .map(({ row }) => row);
+}
+
+export const DIARY_FULL_READ_EVERY_MS = 24 * 60 * 60 * 1000;
+
+/** The account's whole server diary, downloading only what changed since the last read. */
+async function pullDiary(): Promise<{ drinks: WireDrink[]; visits: WireVisit[] } | null> {
+  const generation = diaryCacheGeneration();
+  const stored = await loadDiaryCache();
+  const sinceFullRead = stored ? Date.now() - stored.fullReadAt : Infinity;
+  const cache = sinceFullRead >= 0 && sinceFullRead < DIARY_FULL_READ_EVERY_MS ? stored : null;
+  const accountId = cache?.accountId ?? null;
+  const [drinks, visits] = await Promise.all([
+    pullCopy(fetchDrinks, 'drinks', accountId, cache?.drinks ?? null),
+    pullCopy(fetchVisits, 'visits', accountId, cache?.visits ?? null),
+  ]);
+  if (!drinks || !visits || drinks.accountId !== visits.accountId) return null;
+  if (drinks.since !== null && visits.since !== null) {
+    await saveDiaryCache(
+      {
+        accountId: drinks.accountId,
+        drinks: { since: drinks.since, rows: drinks.rows },
+        visits: { since: visits.since, rows: visits.rows },
+        fullReadAt: drinks.whole && visits.whole ? Date.now() : (cache?.fullReadAt ?? Date.now()),
+      },
+      generation,
+    );
+  }
+  return {
+    drinks: newestFirst(drinks.rows.filter(isWireDrink), (drink) => drink.drank_at),
+    visits: newestFirst(visits.rows.filter(isWireVisit), (visit) => visit.started_at),
+  };
+}
+
 /** Flush pending writes first, then pull both authoritative account snapshots. */
 export async function reconcileDiarySnapshot(): Promise<DiarySnapshot | null> {
   // Read before the fetch: a drink renamed while it runs no longer matches and
@@ -130,8 +252,9 @@ export async function reconcileDiarySnapshot(): Promise<DiarySnapshot | null> {
     flushVisitsQueue(),
   ]);
 
-  const [drinks, visits] = await Promise.all([fetchDrinks(), fetchVisits()]);
-  if (!drinks || !visits) return null;
+  const diary = await pullDiary();
+  if (!diary) return null;
+  const { drinks, visits } = diary;
   // A removed drink or wiped evening stays on the server until its queued
   // deletion gets through (offline, throttled); it is already gone locally.
   const [pendingDrinkDeletes, pendingVisitDeletes, pendingDrinkUpdates] = await Promise.all([
