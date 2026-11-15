@@ -8,7 +8,12 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import Constants from 'expo-constants';
 import type * as ExpoNotifications from 'expo-notifications';
 
-import { PUSH_TOKEN_KEY, registerPushDevice, type PushPermissionStatus } from '@/data/pushDeviceClient';
+import {
+  PUSH_TOKEN_KEY,
+  pushDeviceRegisteredRecently,
+  registerPushDevice,
+  type PushPermissionStatus,
+} from '@/data/pushDeviceClient';
 import { isLocalE2E } from '@/data/localE2E';
 
 type NotificationsModule = typeof ExpoNotifications;
@@ -34,10 +39,14 @@ const Notifications = loadNotifications();
 export async function ensurePushTokenRegistered(
   status: PushPermissionStatus,
   friendPush?: boolean,
+  options: { unlessRecent?: boolean } = {},
 ): Promise<string | null> {
   if (isLocalE2E()) return null;
   if (status !== 'granted' || !Notifications) return null;
   try {
+    if (options.unlessRecent && (await pushDeviceRegisteredRecently(friendPush))) {
+      return await AsyncStorage.getItem(PUSH_TOKEN_KEY);
+    }
     const projectId =
       Constants.expoConfig?.extra?.eas?.projectId ?? Constants.easConfig?.projectId;
     const response = projectId

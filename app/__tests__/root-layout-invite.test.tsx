@@ -106,7 +106,6 @@ jest.mock('react-native-safe-area-context', () => ({
 jest.mock('react-native-gesture-handler', () => ({
   GestureHandlerRootView: ({ children }: { children: React.ReactNode }) => children,
 }));
-jest.mock('@/theme/fonts', () => ({ fontAssets: {} }));
 
 jest.mock('@/data/pubReportQueue', () => mockResolved('flushPubReportQueue'));
 jest.mock('@/data/pubNameCorrectionsQueue', () => mockResolved('flushPubNameCorrectionsQueue'));

@@ -63,6 +63,8 @@ export interface FetchPubHoursOptions {
    * controlled pace. Batch callers keep the old bounded sync behavior.
    */
   syncBudget?: number;
+  /** Skip the answer another screen got for this pub a moment ago. */
+  fresh?: boolean;
 }
 
 interface WireBeer {
@@ -211,10 +213,50 @@ function toResult(entry: BackendResult | undefined): PubHoursResult {
  * @returns      A Map keyed by pub.id. Empty when the feature is dormant or the
  *               request fails; partial when only some entries resolve. Never throws.
  */
+const REUSE_MS = 30_000;
+const recent = new Map<string, { at: number; answer: Promise<PubHoursResult | undefined> }>();
+
+/** Forget reused answers, e.g. after this device changed a pub's menu or hours. */
+export function forgetPubHours(): void {
+  recent.clear();
+}
+
+/**
+ * A single pub asked for by several screens at once, or again within REUSE_MS,
+ * shares one request. A "pending" answer is never reused, so polling still asks.
+ */
 export async function fetchPubHours(
   pubs: Pub[],
   signal?: AbortSignal,
   options: FetchPubHoursOptions = {},
+): Promise<Map<string, PubHoursResult>> {
+  if (pubs.length !== 1 || options.fresh || signal?.aborted) return requestPubHours(pubs, signal, options);
+  const [pub] = pubs;
+  const key = JSON.stringify([pub.name, pub.lat, pub.lng, pub.city, options.syncBudget ?? null]);
+  const now = Date.now();
+  let entry = recent.get(key);
+  if (!entry || now - entry.at >= REUSE_MS) {
+    const answer = requestPubHours([pub], undefined, options).then((results) => results.get(pub.id));
+    entry = { at: now, answer };
+    recent.set(key, entry);
+    void answer.then((result) => {
+      if ((!result || result.status === 'pending') && recent.get(key) === entry) recent.delete(key);
+    });
+  }
+  const result = await (signal ? Promise.race([entry.answer, whenAborted(signal)]) : entry.answer);
+  const out = new Map<string, PubHoursResult>();
+  if (result && !signal?.aborted) out.set(pub.id, result);
+  return out;
+}
+
+function whenAborted(signal: AbortSignal): Promise<undefined> {
+  return new Promise((resolve) => signal.addEventListener('abort', () => resolve(undefined), { once: true }));
+}
+
+async function requestPubHours(
+  pubs: Pub[],
+  signal: AbortSignal | undefined,
+  options: FetchPubHoursOptions,
 ): Promise<Map<string, PubHoursResult>> {
   const out = new Map<string, PubHoursResult>();
 

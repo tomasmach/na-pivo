@@ -20,7 +20,7 @@ jest.mock('../communityClient', () => ({
   submitPubCommunity: jest.fn(async () => ({ cacheKey: 'k', hours: null, beers: [] })),
 }));
 
-jest.mock('../hoursClient', () => ({ fetchPubHours: jest.fn(async () => new Map()) }));
+jest.mock('../hoursClient', () => ({ fetchPubHours: jest.fn(async () => new Map()), forgetPubHours: jest.fn() }));
 
 const STORAGE_KEY = 'na-pivo-community-queue';
 

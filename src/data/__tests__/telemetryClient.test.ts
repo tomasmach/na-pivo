@@ -1,8 +1,16 @@
 import {
+  flushClientEvents,
   resetTelemetryForTests,
   setTelemetrySession,
   trackClientEvent,
 } from '../telemetryClient';
+
+function sentEvents(fetchSpy: jest.Mock): Record<string, unknown>[] {
+  return fetchSpy.mock.calls.flatMap((call) => {
+    const body = JSON.parse((call as unknown as [string, RequestInit])[1].body as string);
+    return Array.isArray(body.events) ? body.events : [body];
+  });
+}
 
 const ORIGINAL_FETCH = global.fetch;
 const ORIGINAL_URL = process.env.EXPO_PUBLIC_BACKEND_URL;
@@ -36,7 +44,8 @@ describe('trackClientEvent', () => {
     await trackClientEvent({ event: 'api_failure', message: 'bad category', context: {
       app_state: 'private account state', error_category: 'private native error text',
     } });
-    const bodies = fetchSpy.mock.calls.map((call) => JSON.parse((call as unknown as [string, RequestInit])[1].body as string));
+    await flushClientEvents();
+    const bodies = sentEvents(fetchSpy) as { context: unknown }[];
     expect(bodies[0].context).toEqual({ app_state: 'background', error_category: 'secure_store_access' });
     expect(bodies[1].context).toEqual({});
   });
@@ -63,6 +72,7 @@ describe('trackClientEvent', () => {
         authorization: 'Bearer should-not-send',
       },
     });
+    await flushClientEvents();
 
     expect(fetchSpy).toHaveBeenCalledTimes(1);
     const [url, init] = fetchSpy.mock.calls[0] as unknown as [string, RequestInit];
@@ -119,6 +129,7 @@ describe('trackClientEvent', () => {
         lat: 50.0876,
       },
     });
+    await flushClientEvents();
 
     const [, init] = fetchSpy.mock.calls[0] as unknown as [string, RequestInit];
     const body = JSON.parse(init.body as string);
@@ -148,6 +159,7 @@ describe('trackClientEvent', () => {
         pathname: '/parta/private-account-id',
       },
     });
+    await flushClientEvents();
 
     const [, init] = fetchSpy.mock.calls[0] as unknown as [string, RequestInit];
     expect(JSON.parse(init.body as string).context).toEqual({
@@ -164,6 +176,7 @@ describe('trackClientEvent', () => {
       event: 'ui_interaction',
       context: { target: 'compass_skip', action: 'tap', count: 12.4 },
     });
+    await flushClientEvents();
 
     const [, init] = fetchSpy.mock.calls[0] as unknown as [string, RequestInit];
     expect(JSON.parse(init.body as string).context).toEqual({
@@ -183,12 +196,51 @@ describe('trackClientEvent', () => {
         context: { target: 'tab_beer', action: 'select' },
       });
     }
-    const productSent = fetchSpy.mock.calls.length;
+    await flushClientEvents();
+    const productSent = sentEvents(fetchSpy).length;
     expect(productSent).toBeLessThan(600);
 
     await trackClientEvent({ event: 'unhandled_error', severity: 'error' });
     await trackClientEvent({ event: 'walking_distance', context: { distance_m: 1200 } });
+    await flushClientEvents();
 
-    expect(fetchSpy).toHaveBeenCalledTimes(productSent + 2);
+    expect(sentEvents(fetchSpy)).toHaveLength(productSent + 2);
+  });
+
+  it('sends events together, each batch under the account that produced it', async () => {
+    jest.useFakeTimers();
+    const fetchSpy = jest.fn(async () => ({ ok: true }));
+    global.fetch = fetchSpy as unknown as typeof fetch;
+    setTelemetrySession({ deviceId: 'device-id', accountId: 'first', token: 'first-token' });
+
+    await trackClientEvent({ event: 'app_open' });
+    await trackClientEvent({ event: 'screen_viewed', context: { screen: 'compass' } });
+    expect(fetchSpy).not.toHaveBeenCalled();
+
+    setTelemetrySession({ deviceId: 'device-id', accountId: 'second', token: 'second-token' });
+    await trackClientEvent({ event: 'app_foreground' });
+    await jest.advanceTimersByTimeAsync(15_000);
+    jest.useRealTimers();
+
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+    const [firstCall, secondCall] = fetchSpy.mock.calls as unknown as [string, RequestInit][];
+    expect((firstCall[1].headers as Record<string, string>).Authorization).toBe('Bearer first-token');
+    expect(JSON.parse(firstCall[1].body as string).events.map((e: { event: string }) => e.event)).toEqual([
+      'app_open',
+      'screen_viewed',
+    ]);
+    expect((secondCall[1].headers as Record<string, string>).Authorization).toBe('Bearer second-token');
+    expect(JSON.parse(secondCall[1].body as string).event).toBe('app_foreground');
+  });
+
+  it('sends an error at once together with the events waiting before it', async () => {
+    const fetchSpy = jest.fn(async () => ({ ok: true }));
+    global.fetch = fetchSpy as unknown as typeof fetch;
+
+    await trackClientEvent({ event: 'screen_viewed', context: { screen: 'compass' } });
+    await trackClientEvent({ event: 'unhandled_error', severity: 'error', message: 'boom' });
+
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    expect(sentEvents(fetchSpy).map((event) => event.event)).toEqual(['screen_viewed', 'unhandled_error']);
   });
 });

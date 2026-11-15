@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { View } from 'react-native';
+import { AppState, View } from 'react-native';
+import { useIsFocused } from 'expo-router';
 
 import { fetchPlanDetail, type HomeEveningState } from '@/data/partaPlansClient';
 import { enqueueFriendOp } from '@/data/friendsQueue';
@@ -35,24 +36,27 @@ export function FriendEveningCard() {
   const evening = useFriendHomeEvening();
   const myId = useAccountStore((st) => st.profile?.id);
   const [state, setState] = useState<HomeEveningState | null>(null);
+  const focused = useIsFocused();
 
   useEffect(() => {
-    if (!evening) return;
+    if (!evening || !focused) return;
     let alive = true;
-    const refresh = () =>
+    const refresh = () => {
+      if (AppState.currentState !== 'active') return;
       void fetchPlanDetail(evening.activityId).then((detail) => {
         if (!alive) return;
         // The evening ended or is not mine to see any more.
         if (detail === 'gone') useHomeEveningStore.getState().setEvening(null);
         else if (detail?.home) setState(detail.home);
       });
+    };
     refresh();
     const timer = setInterval(refresh, REFRESH_MS);
     return () => {
       alive = false;
       clearInterval(timer);
     };
-  }, [evening]);
+  }, [evening, focused]);
 
   if (!evening) return null;
   const present = state?.present ?? [];

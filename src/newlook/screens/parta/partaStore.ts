@@ -81,7 +81,8 @@ export const usePartaStore = create<PartaState>((set, get) => ({
       });
       if (dashboard) {
         // Opening Parta is what clears the tab dot, as in the old screen.
-        if (dashboard.notifications.length) void markFriendNotificationsRead(dashboard.notifications.map((n) => n.id));
+        const unread = dashboard.notifications.filter((n) => n.readAt == null).map((n) => n.id);
+        if (unread.length) void markFriendNotificationsRead(unread);
         usePartaSignalStore.getState().setSignal({
           pendingRequests: dashboard.incomingRequests.length,
           unread: 0,

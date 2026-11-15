@@ -1,4 +1,4 @@
-import { fetchPubHours } from '../hoursClient';
+import { fetchPubHours, forgetPubHours } from '../hoursClient';
 import type { Pub } from '../pubs';
 
 const PUB_A: Pub = { id: 'mapy:50.0,14.0', name: 'U Fleků', lat: 50.0, lng: 14.0, city: 'Praha' };
@@ -16,6 +16,7 @@ function setBackend(url: string | undefined): void {
 }
 
 afterEach(() => {
+  forgetPubHours();
   global.fetch = ORIGINAL_FETCH;
   setBackend(ORIGINAL_URL);
   jest.clearAllMocks();
@@ -465,5 +466,31 @@ describe('fetchPubHours — abort handling', () => {
     controller.abort();
 
     await expect(promise).resolves.toEqual(new Map());
+  });
+});
+
+describe('fetchPubHours — one request for screens asking at once', () => {
+  it('shares a settled answer for the same pub and asks again while it is pending', async () => {
+    setBackend('https://api.example.com');
+    let status = 'ok';
+    const fetchSpy = jest.fn(async () => ({ ok: true, json: async () => ({ results: [{ status }] }) }));
+    global.fetch = fetchSpy as unknown as typeof fetch;
+
+    const [compass, page] = await Promise.all([
+      fetchPubHours([PUB_A]),
+      fetchPubHours([{ ...PUB_A, id: 'page-id' }]),
+    ]);
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    expect(compass.get(PUB_A.id)?.status).toBe('ok');
+    expect(page.get('page-id')?.status).toBe('ok');
+
+    await fetchPubHours([PUB_A], undefined, { fresh: true });
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+
+    forgetPubHours();
+    status = 'pending';
+    await fetchPubHours([PUB_A]);
+    await fetchPubHours([PUB_A]);
+    expect(fetchSpy).toHaveBeenCalledTimes(4);
   });
 });

@@ -24,7 +24,7 @@ import {
 } from './communityClient';
 import { isWeeklyHours } from './communityHours';
 import { geohash8 } from './geohash';
-import { fetchPubHours } from './hoursClient';
+import { fetchPubHours, forgetPubHours } from './hoursClient';
 import { createQueueStorage, createQueueLock } from './createQueue';
 
 const STORAGE_KEY = 'na-pivo-community-queue';
@@ -61,7 +61,7 @@ function hasBase(entry: CommunityEntry): boolean {
 async function toSendable(entry: CommunityEntry): Promise<CommunityEntry | null> {
   if (!hasBase(entry)) return entry;
   const pub = { id: entry.client_id, name: entry.name, lat: entry.lat, lng: entry.lng, city: entry.city };
-  const now = (await fetchPubHours([pub])).get(pub.id);
+  const now = (await fetchPubHours([pub], undefined, { fresh: true })).get(pub.id);
   return now ? rebaseCommunityEntry(entry, now) : null;
 }
 
@@ -101,6 +101,7 @@ async function flushLocked(): Promise<Map<string, CommunityResponse>> {
     if (result === 'permanent-error') continue;
     if (result) {
       delivered.set(entry.client_id, result);
+      forgetPubHours();
       continue;
     }
     remaining.push(entry);

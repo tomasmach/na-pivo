@@ -6,7 +6,7 @@
  * response bodies, no GPS coordinates, no pub names, no feedback text/contact.
  */
 
-import { Platform } from 'react-native';
+import { AppState, Platform } from 'react-native';
 
 import type { AccountSession } from './account';
 import { getBackendEndpoint } from './backendConfig';
@@ -59,6 +59,8 @@ export interface ClientTelemetryInput {
 }
 
 const REQUEST_TIMEOUT_MS = 4000;
+const BATCH_DELAY_MS = 15_000;
+const BATCH_MAX = 25;
 const MAX_EVENTS_PER_SESSION = 120;
 // Product events (navigation + UI taps) are high-volume by design; they get
 // their own budget so they can never starve diagnostics or walking distance.
@@ -117,6 +119,10 @@ let sentThisSession = 0;
 let productSentThisSession = 0;
 const messageRepeats = new Map<string, number>();
 
+type EventBody = Record<string, unknown>;
+let batch: { token: string | null; generation: number; events: EventBody[] } | null = null;
+let batchTimer: ReturnType<typeof setTimeout> | null = null;
+
 export function setTelemetrySession(session: AccountSession | null): void {
   const token = session?.token ?? null;
   if (token !== sessionToken) sessionGeneration += 1;
@@ -130,6 +136,9 @@ export function telemetrySessionGeneration(): number {
 }
 
 export function resetTelemetryForTests(): void {
+  if (batchTimer) clearTimeout(batchTimer);
+  batchTimer = null;
+  batch = null;
   sessionToken = null;
   sentThisSession = 0;
   productSentThisSession = 0;
@@ -268,7 +277,7 @@ function shouldSend(input: ClientTelemetryInput): boolean {
   return true;
 }
 
-export function telemetryHeaders(): Record<string, string> {
+export function telemetryHeaders(token: string | null = sessionToken): Record<string, string> {
   const appVersion = getAppVersionLabel();
   const platform = Platform.OS;
   const osVersion = String(Platform.Version);
@@ -277,33 +286,46 @@ export function telemetryHeaders(): Record<string, string> {
     'X-Na-Pivo-App-Version': appVersion,
     'X-Na-Pivo-Platform': platform,
     'X-Na-Pivo-OS-Version': osVersion,
-    ...(sessionToken ? { Authorization: `Bearer ${sessionToken}` } : {}),
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
   };
 }
 
+/** Events wait up to BATCH_DELAY_MS and leave together, under the account that produced them. */
 export async function trackClientEvent(input: ClientTelemetryInput): Promise<void> {
   if (!shouldSend(input)) return;
+  if (!getBackendEndpoint('/v1/client-events')) return;
 
+  if (batch && batch.generation !== sessionGeneration) void flushClientEvents();
+  batch ??= { token: sessionToken, generation: sessionGeneration, events: [] };
+  batch.events.push({
+    event: input.event,
+    severity: input.severity ?? 'info',
+    message: sanitizeText(input.message, 300),
+    context: sanitizeContext(input.context),
+    app_version: getAppVersionLabel(),
+    platform: Platform.OS,
+    os_version: String(Platform.Version),
+  });
+  if (batch.events.length >= BATCH_MAX || input.severity === 'error') return flushClientEvents();
+  batchTimer ??= setTimeout(() => void flushClientEvents(), BATCH_DELAY_MS);
+}
+
+export async function flushClientEvents(): Promise<void> {
+  if (batchTimer) clearTimeout(batchTimer);
+  batchTimer = null;
+  const sending = batch;
+  batch = null;
   const endpoint = getBackendEndpoint('/v1/client-events');
-  if (!endpoint) return;
+  if (!sending?.events.length || !endpoint) return;
 
-  const appVersion = getAppVersionLabel();
   const timeoutController = new AbortController();
   const timeoutId = setTimeout(() => timeoutController.abort(), REQUEST_TIMEOUT_MS);
-
   try {
     await fetch(endpoint, {
       method: 'POST',
-      headers: telemetryHeaders(),
-      body: JSON.stringify({
-        event: input.event,
-        severity: input.severity ?? 'info',
-        message: sanitizeText(input.message, 300),
-        context: sanitizeContext(input.context),
-        app_version: appVersion,
-        platform: Platform.OS,
-        os_version: String(Platform.Version),
-      }),
+      headers: telemetryHeaders(sending.token),
+      // A lone event keeps the shape every backend accepts.
+      body: JSON.stringify(sending.events.length === 1 ? sending.events[0] : { events: sending.events }),
       signal: timeoutController.signal,
     });
   } catch {
@@ -353,6 +375,11 @@ export function trackApiFailure(
 export function installClientTelemetry(): void {
   if (installed) return;
   installed = true;
+
+  const flushAfterOtherLeavingListeners = () => setTimeout(() => void flushClientEvents(), 0);
+  AppState.addEventListener('change', (state) => {
+    if (state !== 'active') flushAfterOtherLeavingListeners();
+  });
 
   const originalWarn = console.warn.bind(console);
   const originalError = console.error.bind(console);

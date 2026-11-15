@@ -22,7 +22,7 @@ import {
   isRestaurant,
   type Pub,
 } from '@/data/pubs';
-import { fetchVisits, type WireVisit } from '@/data/visitsClient';
+import type { WireVisit } from '@/data/visitsClient';
 import {
   backendPubSearchFilterKey,
   freshPriceCzks,
@@ -36,7 +36,7 @@ import {
   visitsSnapshotGeneration,
 } from '@/data/visitsSnapshot';
 import { usePubStore } from '@/stores/pubStore';
-import { useAccountStore } from '@/stores/accountStore';
+import { selectIsSignedIn, useAccountStore } from '@/stores/accountStore';
 import { allSessionsNewestFirst, useTallyStore } from '@/stores/tallyStore';
 import {
   buildLivePubs,
@@ -50,6 +50,17 @@ import {
 const VIEWPORT_DEBOUNCE_MS = 250;
 const LIVE_REFRESH_MS = 35_000;
 const IDLE_LIVE_REFRESH_MS = 3 * 60_000;
+
+let lastLivePull: { accountId: string | null; generation: number; at: number } | null = null;
+
+function livePulledRecently(accountId: string | null, generation: number): boolean {
+  return (
+    lastLivePull !== null &&
+    lastLivePull.accountId === accountId &&
+    lastLivePull.generation === generation &&
+    Date.now() - lastLivePull.at < LIVE_REFRESH_MS
+  );
+}
 /** The map draws its own native location dot, so JS only needs one fix to
  *  centre the first view and one per tap on the locate button. */
 const MOUNT_FIX_MAX_AGE_MS = 5 * 60 * 1000;
@@ -165,6 +176,7 @@ export function useBeerMap(
   const reportedPubIds = usePubStore((state) => state.reportedPubIds);
   const reportedCacheKeys = usePubStore((state) => state.reportedCacheKeys);
   const accountId = useAccountStore((state) => state.session?.accountId ?? null);
+  const signedIn = useAccountStore(selectIsSignedIn);
 
   useFocusEffect(
     useCallback(() => {
@@ -235,11 +247,27 @@ export function useBeerMap(
     [],
   );
 
+  const diaryVisits = useAccountStore((state) =>
+    state.diarySnapshot && state.diarySnapshot.accountId === state.session?.accountId
+      ? state.diarySnapshot.data.visits
+      : null,
+  );
+  useEffect(() => {
+    if (!diaryVisits || privateReadsSuspended.current) return;
+    setServerVisits(diaryVisits);
+    void saveVisitsSnapshot(diaryVisits, visitsSnapshotGeneration());
+  }, [diaryVisits]);
+
+  const handledRefreshNonce = useRef(0);
   useEffect(() => {
     if (!focused) return;
     privateReadsSuspended.current = false;
     let cancelled = false;
     const generation = visitsSnapshotGeneration();
+    if (refreshNonce !== handledRefreshNonce.current) {
+      handledRefreshNonce.current = refreshNonce;
+      void useAccountStore.getState().refreshDiarySnapshot();
+    }
     void (async () => {
       const [visitSnapshot, friendSnapshot] = await Promise.all([
         loadVisitsSnapshot(),
@@ -250,27 +278,31 @@ export function useBeerMap(
         privateReadsSuspended.current ||
         generation !== visitsSnapshotGeneration()
       ) return;
-      setServerVisits(visitSnapshot);
-      if (friendSnapshot) setFriendActivities(friendSnapshot.dashboard.activeFriends);
+      const { diarySnapshot, session } = useAccountStore.getState();
+      const accountDiaryVisits = diarySnapshot && diarySnapshot.accountId === session?.accountId ? diarySnapshot.data.visits : null;
+      setServerVisits((shown) => accountDiaryVisits ?? (shown.length ? shown : visitSnapshot));
+      if (friendSnapshot) {
+        setFriendActivities((shown) => (shown.length ? shown : friendSnapshot.dashboard.activeFriends));
+      }
+      if (!signedIn || livePulledRecently(accountId, generation)) return;
 
-      const [visits, live] = await Promise.all([fetchVisits(), fetchFriendsLive()]);
+      const live = await fetchFriendsLive();
       if (
         cancelled ||
         privateReadsSuspended.current ||
         generation !== visitsSnapshotGeneration()
       ) return;
-      setStale(visits === null || live === null);
-      if (visits) {
-        setServerVisits(visits);
-        void saveVisitsSnapshot(visits, generation);
+      setStale(live === null);
+      if (live) {
+        setFriendActivities(live.activeFriends);
+        lastLivePull = { accountId, generation, at: Date.now() };
       }
-      if (live) setFriendActivities(live.activeFriends);
     })();
 
     return () => {
       cancelled = true;
     };
-  }, [accountId, focused, refreshNonce]);
+  }, [accountId, focused, refreshNonce, signedIn]);
 
   const hasLive = useMemo(
     () => buildLivePubs(friendActivities, nowMs).length > 0,
@@ -282,7 +314,7 @@ export function useBeerMap(
   // open. Otherwise a slow poll still notices a friend who just sat down.
   const pollFriendsLive = hasLive || friendsLayerVisible;
   useEffect(() => {
-    if (!focused) return;
+    if (!focused || !signedIn) return;
     const timer = setInterval(() => {
       setNowMs(Date.now());
       if (privateReadsSuspended.current) return;
@@ -294,11 +326,12 @@ export function useBeerMap(
           generation === visitsSnapshotGeneration()
         ) {
           setFriendActivities(live.activeFriends);
+          lastLivePull = { accountId: useAccountStore.getState().session?.accountId ?? null, generation, at: Date.now() };
         }
       });
     }, pollFriendsLive ? LIVE_REFRESH_MS : IDLE_LIVE_REFRESH_MS);
     return () => clearInterval(timer);
-  }, [focused, pollFriendsLive]);
+  }, [focused, pollFriendsLive, signedIn]);
 
   useEffect(() => {
     if (!focused || !requestedRegion) return;
