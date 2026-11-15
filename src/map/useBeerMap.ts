@@ -287,7 +287,9 @@ export function useBeerMap(
         privateReadsSuspended.current ||
         generation !== visitsSnapshotGeneration()
       ) return;
-      setServerVisits((shown) => (shown.length ? shown : visitSnapshot));
+      const { diarySnapshot, session } = useAccountStore.getState();
+      const accountDiaryVisits = diarySnapshot && diarySnapshot.accountId === session?.accountId ? diarySnapshot.data.visits : null;
+      setServerVisits((shown) => accountDiaryVisits ?? (shown.length ? shown : visitSnapshot));
       if (friendSnapshot) {
         setFriendActivities((shown) => (shown.length ? shown : friendSnapshot.dashboard.activeFriends));
       }
@@ -333,6 +335,7 @@ export function useBeerMap(
           generation === visitsSnapshotGeneration()
         ) {
           setFriendActivities(live.activeFriends);
+          lastLivePull = { accountId: useAccountStore.getState().session?.accountId ?? null, generation, at: Date.now() };
         }
       });
     }, pollFriendsLive ? LIVE_REFRESH_MS : IDLE_LIVE_REFRESH_MS);

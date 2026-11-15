@@ -25,9 +25,6 @@ function dashboard(overrides: Partial<FriendsDashboard> = {}): FriendsDashboard 
     outgoingRequests: [],
     activeFriends: [],
     myActiveActivity: null,
-    plans: [],
-    myPlan: null,
-    blockedIds: [],
     presence: [],
     myPresence: null,
     settings: {
@@ -37,10 +34,7 @@ function dashboard(overrides: Partial<FriendsDashboard> = {}): FriendsDashboard 
       quietHoursEnd: 9,
       shareDrinksWithParta: true,
     },
-    streak: { currentWeeks: 0, thisWeekLit: false },
-    leaderboard: [],
     notifications: [],
-    unreadCount: 0,
     ...overrides,
   };
 }
@@ -85,24 +79,12 @@ it('persists a write made under the post-clear generation (guard is not permanen
   expect(snap?.dashboard.friends[0].id).toBe('bob');
 });
 
-it('drops ambiguous legacy leaderboard counts while keeping the offline friend list', async () => {
-  const legacy = withFriend('private');
-  legacy.leaderboard = [{ account: legacy.friends[0], visits30d: 0, beers30d: null, sharedCount: 0, isMe: false }];
-  await AsyncStorage.setItem('na-pivo-friends-dashboard', JSON.stringify({ savedAt: Date.now(), dashboard: legacy }));
+it('still opens a snapshot an older build saved with the leaderboard', async () => {
+  const legacy = { ...withFriend('alice'), leaderboard: [{ visits30d: 0 }], streak: { currentWeeks: 2 }, unreadCount: 3 };
+  await AsyncStorage.setItem('na-pivo-friends-dashboard', JSON.stringify({ savedAt: Date.now(), dashboard: legacy, leaderboardVersion: 1 }));
   const snap = await loadFriendsDashboardSnapshot();
   expect(snap?.dashboard.friends).toEqual(legacy.friends);
-  expect(snap?.dashboard.leaderboard).toEqual([]);
-});
-
-it('round-trips private, zero and omitted counts without changing their meaning', async () => {
-  const current = withFriend('private');
-  current.leaderboard = [
-    { account: current.friends[0], visits30d: null, beers30d: null, sharedCount: 0, isMe: false },
-    { account: current.friends[0], visits30d: 0, beers30d: 0, sharedCount: 0, isMe: false },
-    { account: current.friends[0], visits30d: 2, sharedCount: 0, isMe: false },
-  ];
-  await saveFriendsDashboardSnapshot(current, snapshotGeneration());
-  expect((await loadFriendsDashboardSnapshot())?.dashboard.leaderboard).toEqual(current.leaderboard);
+  expect(snap?.dashboard.presence).toEqual([]);
 });
 
 function plan(id: string, expiresAt: string): PartaPlan {
