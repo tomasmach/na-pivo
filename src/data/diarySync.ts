@@ -139,6 +139,7 @@ interface PulledCopy {
   accountId: string;
   since: string | null;
   rows: DiaryRow[];
+  whole: boolean;
 }
 
 function readChanges(read: DiaryRead, key: 'drinks' | 'visits'): DiaryChanges | null {
@@ -188,14 +189,14 @@ async function pullCopy(
   const read = await fetchRows(accountId && copy ? { accountId, since: copy.since } : null);
   const changes = read && readChanges(read, key);
   if (!read || !changes) return null;
-  if (changes.full) return { accountId: read.accountId, since: changes.nextSince, rows: changes.rows };
+  if (changes.full) return { accountId: read.accountId, since: changes.nextSince, rows: changes.rows, whole: true };
   const rows = read.accountId === accountId && copy ? withChanges(copy.rows, changes) : null;
-  if (rows) return { accountId: read.accountId, since: changes.nextSince, rows };
+  if (rows) return { accountId: read.accountId, since: changes.nextSince, rows, whole: false };
 
   const again = await fetchRows(null);
   const whole = again && readChanges(again, key);
   if (!again || !whole?.full) return null;
-  return { accountId: again.accountId, since: whole.nextSince, rows: whole.rows };
+  return { accountId: again.accountId, since: whole.nextSince, rows: whole.rows, whole: true };
 }
 
 function newestFirst<T>(rows: T[], at: (row: T) => string): T[] {
@@ -225,7 +226,7 @@ async function pullDiary(): Promise<{ drinks: WireDrink[]; visits: WireVisit[] }
         accountId: drinks.accountId,
         drinks: { since: drinks.since, rows: drinks.rows },
         visits: { since: visits.since, rows: visits.rows },
-        fullReadAt: cache?.fullReadAt ?? Date.now(),
+        fullReadAt: drinks.whole && visits.whole ? Date.now() : (cache?.fullReadAt ?? Date.now()),
       },
       generation,
     );

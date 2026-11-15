@@ -404,6 +404,34 @@ describe('downloading only what changed', () => {
     now.mockRestore();
   });
 
+  it('counts a day from the last whole read, also when a mismatch caused it', async () => {
+    const hour = 60 * 60 * 1000;
+    const start = Date.parse('2026-07-20T10:00:00Z');
+    const now = jest.spyOn(Date, 'now').mockReturnValue(start);
+    const stored = drinkAt('d1', 18);
+    const visit = remoteVisit('v1', PUB_A);
+    (fetchDrinks as jest.Mock)
+      .mockResolvedValueOnce(answer('drinks', [], { all: true, since: '100' }))
+      .mockResolvedValueOnce(answer('drinks', [], { all: false, since: '200', live: [stored] }))
+      .mockResolvedValueOnce(answer('drinks', [stored], { all: true, since: '300' }))
+      .mockResolvedValueOnce(answer('drinks', [], { all: false, since: '400', live: [stored] }));
+    (fetchVisits as jest.Mock)
+      .mockResolvedValueOnce(answer('visits', [], { all: true, since: '100' }))
+      .mockResolvedValueOnce(answer('visits', [], { all: false, since: '200', live: [visit] }))
+      .mockResolvedValueOnce(answer('visits', [visit], { all: true, since: '300' }))
+      .mockResolvedValueOnce(answer('visits', [], { all: false, since: '400', live: [visit] }));
+
+    await reconcileDiarySnapshot();
+    now.mockReturnValue(start + 23 * hour);
+    await reconcileDiarySnapshot();
+    now.mockReturnValue(start + 25 * hour);
+    await reconcileDiarySnapshot();
+
+    expect(cursors(fetchDrinks)).toEqual([null, { accountId: 'acc', since: '100' }, null, { accountId: 'acc', since: '300' }]);
+    expect(cursors(fetchVisits)).toEqual([null, { accountId: 'acc', since: '100' }, null, { accountId: 'acc', since: '300' }]);
+    now.mockRestore();
+  });
+
   it('counts client IDs the way the backend does', () => {
     const ids = [
       'e5e40835-f85f-58b8-8805-49f48d519a6c',
