@@ -1451,3 +1451,72 @@ def test_ugc_gate_allows_comment_post_from_accepted_account_with_current_header(
 
     assert response.status_code == status.HTTP_201_CREATED, response.content
     assert PublishedNightComment.objects.count() == 1
+
+
+def _publish_story(client: APIClient, index: int, viewer: Account) -> None:
+    token, author = _register(client, f"autor{index}")
+    _token, guest = _register(client, f"host{index}")
+    _make_friends(author, viewer)
+    _make_friends(author, guest)
+    _make_friends(guest, viewer)
+    started = datetime(2026, 7, 21, 16, tzinfo=UTC)
+    evening = PartyEvening.objects.create(
+        client_id=uuid.uuid4(),
+        join_code=f"PIVO{index:02d}",
+        host=author,
+        pub_name="U Tygra",
+        started_at=started,
+        ended_at=datetime(2026, 7, 21, 23, 30, tzinfo=UTC),
+        active=False,
+    )
+    for member in (author, guest):
+        PartyEveningMember.objects.create(
+            evening=evening, account=member, active=False, joined_at=started
+        )
+    chosen = _photo(author, datetime(2026, 7, 21, 20, tzinfo=UTC))
+    _photo(author, datetime(2026, 7, 21, 21, tzinfo=UTC))
+    game = PartyGame.objects.create(
+        client_id=uuid.uuid4(),
+        evening=evening,
+        started_by=author,
+        catalog_key="pub-quiz",
+        name="Pub kvíz",
+        scoring=PartyGame.Scoring.POINTS,
+        started_at=datetime(2026, 7, 21, 21, tzinfo=UTC),
+    )
+    story = {
+        "participant_ids": [str(guest.public_id)],
+        "game_ids": [str(game.public_id)],
+        "party_code": evening.join_code,
+    }
+    if index % 2:
+        story["photo_ids"] = [str(chosen.public_id)]
+    response = _publish(client, token, visibility="friends", **story)
+    assert response.status_code == status.HTTP_201_CREATED, response.content
+
+
+@pytest.mark.django_db
+def test_feed_query_count_does_not_grow_with_the_page(client):
+    from django.test.utils import CaptureQueriesContext
+
+    viewer_token, viewer = _register(client, "ctenar")
+
+    def feed_queries() -> tuple[int, list[dict]]:
+        cache.clear()
+        with CaptureQueriesContext(connection) as queries:
+            response = client.get("/v1/nights/feed?scope=friends", **_auth(viewer_token))
+        assert response.status_code == status.HTTP_200_OK
+        return len(queries.captured_queries), response.json()["nights"]
+
+    for index in range(2):
+        _publish_story(client, index, viewer)
+    small, _ = feed_queries()
+    for index in range(2, 8):
+        _publish_story(client, index, viewer)
+    large, nights = feed_queries()
+
+    assert len(nights) == 8
+    assert all(len(night["participants"]) == 1 for night in nights)
+    assert all(len(night["hero_games"]) == 1 for night in nights)
+    assert sorted(len(night["hero_photos"]) for night in nights) == [1] * 4 + [2] * 4
+    assert large == small

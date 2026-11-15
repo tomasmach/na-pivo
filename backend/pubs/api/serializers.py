@@ -1448,6 +1448,103 @@ class PublishedNightFeedQuerySerializer(serializers.Serializer):
         return attrs
 
 
+class PublishedNightPage:
+    """Story rows for a whole page of nights, loaded in a fixed number of queries."""
+
+    def __init__(self, nights: list[PublishedNight], viewer: Account | None):
+        author_ids = {night.account_id for night in nights}
+        participant_refs = {str(value) for night in nights for value in night.participant_ids or ()}
+        self.participants = (
+            {
+                str(row.public_id): row
+                for row in Account.objects.filter(
+                    public_id__in=participant_refs,
+                    status=Account.Status.ACTIVE,
+                    ghost_mode=False,
+                    share_drinks_with_parta=True,
+                )
+            }
+            if participant_refs
+            else {}
+        )
+        self.people: set[int] = set()
+        self.accepted: set[tuple[int, int]] = set()
+        self.blocked: set[tuple[int, int]] = set()
+        if self.participants:
+            self.people = author_ids | {row.pk for row in self.participants.values()}
+            if viewer is not None:
+                self.people.add(viewer.pk)
+            self.accepted = {
+                tuple(sorted(pair))
+                for pair in Friendship.objects.filter(
+                    status=Friendship.Status.ACCEPTED,
+                    requester_id__in=self.people,
+                    recipient_id__in=self.people,
+                ).values_list("requester_id", "recipient_id")
+            }
+            self.blocked = {
+                tuple(sorted(pair))
+                for pair in FriendBlock.objects.filter(
+                    blocker_id__in=self.people,
+                    blocked_id__in=self.people,
+                ).values_list("blocker_id", "blocked_id")
+            }
+
+        shared = BeerPhoto.objects.filter(
+            account_id__in=author_ids,
+            visibility__in=(BeerPhoto.Visibility.FRIENDS, BeerPhoto.Visibility.PUBLIC),
+        )
+        photo_refs = {str(value) for night in nights for value in night.photo_ids or ()}
+        self.photos_by_reference: dict[tuple[int, str], BeerPhoto] = {}
+        if photo_refs:
+            for row in shared.filter(Q(public_id__in=photo_refs) | Q(client_id__in=photo_refs)):
+                self.photos_by_reference[(row.account_id, str(row.public_id))] = row
+                self.photos_by_reference[(row.account_id, str(row.client_id))] = row
+        windows = Q()
+        for night in nights:
+            if not night.photo_ids and not night.hide_photos:
+                windows |= Q(account_id=night.account_id, taken_at__range=_hero_photo_window(night))
+        self.window_photos = (
+            list(shared.filter(windows).order_by("-taken_at", "-pk")) if windows else []
+        )
+
+        game_refs = {str(value) for night in nights for value in night.game_ids or ()}
+        self.games = (
+            {
+                (row.started_by_id, str(row.public_id)): row
+                for row in PartyGame.objects.filter(
+                    public_id__in=game_refs, started_by_id__in=author_ids
+                )
+            }
+            if game_refs
+            else {}
+        )
+
+    def knows(self, pair: tuple[int, int]) -> bool:
+        return pair[0] in self.people and pair[1] in self.people
+
+    def window_photo_rows(self, night: PublishedNight) -> list[BeerPhoto]:
+        start, end = _hero_photo_window(night)
+        return [
+            row
+            for row in self.window_photos
+            if row.account_id == night.account_id and start <= row.taken_at <= end
+        ][:6]
+
+
+def _hero_photo_window(night: PublishedNight):
+    # Same window as the app's photo pick: a photo is often taken just
+    # before the first logged beer or while rating after the last one.
+    return (night.started_at - timedelta(hours=1), night.ended_at + timedelta(hours=3))
+
+
+class PublishedNightListSerializer(serializers.ListSerializer):
+    def to_representation(self, data):
+        nights = list(data.all() if hasattr(data, "all") else data)
+        self.context["night_page"] = PublishedNightPage(nights, self.context.get("account"))
+        return super().to_representation(nights)
+
+
 class PublishedNightSerializer(serializers.ModelSerializer):
     """Published-night wire shape with viewer-specific reaction state."""
 
@@ -1491,6 +1588,7 @@ class PublishedNightSerializer(serializers.ModelSerializer):
             "comment_count",
         ]
         read_only_fields = fields
+        list_serializer_class = PublishedNightListSerializer
 
     def _is_mine(self, obj: PublishedNight) -> bool:
         account = self.context.get("account")
@@ -1516,6 +1614,9 @@ class PublishedNightSerializer(serializers.ModelSerializer):
         if viewer_id in pair and "viewer_blocked_ids" in self.context:
             other_id = pair[0] if pair[1] == viewer_id else pair[1]
             return other_id in self.context["viewer_blocked_ids"]
+        page = self.context.get("night_page")
+        if page is not None and page.knows(pair):
+            return pair in page.blocked
         memo = getattr(self, "_blocked_between_memo", None)
         if memo is None:
             memo = self._blocked_between_memo = {}
@@ -1537,6 +1638,9 @@ class PublishedNightSerializer(serializers.ModelSerializer):
         if viewer_id in pair and "viewer_accepted_friend_ids" in self.context:
             other_id = pair[0] if pair[1] == viewer_id else pair[1]
             return other_id in self.context["viewer_accepted_friend_ids"]
+        page = self.context.get("night_page")
+        if page is not None and page.knows(pair):
+            return pair in page.accepted
         memo = getattr(self, "_accepted_between_memo", None)
         if memo is None:
             memo = self._accepted_between_memo = {}
@@ -1564,12 +1668,16 @@ class PublishedNightSerializer(serializers.ModelSerializer):
             return []
         viewer = self._viewer()
         requested = [str(value) for value in obj.participant_ids]
-        rows = Account.objects.filter(
-            public_id__in=requested,
-            status=Account.Status.ACTIVE,
-            ghost_mode=False,
-            share_drinks_with_parta=True,
-        )
+        page = self.context.get("night_page")
+        if page is not None:
+            rows = [page.participants[value] for value in requested if value in page.participants]
+        else:
+            rows = Account.objects.filter(
+                public_id__in=requested,
+                status=Account.Status.ACTIVE,
+                ghost_mode=False,
+                share_drinks_with_parta=True,
+            )
         visible = {
             str(row.public_id): row
             for row in rows
@@ -1586,16 +1694,22 @@ class PublishedNightSerializer(serializers.ModelSerializer):
         return FriendProfileSerializer(ordered, many=True, context=self.context).data
 
     def _hero_photo_rows(self, obj: PublishedNight) -> list[BeerPhoto]:
+        page = self.context.get("night_page")
+        if page is not None:
+            if not obj.photo_ids:
+                return page.window_photo_rows(obj)
+            return [
+                page.photos_by_reference[(obj.account_id, str(value))]
+                for value in obj.photo_ids
+                if (obj.account_id, str(value)) in page.photos_by_reference
+            ]
         shared = BeerPhoto.objects.filter(
             account_id=obj.account_id,
             visibility__in=(BeerPhoto.Visibility.FRIENDS, BeerPhoto.Visibility.PUBLIC),
         )
         if not obj.photo_ids:
-            # Same window as the app's photo pick: a photo is often taken just
-            # before the first logged beer or while rating after the last one.
-            taken = (obj.started_at - timedelta(hours=1), obj.ended_at + timedelta(hours=3))
             return list(
-                shared.filter(taken_at__range=taken).order_by("-taken_at", "-pk")[:6]
+                shared.filter(taken_at__range=_hero_photo_window(obj)).order_by("-taken_at", "-pk")[:6]
             )
         requested = [str(value) for value in obj.photo_ids]
         by_reference = {}
@@ -1629,8 +1743,16 @@ class PublishedNightSerializer(serializers.ModelSerializer):
         if not obj.game_ids:
             return []
         requested = [str(value) for value in obj.game_ids]
-        rows = PartyGame.objects.filter(public_id__in=requested, started_by=obj.account)
-        by_id = {str(row.public_id): row for row in rows}
+        page = self.context.get("night_page")
+        if page is not None:
+            by_id = {
+                value: page.games[(obj.account_id, value)]
+                for value in requested
+                if (obj.account_id, value) in page.games
+            }
+        else:
+            rows = PartyGame.objects.filter(public_id__in=requested, started_by=obj.account)
+            by_id = {str(row.public_id): row for row in rows}
         return [
             {
                 "id": value,
