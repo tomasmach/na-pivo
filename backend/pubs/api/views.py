@@ -4661,6 +4661,12 @@ class ClientEventsView(APIView):
     throttle_classes = [ScopedRateThrottle]
     throttle_scope = "client_events"
 
+    def throttle_cost(self, request: Request) -> int:
+        batch = request.data.get("events") if isinstance(request.data, dict) else None
+        if isinstance(batch, list) and 1 <= len(batch) <= CLIENT_EVENT_BATCH_MAX:
+            return len(batch)
+        return 1
+
     def post(self, request: Request) -> Response:
         batch = request.data.get("events") if isinstance(request.data, dict) else None
         if batch is not None:
