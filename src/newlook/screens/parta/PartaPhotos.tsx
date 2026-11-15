@@ -67,7 +67,7 @@ export function PartaPhotoStrip() {
       <ScrollView horizontal showsHorizontalScrollIndicator={false} style={bleed.style} contentContainerStyle={[bleed.contentStyle, { gap: 8 }]}>
         {photos.map((photo, i) => (
           <Press key={photo.key} onPress={() => openViewer(router, photos, i)} accessibilityRole="imagebutton" accessibilityLabel={`${photo.author.name}, ${photo.title}`}>
-            <Image source={{ uri: photo.uri }} style={{ width: 100, height: 124, borderRadius: 16, backgroundColor: C.card }} />
+            <Image source={{ uri: photo.thumb }} style={{ width: 100, height: 124, borderRadius: 16, backgroundColor: C.card }} />
             <View style={[s.row, { position: 'absolute', left: 6, bottom: 6, height: 26, borderRadius: 13, paddingLeft: 3, paddingRight: 9, gap: 5, backgroundColor: '#0A0A0AB3' }]}>
               <Person initial={photo.author.initial} size={20} />
               <T s={12} w={700} numberOfLines={1} style={{ maxWidth: 60 }}>
@@ -206,7 +206,7 @@ export function FriendPhotosSection({ id, name }: { id: string; name: string }) 
       <View style={[s.row, { gap: 4, borderRadius: 16, overflow: 'hidden' }]}>
         {photos.slice(0, 3).map((photo, i) => (
           <Press key={photo.key} onPress={() => openViewer(router, photos, i)} style={{ flex: 1 }} accessibilityRole="imagebutton" accessibilityLabel={photo.title}>
-            <Image source={{ uri: photo.uri }} style={{ width: '100%', aspectRatio: 1, backgroundColor: C.card }} />
+            <Image source={{ uri: photo.thumb }} style={{ width: '100%', aspectRatio: 1, backgroundColor: C.card }} />
           </Press>
         ))}
         {Array.from({ length: Math.max(0, 3 - photos.length) }, (_, i) => (
@@ -249,7 +249,7 @@ export function FriendPhotosScreen() {
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 4 }}>
             {m.photos.map((photo) => (
               <Press key={photo.key} onPress={() => openViewer(router, list, list.indexOf(photo))} accessibilityRole="imagebutton" accessibilityLabel={photo.title}>
-                <Image source={{ uri: photo.uri }} style={{ width: size, height: size, borderRadius: 8, backgroundColor: C.card }} />
+                <Image source={{ uri: photo.thumb }} style={{ width: size, height: size, borderRadius: 8, backgroundColor: C.card }} />
               </Press>
             ))}
           </View>

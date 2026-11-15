@@ -9,6 +9,8 @@ const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
 export type ViewerPhoto = {
   key: string;
   uri: string;
+  /** What strips and grids load; the viewer itself shows `uri`. */
+  thumb: string;
   title: string;
   pubName: string;
   takenAt: string;
@@ -36,6 +38,7 @@ export function fromRemote(photo: BeerPhoto, who: ViewerPhoto['author']): Viewer
   return {
     key: photo.id,
     uri: photo.imageUrl,
+    thumb: photo.thumbUrl,
     title: photo.beerName || photo.pubName || t.nv.vycep.photoFallbackTitle,
     pubName: photo.beerName ? photo.pubName : '',
     takenAt: photo.takenAt || photo.createdAt,
@@ -51,6 +54,7 @@ export function fromMine(photo: BeerPhotoLocal, who: ViewerPhoto['author']): Vie
   return {
     key: photo.id ?? photo.clientId,
     uri,
+    thumb: photo.thumbUrl || uri,
     title: photo.beerName || photo.pubName || t.nv.vycep.photoFallbackTitle,
     pubName: photo.beerName ? photo.pubName : '',
     takenAt: photo.takenAt || photo.createdAt,

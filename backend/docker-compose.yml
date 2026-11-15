@@ -67,6 +67,7 @@ services:
           python manage.py process_account_exports --limit 10 || true
           python manage.py purge_deleted_accounts || true
           python manage.py retry_beer_photo_deletions || true
+          python manage.py create_beer_photo_thumbnails --limit 100 || true
           python manage.py prune_friend_data || true
           python manage.py prune_client_events || true
           python manage.py prune_operational_data || true

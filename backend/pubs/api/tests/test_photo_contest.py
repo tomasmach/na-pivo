@@ -447,6 +447,7 @@ def test_contest_wire_shape_votes_and_blocked_exclusion(client):
         "account",
         "photo_id",
         "image_url",
+        "thumb_url",
         "caption",
         "pub_name",
         "pub_city",
@@ -457,6 +458,7 @@ def test_contest_wire_shape_votes_and_blocked_exclusion(client):
         "created_at",
     }
     assert mine["photo_id"] == photo_a
+    assert mine["thumb_url"].endswith(".thumb.webp")
     assert mine["account"]["public_id"] == str(a.public_id)
     assert mine["account"]["nickname"] == "janek"
     assert mine["account"]["display_name"] == "Janek"

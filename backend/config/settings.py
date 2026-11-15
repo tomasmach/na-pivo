@@ -692,6 +692,8 @@ BEER_PHOTO_MAX_UPLOAD_BYTES: int = int(
 )
 # Stored photo long-edge ceiling in pixels (aspect ratio kept, never cropped).
 BEER_PHOTO_MAX_EDGE_PX: int = int(os.environ.get("BEER_PHOTO_MAX_EDGE_PX", "1600"))
+# List thumbnail short edge: covers the largest tile (FotoPivař grid, ~585x630 px at 3x).
+BEER_PHOTO_THUMB_SHORT_EDGE_PX: int = int(os.environ.get("BEER_PHOTO_THUMB_SHORT_EDGE_PX", "640"))
 # webp encoder quality for the stored photo.
 BEER_PHOTO_WEBP_QUALITY: int = int(os.environ.get("BEER_PHOTO_WEBP_QUALITY", "80"))
 # Per-account total photo cap — bounds disk usage per user (media volume cost).

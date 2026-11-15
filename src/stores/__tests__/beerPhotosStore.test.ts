@@ -35,6 +35,7 @@ function serverPhoto(clientId: string, over: Partial<BeerPhoto> = {}): BeerPhoto
     id: `srv-${clientId}`,
     clientId,
     imageUrl: `https://api.test/media/${clientId}.jpg`,
+    thumbUrl: `https://api.test/media/${clientId}.thumb.webp`,
     caption: 'Večer',
     pubCacheKey: '',
     pubName: '',

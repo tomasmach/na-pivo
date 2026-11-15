@@ -35,6 +35,8 @@ export interface BeerPhoto {
   id: string;
   clientId: string;
   imageUrl: string;
+  /** Small variant for lists (additive `thumb_url`); the full image until the server has one. */
+  thumbUrl: string;
   caption: string;
   pubCacheKey: string;
   pubName: string;
@@ -77,6 +79,7 @@ interface RawBeerPhoto {
   id?: string;
   client_id?: string;
   image_url?: string | null;
+  thumb_url?: string | null;
   caption?: string;
   pub_cache_key?: string;
   pub_name?: string;
@@ -108,10 +111,12 @@ export function resolveBeerPhotoUrl(raw: unknown): string {
 
 /** wire → app mapper; tolerant of missing fields (never throws). */
 export function beerPhotoFromWire(raw: RawBeerPhoto): BeerPhoto {
+  const imageUrl = resolveBeerPhotoUrl(raw.image_url);
   return {
     id: raw.id ?? '',
     clientId: raw.client_id ?? '',
-    imageUrl: resolveBeerPhotoUrl(raw.image_url),
+    imageUrl,
+    thumbUrl: resolveBeerPhotoUrl(raw.thumb_url) || imageUrl,
     caption: raw.caption ?? '',
     pubCacheKey: raw.pub_cache_key ?? '',
     pubName: raw.pub_name ?? '',

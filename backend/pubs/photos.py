@@ -13,12 +13,17 @@ also strips EXIF, so no GPS/location metadata ever reaches storage).
 from __future__ import annotations
 
 import io
+from collections.abc import Iterator
+from contextlib import contextmanager
+from dataclasses import dataclass
 
 from django.conf import settings
 from django.core.files.base import ContentFile
 from django.utils.translation import gettext
 from PIL import Image, ImageOps, UnidentifiedImageError
 from PIL.Image import DecompressionBombError
+
+from pubs.models import BeerPhoto, beer_photo_thumbnail_name
 
 # Decoded-pixel ceiling so a tiny highly-compressed file cannot blow up memory
 # (matches the avatar / menu-scan pipelines' generous phone-photo headroom).
@@ -41,8 +46,14 @@ class BeerPhotoError(Exception):
         self.http_status = http_status
 
 
-def process_beer_photo(file_or_bytes) -> ContentFile:
-    """Re-encode an uploaded image to a downscaled webp ContentFile.
+@dataclass(frozen=True)
+class ProcessedBeerPhoto:
+    image: ContentFile
+    thumbnail: ContentFile
+
+
+def process_beer_photo(file_or_bytes) -> ProcessedBeerPhoto:
+    """Re-encode an uploaded image to a downscaled webp and its list thumbnail.
 
     Pipeline: size cap + decompression-bomb ceiling (both BEFORE decode) →
     ``exif_transpose`` (honour orientation) → ``RGB`` → thumbnail-style downscale
@@ -74,26 +85,45 @@ def process_beer_photo(file_or_bytes) -> ContentFile:
     if not raw:
         raise BeerPhotoError(gettext("Fotku se nepodařilo načíst."), code="photo_invalid", http_status=400)
 
-    # --- decompression-bomb ceiling (before decode), restored in finally ---
     max_edge = settings.BEER_PHOTO_MAX_EDGE_PX
+    with _decoded(raw) as img:
+        img.thumbnail((max_edge, max_edge), Image.Resampling.LANCZOS)
+        return ProcessedBeerPhoto(
+            image=_webp(img, "photo.webp"),
+            thumbnail=_webp(_thumbnail(img), "thumbnail.webp"),
+        )
+
+
+def beer_photo_thumbnail(stored: bytes) -> ContentFile:
+    """List thumbnail of a photo that is already stored (backfill)."""
+
+    with _decoded(stored) as img:
+        return _webp(_thumbnail(img), "thumbnail.webp")
+
+
+def store_beer_photo_thumbnail(photo: BeerPhoto, content: ContentFile) -> None:
+    """Write the thumbnail at its derived name and point ``photo.thumbnail`` at it."""
+
+    storage = photo.thumbnail.storage
+    name = beer_photo_thumbnail_name(photo.image.name)
+    if storage.exists(name):
+        storage.delete(name)
+    stored = storage.save(name, content)
+    if stored != name:
+        storage.delete(stored)
+        raise OSError("beer photo thumbnail name is taken")
+    photo.thumbnail.name = name
+
+
+@contextmanager
+def _decoded(raw: bytes) -> Iterator[Image.Image]:
     previous_limit = Image.MAX_IMAGE_PIXELS
     Image.MAX_IMAGE_PIXELS = _MAX_IMAGE_PIXELS
     try:
         try:
             with Image.open(io.BytesIO(raw)) as img:
                 img.load()
-                img = ImageOps.exif_transpose(img)
-                img = img.convert("RGB")
-                # Downscale the longest edge to max_edge (no upscaling); keeps
-                # aspect ratio — a diary photo must never be cropped square.
-                img.thumbnail((max_edge, max_edge), Image.Resampling.LANCZOS)
-                out = io.BytesIO()
-                img.save(
-                    out,
-                    format="WEBP",
-                    quality=settings.BEER_PHOTO_WEBP_QUALITY,
-                    method=6,
-                )
+                yield ImageOps.exif_transpose(img).convert("RGB")
         except (DecompressionBombError, UnidentifiedImageError, OSError, ValueError) as exc:
             raise BeerPhotoError(
                 gettext("Fotku se nepodařilo načíst."), code="photo_invalid", http_status=400
@@ -101,4 +131,16 @@ def process_beer_photo(file_or_bytes) -> ContentFile:
     finally:
         Image.MAX_IMAGE_PIXELS = previous_limit
 
-    return ContentFile(out.getvalue(), name="photo.webp")
+
+def _thumbnail(img: Image.Image) -> Image.Image:
+    scale = settings.BEER_PHOTO_THUMB_SHORT_EDGE_PX / min(img.size)
+    if scale >= 1:
+        return img
+    size = (max(1, round(img.width * scale)), max(1, round(img.height * scale)))
+    return img.resize(size, Image.Resampling.LANCZOS)
+
+
+def _webp(img: Image.Image, name: str) -> ContentFile:
+    out = io.BytesIO()
+    img.save(out, format="WEBP", quality=settings.BEER_PHOTO_WEBP_QUALITY, method=6)
+    return ContentFile(out.getvalue(), name=name)

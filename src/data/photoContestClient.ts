@@ -46,6 +46,8 @@ export interface PhotoContestEntry {
   photoId: string | null;
   account: FriendProfile;
   imageUrl: string;
+  /** Small variant for the grid (additive `thumb_url`); the full image on older backends. */
+  thumbUrl: string;
   caption: string;
   pubName: string;
   pubCity: string;
@@ -63,6 +65,7 @@ export interface PhotoContestWinner {
   rank: number;
   account: FriendProfile;
   imageUrl: string;
+  thumbUrl: string;
   caption: string;
   votes: number;
 }
@@ -126,6 +129,7 @@ interface RawEntry {
   photo_id?: string;
   account?: RawContestProfile;
   image_url?: string | null;
+  thumb_url?: string | null;
   caption?: string;
   pub_name?: string;
   pub_city?: string;
@@ -140,6 +144,7 @@ interface RawWinner {
   rank?: number;
   account?: RawContestProfile;
   image_url?: string | null;
+  thumb_url?: string | null;
   caption?: string;
   votes?: number;
 }
@@ -190,11 +195,13 @@ export function parsePhotoContest(raw: RawContest): PhotoContest {
 }
 
 export function parsePhotoContestEntry(raw: RawEntry): PhotoContestEntry {
+  const imageUrl = resolveBeerPhotoUrl(raw.image_url);
   return {
     id: raw.id ?? '',
     photoId: typeof raw.photo_id === 'string' && raw.photo_id.length > 0 ? raw.photo_id : null,
     account: parseProfile(raw.account),
-    imageUrl: resolveBeerPhotoUrl(raw.image_url),
+    imageUrl,
+    thumbUrl: resolveBeerPhotoUrl(raw.thumb_url) || imageUrl,
     caption: raw.caption ?? '',
     pubName: raw.pub_name ?? '',
     pubCity: raw.pub_city ?? '',
@@ -207,10 +214,12 @@ export function parsePhotoContestEntry(raw: RawEntry): PhotoContestEntry {
 }
 
 export function parsePhotoContestWinner(raw: RawWinner): PhotoContestWinner {
+  const imageUrl = resolveBeerPhotoUrl(raw.image_url);
   return {
     rank: typeof raw.rank === 'number' && Number.isFinite(raw.rank) ? raw.rank : 0,
     account: parseProfile(raw.account),
-    imageUrl: resolveBeerPhotoUrl(raw.image_url),
+    imageUrl,
+    thumbUrl: resolveBeerPhotoUrl(raw.thumb_url) || imageUrl,
     caption: raw.caption ?? '',
     votes: typeof raw.votes === 'number' && Number.isFinite(raw.votes) ? raw.votes : 0,
   };

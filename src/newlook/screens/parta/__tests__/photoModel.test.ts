@@ -30,6 +30,7 @@ function theirs(id: string, hours: number, displayName: string): PartaFeedPhoto 
     id,
     clientId: id,
     imageUrl: `https://x/${id}.jpg`,
+    thumbUrl: `https://x/${id}.thumb.webp`,
     caption: 'Kdo dorazí, má u mě rundu.',
     pubCacheKey: '',
     pubName: 'Lokál Dlouhááá',
