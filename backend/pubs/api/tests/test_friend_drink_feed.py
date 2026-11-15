@@ -481,7 +481,6 @@ def test_friend_endpoints_keep_existing_contract_keys(client):
         "my_plan",
         "incoming_count",
         "unread_count",
-        "server_time",
         "presence",
         "my_presence",
     }
