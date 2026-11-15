@@ -1,8 +1,11 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
+import * as Notifications from 'expo-notifications';
+
 import { ensurePushTokenRegistered } from '../pushToken';
 
 const mockRegisterPushDevice = jest.fn<Promise<boolean>, [string, string]>();
+const mockRegisteredRecently = jest.fn(async () => false);
 
 jest.mock('@react-native-async-storage/async-storage', () =>
   // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -16,6 +19,7 @@ jest.mock('expo-notifications', () => ({
 jest.mock('@/data/pushDeviceClient', () => ({
   PUSH_TOKEN_KEY: 'na-pivo-expo-push-token',
   registerPushDevice: (token: string, status: string) => mockRegisterPushDevice(token, status),
+  pushDeviceRegisteredRecently: () => mockRegisteredRecently(),
 }));
 
 beforeEach(async () => {
@@ -57,4 +61,17 @@ it('retries a previously saved token after the backend recovers', async () => {
   await expect(ensurePushTokenRegistered('granted')).resolves.toBe('ExponentPushToken[test]');
 
   expect(mockRegisterPushDevice).toHaveBeenCalledTimes(2);
+});
+
+
+it('skips the token exchange and the upsert when nothing changed since a recent registration', async () => {
+  await AsyncStorage.setItem('na-pivo-expo-push-token', 'ExponentPushToken[saved]');
+  mockRegisteredRecently.mockResolvedValueOnce(true);
+
+  await expect(ensurePushTokenRegistered('granted', undefined, { unlessRecent: true })).resolves.toBe('ExponentPushToken[saved]');
+  expect(Notifications.getExpoPushTokenAsync).not.toHaveBeenCalled();
+  expect(mockRegisterPushDevice).not.toHaveBeenCalled();
+
+  await expect(ensurePushTokenRegistered('granted')).resolves.toBe('ExponentPushToken[test]');
+  expect(mockRegisterPushDevice).toHaveBeenCalledTimes(1);
 });

@@ -50,13 +50,13 @@ function inOrder<T>(operation: () => Promise<T>): Promise<T> {
  * the PUT tells the server to skip Parta. Without a token or permission there
  * is nothing to update.
  */
-async function keepDeviceWithoutParta(): Promise<boolean> {
+async function keepDeviceWithoutParta(unlessRecent = false): Promise<boolean> {
   try {
     const token = await AsyncStorage.getItem(PUSH_TOKEN_KEY);
     if (!token || !Notifications) return true;
     const { status } = await Notifications.getPermissionsAsync();
     if (status !== 'granted') return true;
-    return (await ensurePushTokenRegistered('granted')) !== null;
+    return (await ensurePushTokenRegistered('granted', undefined, { unlessRecent })) !== null;
   } catch {
     return false;
   }
@@ -138,7 +138,7 @@ export function disableFriendPush(): Promise<boolean> {
   // background/termination while waiting for an older network request.
   useSettingsStore.getState().setFriendPushEnabled(false);
   useSettingsStore.getState().setFriendPushOptedOut(true);
-  return inOrder(keepDeviceWithoutParta);
+  return inOrder(() => keepDeviceWithoutParta());
 }
 
 /** Reconcile the persisted choice on launch, Parta focus and app foreground. */
@@ -148,14 +148,14 @@ export function ensureFriendPushRegisteredIfGranted(): Promise<void> {
     await waitForSettingsHydration();
     if (version !== choiceVersion) return;
     if (useSettingsStore.getState().friendPushOptedOut) {
-      await keepDeviceWithoutParta();
+      await keepDeviceWithoutParta(true);
       return;
     }
     if (!Notifications) return;
     try {
       const { status } = await Notifications.getPermissionsAsync();
       if (status !== 'granted' || version !== choiceVersion || useSettingsStore.getState().friendPushOptedOut) return;
-      const token = await ensurePushTokenRegistered('granted');
+      const token = await ensurePushTokenRegistered('granted', undefined, { unlessRecent: true });
       if (token && version === choiceVersion && !useSettingsStore.getState().friendPushOptedOut) {
         useSettingsStore.getState().setFriendPushEnabled(true);
       }
