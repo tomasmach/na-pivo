@@ -1,7 +1,7 @@
 import { useEffect, useMemo } from 'react';
 import { useIsFocused } from 'expo-router';
 
-import { fetchFriendsDashboard, type FriendProfile } from '@/data/friendsClient';
+import { fetchFriendsDashboard, fetchFriendsLive, type FriendProfile } from '@/data/friendsClient';
 import { snapshotGeneration } from '@/data/friendsSnapshot';
 import { useAccountStore } from '@/stores/accountStore';
 
@@ -12,11 +12,19 @@ const REFRESH_EVERY_MS = 2 * 60_000;
 const MIN_GAP_MS = 60_000;
 let lastRefresh = 0;
 
-/** Refreshes only the dashboard, so the counter does not clear Parta's unread dot. */
+/** Refreshes only who sits where, so the counter does not clear Parta's unread dot. */
 function refreshPresence(): void {
   if (Date.now() - lastRefresh < MIN_GAP_MS) return;
   lastRefresh = Date.now();
   const generation = snapshotGeneration();
+  const state = usePartaStore.getState();
+  if (state.dashboard && state.generation === generation) {
+    void fetchFriendsLive().then((live) => {
+      if (!live || generation !== snapshotGeneration()) return;
+      usePartaStore.getState().setDashboard((dashboard) => ({ ...dashboard, presence: live.presence, myPresence: live.myPresence }));
+    });
+    return;
+  }
   void fetchFriendsDashboard().then((dashboard) => {
     if (!dashboard || generation !== snapshotGeneration()) return;
     // After an account switch the store still holds the previous account until Parta loads.
