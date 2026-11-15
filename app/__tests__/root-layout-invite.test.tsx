@@ -241,6 +241,8 @@ jest.mock('@/transit/homeTransitSync', () => ({
 import { Linking } from 'react-native';
 
 import { sendFriendRequest } from '@/data/friendsClient';
+import { markFirstScreenShown } from '@/navigation/firstScreen';
+import { consumeInitialPubReminderTap } from '@/notifications/pubReminderNotifications';
 import { restorePubAmenities } from '@/data/pubAmenitiesSync';
 import { restorePubRatings } from '@/data/pubRatingsSync';
 import { trackClientEvent } from '@/data/telemetryClient';
@@ -283,6 +285,12 @@ it('claims and syncs one invite link once, without pushing from the root layout'
   mockFontsLoaded = true;
   await act(async () => {
     mockFontListeners.forEach((listener) => listener());
+  });
+  await settle();
+  expect(restorePubRatings).not.toHaveBeenCalled();
+  expect(consumeInitialPubReminderTap).toHaveBeenCalled();
+  await act(async () => {
+    markFirstScreenShown();
   });
   await settle();
 
