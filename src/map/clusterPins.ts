@@ -1,7 +1,9 @@
 type Point = { lat: number; lng: number };
+type Pin = Point & { id: string };
 type Viewport = { longitudeDelta: number };
 
-export type PinCluster<P extends Point = Point> = Point & { key: string; count: number; members: P[] };
+/** One marker on the map: a pub on its own, or the bubble of several pubs. */
+export type PinNode<P extends Pin = Pin> = Point & { key: string; members: P[]; lead: P; x: number; y: number };
 
 /** A pub joins a cluster this close to its first pub, in points. Keeps bubbles apart on screen. */
 const RADIUS_PT = 64;
@@ -9,6 +11,8 @@ const RADIUS_PT = 64;
 const BUBBLE_GAP_PT = 42;
 /** From this Google zoom on every pub has its own pin, even when two share a street corner. */
 export const NO_CLUSTER_ZOOM = 17;
+const LEVEL_STEP = 0.25;
+const LEVEL_SLACK = 0.04;
 
 function mercatorY(lat: number): number {
   const rad = (Math.max(-85, Math.min(85, lat)) * Math.PI) / 180;
@@ -24,75 +28,98 @@ export function zoomOf(viewport: Viewport, widthPt: number): number {
   return Math.log2((360 * widthPt) / (256 * Math.max(viewport.longitudeDelta, 1e-9)));
 }
 
-/** Whether two bubbles this far apart would overlap on screen at this viewport. */
-export function bubblesOverlap(a: Point, b: Point, viewport: Viewport, widthPt: number): boolean {
-  const ptToDeg = 360 / (256 * 2 ** zoomOf(viewport, widthPt));
+/** Whether two bubbles this far apart would overlap on screen at this zoom. */
+export function bubblesOverlap(a: Point, b: Point, zoom: number): boolean {
+  const ptToDeg = 360 / (256 * 2 ** zoom);
   return Math.hypot(a.lng - b.lng, mercatorY(a.lat) - mercatorY(b.lat)) < BUBBLE_GAP_PT * ptToDeg;
 }
 
 /**
- * Groups pins that would overlap. The zoom snaps to quarter steps and the order does not depend
- * on the viewport, so a pan keeps the same groups and only a zoom step regroups them.
+ * The zoom step whose groups the map shows. It leaves `current` only once the zoom is clearly
+ * past its edge, so a pinch held on a boundary does not regroup the pins back and forth. The zoom
+ * where clusters end has no such slack: a tap on a cluster stops exactly there.
  */
-export function clusterPins<P extends Point>(
-  pins: readonly P[],
-  viewport: Viewport,
-  widthPt: number,
-): { singles: P[]; clusters: PinCluster<P>[] } {
-  if (pins.length < 2 || zoomOf(viewport, widthPt) >= NO_CLUSTER_ZOOM) return { singles: [...pins], clusters: [] };
-  const zoom = Math.floor(zoomOf(viewport, widthPt) * 4) / 4;
-  const ptToDeg = 360 / (256 * 2 ** zoom);
+export function clusterLevel(zoom: number, current?: number): number {
+  if (zoom >= NO_CLUSTER_ZOOM) return NO_CLUSTER_ZOOM;
+  if (current !== undefined && zoom >= current - LEVEL_SLACK && zoom < current + LEVEL_STEP + LEVEL_SLACK) return current;
+  return Math.max(0, Math.min(NO_CLUSTER_ZOOM, Math.floor(zoom / LEVEL_STEP) * LEVEL_STEP));
+}
+
+export function pinNode<P extends Pin>(pin: P): PinNode<P> {
+  return { key: pin.id, lat: pin.lat, lng: pin.lng, x: pin.lng, y: mercatorY(pin.lat), members: [pin], lead: pin };
+}
+
+function join<P extends Pin>(parts: PinNode<P>[]): PinNode<P> {
+  if (parts.length === 1) return parts[0];
+  let count = 0;
+  let x = 0;
+  let y = 0;
+  let biggest = parts[0];
+  for (const part of parts) {
+    count += part.members.length;
+    x += part.x * part.members.length;
+    y += part.y * part.members.length;
+    if (part.members.length > biggest.members.length) biggest = part;
+  }
+  x /= count;
+  y /= count;
+  return { key: `c:${biggest.lead.id}`, lat: latOf(y), lng: x, x, y, members: parts.flatMap((part) => part.members), lead: biggest.lead };
+}
+
+function mergeLevel<P extends Pin>(finer: PinNode<P>[], level: number): PinNode<P>[] {
+  const ptToDeg = 360 / (256 * 2 ** level);
   const radius = RADIUS_PT * ptToDeg;
-  const points = pins
-    .map((pin) => ({ pin, x: pin.lng, y: mercatorY(pin.lat) }))
-    .sort((a, b) => a.x - b.x || a.y - b.y);
-  const taken = new Array<boolean>(points.length).fill(false);
-  type Group = { key: string; members: P[]; x: number; y: number };
-  const groups: Group[] = [];
-  for (let i = 0; i < points.length; i++) {
+  const gap = BUBBLE_GAP_PT * ptToDeg;
+  const sorted = [...finer].sort((a, b) => a.x - b.x || a.y - b.y);
+  const taken = new Array<boolean>(sorted.length).fill(false);
+  const nodes: PinNode<P>[] = [];
+  for (let i = 0; i < sorted.length; i++) {
     if (taken[i]) continue;
-    const seed = points[i];
-    const group: Group = { key: `${zoom}:${seed.x}:${seed.y}`, members: [seed.pin], x: seed.x, y: seed.y };
-    // Points are sorted by x, so the scan stops once x is out of reach.
-    for (let j = i + 1; j < points.length && points[j].x - seed.x <= radius; j++) {
-      if (!taken[j] && Math.hypot(points[j].x - seed.x, points[j].y - seed.y) <= radius) {
+    const seed = sorted[i];
+    const parts = [seed];
+    for (let j = i + 1; j < sorted.length && sorted[j].x - seed.x <= radius; j++) {
+      if (!taken[j] && Math.hypot(sorted[j].x - seed.x, sorted[j].y - seed.y) <= radius) {
         taken[j] = true;
-        group.members.push(points[j].pin);
-        group.x += points[j].x;
-        group.y += points[j].y;
+        parts.push(sorted[j]);
       }
     }
-    group.x /= group.members.length;
-    group.y /= group.members.length;
-    groups.push(group);
+    nodes.push(join(parts));
   }
-  // A bubble sits in the middle of its pubs, which can bring it onto a neighbour; merge those.
-  const gap = BUBBLE_GAP_PT * ptToDeg;
   for (let merged = true; merged; ) {
     merged = false;
-    for (let i = 0; i < groups.length; i++) {
-      for (let j = i + 1; j < groups.length; j++) {
-        const a = groups[i];
-        const b = groups[j];
+    nodes.sort((a, b) => a.x - b.x);
+    for (let i = 0; i < nodes.length; i++) {
+      for (let j = i + 1; j < nodes.length && nodes[j].x - nodes[i].x < gap; j++) {
+        const a = nodes[i];
+        const b = nodes[j];
         if ((a.members.length > 1 || b.members.length > 1) && Math.hypot(a.x - b.x, a.y - b.y) < gap) {
-          const n = a.members.length + b.members.length;
-          a.x = (a.x * a.members.length + b.x * b.members.length) / n;
-          a.y = (a.y * a.members.length + b.y * b.members.length) / n;
-          a.members.push(...b.members);
-          groups.splice(j, 1);
+          nodes[i] = join([a, b]);
+          nodes.splice(j, 1);
           merged = true;
           j--;
         }
       }
     }
   }
-  const singles: P[] = [];
-  const clusters: PinCluster<P>[] = [];
-  for (const g of groups) {
-    if (g.members.length === 1) singles.push(g.members[0]);
-    else clusters.push({ key: g.key, lat: latOf(g.y), lng: g.x, count: g.members.length, members: g.members });
-  }
-  return { singles, clusters };
+  return nodes;
+}
+
+/**
+ * Groups pins that would overlap, one grouping per zoom step. Every group of a step is made of
+ * whole groups of the next finer step, so zooming only ever splits a bubble or joins bubbles, and
+ * a pan keeps the groups as they are. A group keeps the key of its biggest part.
+ */
+export function clusterIndex<P extends Pin>(pins: readonly P[]): (level: number) => PinNode<P>[] {
+  const levels = new Map<number, PinNode<P>[]>();
+  const at = (level: number): PinNode<P>[] => {
+    let nodes = levels.get(level);
+    if (!nodes) {
+      nodes = level >= NO_CLUSTER_ZOOM ? pins.map(pinNode) : mergeLevel(at(level + LEVEL_STEP), level);
+      levels.set(level, nodes);
+    }
+    return nodes;
+  };
+  return (level) => at(clusterLevel(level));
 }
 
 /**
