@@ -5,7 +5,8 @@
  *
  * The device copy in the Výčep store is what the app reads, so the choice
  * works offline. A local change is marked dirty and pushed on the next sync;
- * a clean device adopts the server value. Never throws.
+ * a clean device adopts the server value from every account profile the app
+ * reads anyway (launch, return to the app, sign-in). Never throws.
  */
 
 import { t } from '@/i18n';
@@ -21,17 +22,24 @@ const PATH = '/v1/account/me';
 
 /** Bumped at every account boundary; a reply that straddles one belongs to the previous account. */
 let boundaryGeneration = 0;
+/** Bumped at every local change; a profile read that straddles one may still hold the old value. */
+let localChanges = 0;
 
 export function forgetSharingPrefsForAccountBoundary(): void {
   boundaryGeneration += 1;
 }
 
-interface RemoteSharing {
+export interface ServerSharing {
   shareDefault: NightVisibility;
   nightAutopublish: NightAutopublish;
 }
 
-function parse(data: Record<string, unknown>): RemoteSharing | null {
+export interface SharingReadTicket {
+  generation: number;
+  changes: number;
+}
+
+export function parseServerSharing(data: Record<string, unknown>): ServerSharing | null {
   const share = data.share_default;
   const auto = data.night_autopublish;
   if (share !== 'friends' && share !== 'public') return null;
@@ -39,14 +47,14 @@ function parse(data: Record<string, unknown>): RemoteSharing | null {
   return { shareDefault: share, nightAutopublish: auto };
 }
 
-async function request(body?: Record<string, unknown>): Promise<RemoteSharing | 'refused' | null> {
+async function request(body?: Record<string, unknown>): Promise<ServerSharing | 'refused' | null> {
   if (!body) return send();
   const generation = boundaryGeneration;
   const owner = await getSessionToken();
   return runAccountMeWrite(async () => (generation === boundaryGeneration ? send(body, owner) : null));
 }
 
-async function send(body?: Record<string, unknown>, onlyAsToken?: string | null): Promise<RemoteSharing | 'refused' | null> {
+async function send(body?: Record<string, unknown>, onlyAsToken?: string | null): Promise<ServerSharing | 'refused' | null> {
   const endpoint = getBackendEndpoint(PATH);
   if (!endpoint) return null;
   const session = await ensureAccount();
@@ -70,7 +78,7 @@ async function send(body?: Record<string, unknown>, onlyAsToken?: string | null)
       const refused = (await classifyQueueHttpFailure(resp.status, session, { source: 'sharing_prefs', endpoint: PATH })) === 'permanent-error';
       return refused && (await getSessionToken()) === session.token ? 'refused' : null;
     }
-    const remote = parse((await resp.json()) as Record<string, unknown>);
+    const remote = parseServerSharing((await resp.json()) as Record<string, unknown>);
     // A sign-in or claim while this was in flight swapped the account; the reply describes the previous one.
     return (await getSessionToken()) === session.token ? remote : null;
   } catch {
@@ -80,7 +88,7 @@ async function send(body?: Record<string, unknown>, onlyAsToken?: string | null)
   }
 }
 
-function adopt(remote: RemoteSharing): void {
+function adopt(remote: ServerSharing): void {
   const local = useVycepStore.getState();
   useVycepStore.getState().setSharing({
     shareDefault: remote.shareDefault,
@@ -101,15 +109,51 @@ function wire(prefs: SharingPrefs): Record<string, unknown> {
   };
 }
 
-/** Push a pending local change, otherwise adopt the server value. */
+function whenHydrated(): Promise<void> {
+  if (useVycepStore.persist.hasHydrated()) return Promise.resolve();
+  return new Promise<void>((resolve) => {
+    const stop = useVycepStore.persist.onFinishHydration(() => {
+      stop();
+      resolve();
+    });
+    if (useVycepStore.persist.hasHydrated()) {
+      stop();
+      resolve();
+    }
+  });
+}
+
+/**
+ * Take before reading the account profile. Null while a local change waits for the server.
+ * A sign-in passes the change count from before its request, since the sign-in itself may move the account boundary.
+ */
+export function sharingReadTicket(changesBefore = localChanges): SharingReadTicket | null {
+  if (useVycepStore.getState().sharingDirty) return null;
+  return { generation: boundaryGeneration, changes: changesBefore };
+}
+
+/** Adopt the sharing values of an account profile read, unless something changed here since the read began. */
+export function adoptServerSharing(remote: ServerSharing | undefined, ticket: SharingReadTicket | null): void {
+  if (!remote || !ticket) return;
+  void whenHydrated().then(() => {
+    if (ticket.generation !== boundaryGeneration || ticket.changes !== localChanges) return;
+    if (!useVycepStore.getState().sharingDirty) adopt(remote);
+  });
+}
+
+async function pullServerSharing(): Promise<void> {
+  const generation = boundaryGeneration;
+  const changes = localChanges;
+  const remote = await request();
+  if (!remote || remote === 'refused' || generation !== boundaryGeneration || changes !== localChanges) return;
+  if (!useVycepStore.getState().sharingDirty) adopt(remote);
+}
+
+/** Push a pending local change. The server value arrives with the account profile. */
 export async function syncSharingPrefs(): Promise<void> {
   const generation = boundaryGeneration;
   const local = useVycepStore.getState();
-  if (!local.sharingDirty) {
-    const remote = await request();
-    if (remote && remote !== 'refused' && generation === boundaryGeneration && !useVycepStore.getState().sharingDirty) adopt(remote);
-    return;
-  }
+  if (!local.sharingDirty) return;
   const sent = wire(local);
   const remote = await request(sent);
   const now = useVycepStore.getState();
@@ -121,22 +165,11 @@ export async function syncSharingPrefs(): Promise<void> {
   }
   useVycepStore.getState().setSharing({ sharingDirty: false });
   useToastStore.getState().show(t.nv.profil.settings.savedSettingRefused);
-  await syncSharingPrefs();
+  await pullServerSharing();
 }
 
 export async function flushSharingPrefs(): Promise<void> {
-  if (!useVycepStore.persist.hasHydrated()) {
-    await new Promise<void>((resolve) => {
-      const stop = useVycepStore.persist.onFinishHydration(() => {
-        stop();
-        resolve();
-      });
-      if (useVycepStore.persist.hasHydrated()) {
-        stop();
-        resolve();
-      }
-    });
-  }
+  await whenHydrated();
   if (useVycepStore.getState().sharingDirty) await syncSharingPrefs();
 }
 
@@ -144,6 +177,7 @@ export async function flushSharingPrefs(): Promise<void> {
 export function updateSharingPrefs(
   patch: Partial<Pick<SharingPrefs, 'shareDefault' | 'nightAutopublish'>>,
 ): Promise<void> {
+  localChanges += 1;
   useVycepStore.getState().setSharing({ ...patch, sharingDirty: true });
   return syncSharingPrefs();
 }
