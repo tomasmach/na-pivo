@@ -8,6 +8,7 @@ import {
 } from '@/data/friendsClient';
 import {
   loadFriendsDashboardSnapshot,
+  saveFriendsDashboardSnapshot,
   loadPartaPlansSnapshot,
   savePartaPlansSnapshot,
   snapshotGeneration,
@@ -43,7 +44,9 @@ type PartaState = {
 export const PARTA_FULL_LOAD_MS = 5 * 60_000;
 
 let inFlight: Promise<void> | null = null;
+let pulseInFlight: Promise<void> | null = null;
 let loadedAt = 0;
+let lastPulseUnread = 0;
 
 export const usePartaStore = create<PartaState>((set, get) => ({
   dashboard: null,
@@ -56,6 +59,7 @@ export const usePartaStore = create<PartaState>((set, get) => ({
 
   load: () => {
     if (inFlight) return inFlight;
+    if (pulseInFlight) return pulseInFlight.then(() => get().load());
     inFlight = (async () => {
       const generation = snapshotGeneration();
       // An account switch must not show the previous account's crew.
@@ -104,17 +108,18 @@ export const usePartaStore = create<PartaState>((set, get) => ({
   reload: () => (inFlight ? inFlight.then(() => get().load()) : get().load()),
   refresh: () => {
     if (inFlight) return inFlight;
+    if (pulseInFlight) return pulseInFlight;
     const { dashboard, generation } = get();
     if (!dashboard || generation !== snapshotGeneration() || Date.now() - loadedAt >= PARTA_FULL_LOAD_MS) return get().load();
     let needsLoad = false;
-    inFlight = applyPulse()
+    pulseInFlight = applyPulse()
       .then((outcome) => {
         needsLoad = outcome === 'load';
       })
       .finally(() => {
-        inFlight = null;
+        pulseInFlight = null;
       });
-    return inFlight.then(() => (needsLoad ? get().load() : undefined));
+    return pulseInFlight.then(() => (needsLoad ? get().load() : undefined));
   },
   setDashboard: (fn) => {
     const current = get().dashboard;
@@ -149,8 +154,10 @@ async function applyPulse(): Promise<'applied' | 'load' | 'skipped'> {
   }
   const { live, plans } = pulse;
   const { dashboard } = state;
+  const unreadMoved = live.unreadCount > 0 && live.unreadCount !== lastPulseUnread;
+  lastPulseUnread = live.unreadCount;
   // A request or notification (an accepted request, a new plan, a "going" answer) changes lists only the full load has.
-  if (!dashboard || !plans || live.unreadCount > 0 || live.incomingCount !== dashboard.incomingRequests.length) return 'load';
+  if (!dashboard || !plans || unreadMoved || live.incomingCount !== dashboard.incomingRequests.length) return 'load';
   const next = {
     ...dashboard,
     activeFriends: live.activeFriends,
@@ -160,6 +167,7 @@ async function applyPulse(): Promise<'applied' | 'load' | 'skipped'> {
     homePresence: live.homePresence,
   };
   const pings = livePingPlans(next, plans);
+  void saveFriendsDashboardSnapshot(next, generation);
   usePartaStore.setState({
     dashboard: next,
     plans: [...plans, ...pings].sort(byPlanTime),
