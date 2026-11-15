@@ -943,6 +943,41 @@ def test_thumbnail_backfill_keeps_cleanup_of_a_late_thumbnail_it_could_not_delet
 
 
 @pytest.mark.django_db
+def test_thumbnail_backfill_removes_its_late_thumbnail_even_when_a_delete_finishes_meanwhile(client, monkeypatch):
+    from pubs.beer_photo_deletions import (
+        enqueue_beer_photo_file_deletion,
+        retry_beer_photo_file_deletion,
+    )
+    from pubs.management.commands import create_beer_photo_thumbnails as command
+
+    token, account = _register(client, "janek")
+    _post_photo(client, token)
+    photo = BeerPhoto.objects.get()
+    thumbnail = Path(photo.thumbnail.path)
+    thumbnail.unlink()
+    BeerPhoto.objects.filter(pk=photo.pk).update(thumbnail="")
+    photo.refresh_from_db()
+    original_store = command.store_beer_photo_thumbnail
+    storage = BeerPhoto._meta.get_field("image").storage
+
+    def store_while_deleted(target, content):
+        enqueue_beer_photo_file_deletion(target, account=account)
+        BeerPhoto.objects.filter(pk=target.pk).delete()
+        storage.delete(target.image.name)
+        original_store(target, content)
+
+    def retry_after_the_delete_finished(cleanup_id):
+        BeerPhotoFileDeletion.objects.filter(pk=cleanup_id).delete()
+        return retry_beer_photo_file_deletion(cleanup_id)
+
+    monkeypatch.setattr(command, "store_beer_photo_thumbnail", store_while_deleted)
+    monkeypatch.setattr(command, "retry_beer_photo_file_deletion", retry_after_the_delete_finished)
+
+    assert command.create_thumbnail(photo) is False
+    assert not thumbnail.exists()
+
+
+@pytest.mark.django_db
 def test_thumbnail_backfill_leaves_the_owner_of_a_queued_cleanup_alone(client, monkeypatch):
     from pubs.beer_photo_deletions import enqueue_beer_photo_file_deletion
     from pubs.management.commands import create_beer_photo_thumbnails as command
