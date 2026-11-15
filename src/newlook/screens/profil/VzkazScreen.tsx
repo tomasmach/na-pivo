@@ -9,7 +9,25 @@ import { useReleaseStore } from '@/stores/releaseStore';
 
 import { Screen } from '../../components/chrome';
 import { Button, D, T } from '../../components/ui';
-import { C, HAND_FONT, s } from '../../theme';
+import { C, HAND_FONT, font, s } from '../../theme';
+
+const EMPHASIS = C.white;
+
+function Emphasized({ text }: { text: string }) {
+  return (
+    <T s={16} c={C.text2} lh={1.45}>
+      {text.split(/\*\*(.+?)\*\*/).map((part, index) =>
+        index % 2 ? (
+          <Text key={index} style={font(16, 700, EMPHASIS)}>
+            {part}
+          </Text>
+        ) : (
+          part
+        ),
+      )}
+    </T>
+  );
+}
 
 const majorMinor = (version: string | null) => version?.split('.').slice(0, 2).join('.') ?? null;
 
@@ -43,9 +61,7 @@ export function VzkazScreen() {
       </View>
       <D s={44}>{copy.title}</D>
       {copy.paragraphs.map((paragraph) => (
-        <T key={paragraph} s={16} c={C.text2} lh={1.45}>
-          {paragraph}
-        </T>
+        <Emphasized key={paragraph} text={paragraph} />
       ))}
       <Text maxFontSizeMultiplier={1.3} style={{ fontFamily: HAND_FONT, fontSize: 32, color: C.yellow, marginTop: 4 }}>
         {copy.signature}

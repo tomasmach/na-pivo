@@ -283,11 +283,11 @@ export const profilCs = {
   letter: {
     title: 'Předělal jsem to. Celý.',
     paragraphs: [
-      'Původní vzhled se mi přestal líbit, tak jsem appku redesignoval. Nebyly to dva prompty, ale dva týdny práce. Dělám ji sám jako koníček a chci, aby dělala radost mně i tobě.',
-      'Jestli se ti nový vzhled vůbec nelíbí, fakt mě to mrzí. Když ti vadí něco konkrétního, ozvi se mi přes „Napiš\u00a0mi“ v Nastavení. Rád si to přečtu a zkusím to vylepšit.',
-      'Po takhle velký změně se sem tam může objevit chyba. Když na nějakou narazíš, rád se o ní dozvím a opravím ji co nejdřív.',
-      'S appkou mám velký plány a teď na ní chci pořádně máknout.',
-      'A hlavně díky, že tu pořád jsi. Moc si toho vážím.',
+      'Původní vzhled se mi přestal líbit, tak jsem appku redesignoval. Nebyly to dva prompty, ale **dva týdny práce**. Dělám ji sám jako koníček a chci, aby dělala radost mně i tobě.',
+      'Jestli se ti nový vzhled nebude vůbec líbit, **fakt mě to bude mrzet**. Když ti vadí něco konkrétního, ozvi se mi přes **„Napiš\u00a0mi“** v Nastavení. Rád si to přečtu a zkusím to vylepšit.',
+      'Po takhle velký změně se sem tam může objevit chyba. Když na nějakou narazíš, rád se o ní dozvím a **opravím ji co nejdřív**.',
+      'S appkou mám **velký plány** a teď na ní chci pořádně máknout.',
+      'A hlavně **díky, že tu pořád jsi**. Moc si toho vážím.',
     ],
     signature: 'Na zdraví, Mach',
     done: 'Jdu na pivo',
