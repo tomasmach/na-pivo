@@ -1,10 +1,11 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { Easing } from 'react-native';
 import { Tabs } from 'expo-router';
 import { useReducedMotion } from 'react-native-reanimated';
 
 import { TabAvatar } from '@/newlook/components/chrome';
 import { TabBar } from '@/newlook/components/TabBar';
+import { markFirstScreenShown } from '@/navigation/firstScreen';
 import { registerDetailScreens } from '@/newlook/duo/details';
 import { BesideColumn } from '@/newlook/duo/pane';
 import { DURATION } from '@/newlook/motion';
@@ -55,6 +56,7 @@ const transitionSpec = {
 
 export default function NewLookTabs() {
   const reducedMotion = useReducedMotion();
+  useEffect(markFirstScreenShown, []);
   const shift = reducedMotion ? 0 : SHIFT;
   return (
     <Tabs

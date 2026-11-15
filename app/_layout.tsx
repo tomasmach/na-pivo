@@ -106,6 +106,7 @@ import { initializeHomeTransit, refreshHomeTransit } from '@/transit/homeTransit
 import { C as NewLookColors, FontFiles as NewLookFontFiles } from '@/newlook/theme';
 import { hydratePubsSnapshot } from '@/data/pubs';
 import { autopublishClosedNight } from '@/data/nightAutopublish';
+import { afterFirstScreen } from '@/navigation/firstScreen';
 import { ProductTelemetryTracker } from '@/navigation/ProductTelemetryTracker';
 
 // The native stack paints its container with the theme background, and a fast back swipe overshoots onto it.
@@ -250,14 +251,16 @@ export default function RootLayout() {
 
   useEffect(() => {
     installClientTelemetry();
-    void initializePubReminderNotifications();
-    void initializeBeerCountReminderNotifications();
-    void syncTourReminders();
-    void initializeLiveBeerActivity();
-    initializeHomeTransit();
-    initializeHomeTransitReminder();
-    initializeClosingTimeReminder();
-    void refreshCurrencyFromLastKnownLocation();
+    return afterFirstScreen(() => {
+      void initializePubReminderNotifications();
+      void initializeBeerCountReminderNotifications();
+      void syncTourReminders();
+      void initializeLiveBeerActivity();
+      initializeHomeTransit();
+      initializeHomeTransitReminder();
+      initializeClosingTimeReminder();
+      void refreshCurrencyFromLastKnownLocation();
+    });
   }, []);
 
   useEffect(() => {
@@ -353,7 +356,7 @@ export default function RootLayout() {
         setTelemetryReady(true);
         // Account hydration may restore the legacy CZK/EUR preference after the
         // launch-time location check, so let the cached country win once more.
-        void refreshCurrencyFromLastKnownLocation();
+        afterFirstScreen(() => void refreshCurrencyFromLastKnownLocation());
         void trackClientEvent({ event: 'app_open', severity: 'info' });
         // A Parta invite deep link tapped before the account existed was stashed;
         // now that an account is ready, claim it (fires a Parta refresh on success).
@@ -406,33 +409,35 @@ export default function RootLayout() {
     // Fire-and-forget: re-send pub reports and feedback whose first delivery
     // failed. Runs on launch and whenever the app returns to the foreground;
     // never throws.
-    void flushPubReportQueue();
-    void flushPubNameCorrectionsQueue();
-    void flushFeedbackQueue();
-    void flushCommunityQueue();
-    restoreAndFlushAddedPubsQueue();
-    void flushDrinksQueue();
-    void flushDeleteDrinksQueue();
-    void flushUpdateDrinksQueue();
-    // Personal ratings: pull + merge the server set (LWW), pushing local-newer
-    // ratings, then flush. Visits: one-time seed of existing history, then flush.
-    void trackPull('ratings', () => restorePubRatings());
-    void trackPull('favorites', () => restorePubFavorites());
-    // Amenity votes: same pull + merge + push + flush as ratings (spec §4.7).
-    void trackPull('amenities', () => restorePubAmenities());
-    void seedVisitsFromHistory();
-    void flushVisitsQueue();
-    // Parta: retry queued RSVP/cinknutí/reactions, and light up push for
-    // existing notification-permission grantees without a prompt (Parta 3.0).
-    void flushFriendsQueue();
-    void flushBeerCheckinsQueue();
-    void flushBeerPhotosQueue();
-    // Výčep: retry queued night publishes/unpublishes and round reactions.
-    void flushNightsQueue();
-    void flushTourRunQueue();
-    void flushAccountPreferences();
-    void flushSharingPrefs();
-    void ensureFriendPushRegisteredIfGranted();
+    const cancelLaunchSync = afterFirstScreen(() => {
+      void flushPubReportQueue();
+      void flushPubNameCorrectionsQueue();
+      void flushFeedbackQueue();
+      void flushCommunityQueue();
+      restoreAndFlushAddedPubsQueue();
+      void flushDrinksQueue();
+      void flushDeleteDrinksQueue();
+      void flushUpdateDrinksQueue();
+      // Personal ratings: pull + merge the server set (LWW), pushing local-newer
+      // ratings, then flush. Visits: one-time seed of existing history, then flush.
+      void trackPull('ratings', () => restorePubRatings());
+      void trackPull('favorites', () => restorePubFavorites());
+      // Amenity votes: same pull + merge + push + flush as ratings (spec §4.7).
+      void trackPull('amenities', () => restorePubAmenities());
+      void seedVisitsFromHistory();
+      void flushVisitsQueue();
+      // Parta: retry queued RSVP/cinknutí/reactions, and light up push for
+      // existing notification-permission grantees without a prompt (Parta 3.0).
+      void flushFriendsQueue();
+      void flushBeerCheckinsQueue();
+      void flushBeerPhotosQueue();
+      // Výčep: retry queued night publishes/unpublishes and round reactions.
+      void flushNightsQueue();
+      void flushTourRunQueue();
+      void flushAccountPreferences();
+      void flushSharingPrefs();
+      void ensureFriendPushRegisteredIfGranted();
+    });
     // Live Activity initialization and every foreground/focus sweep reconcile
     // lock-screen additions before applying the tally's idle cutoff.
     const subscription = AppState.addEventListener('change', (state) => {
@@ -508,6 +513,7 @@ export default function RootLayout() {
           })
         : null;
     return () => {
+      cancelLaunchSync();
       flushWalkingDistance();
       subscription.remove();
       focusSubscription?.remove();
