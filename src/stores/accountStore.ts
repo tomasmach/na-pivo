@@ -26,7 +26,7 @@ import {
 } from '@/data/auth';
 import { FALLBACK_LEVELS, FALLBACK_XP_RULES } from '@/data/mapperXp';
 import { reconcileDiarySnapshot, restoreAccountDiary, type DiarySnapshot } from '@/data/diarySync';
-import { adoptServerSharing, sharingReadTicket } from '@/data/sharingPrefsClient';
+import { adoptServerSharing, sharingChangeCount, sharingReadTicket } from '@/data/sharingPrefsClient';
 import { tourBoundary } from '@/data/toursBoundary';
 import { t } from '@/i18n';
 import { useSettingsStore } from '@/stores/settingsStore';
@@ -275,13 +275,15 @@ export const useAccountStore = create<AccountState>((set, get) => {
     return data != null;
   };
 
-  /** After a session-changing auth call: persist the new token + profile. */
-  const applyAuthResult = async (result: AuthResult): Promise<AuthResult> => {
+  /** Run a session-changing auth call, then persist the new token + profile. */
+  const signIn = async (request: () => Promise<AuthResult>): Promise<AuthResult> => {
+    const sharingChanges = sharingChangeCount();
+    const result = await request();
     if (result.ok) {
       claimProfileWrite(takeProfileTicket());
       set({ profile: result.profile });
       applyAccountSettings(result.profile.settings);
-      adoptServerSharing(result.profile.sharing, sharingReadTicket());
+      adoptServerSharing(result.profile.sharing, sharingReadTicket(sharingChanges));
       await syncSession();
       await refreshDiarySnapshot();
     }
@@ -290,7 +292,7 @@ export const useAccountStore = create<AccountState>((set, get) => {
 
   /** After a profile-changing auth call that leaves the session token intact
    *  (link / unlink / profile / avatar / purchases): persist the updated profile
-   *  + settings. Mirrors applyAuthResult without the session re-sync. */
+   *  + settings. Mirrors signIn without the session re-sync. */
   const applyProfileResult = (result: AuthResult): AuthResult => {
     if (result.ok) {
       claimProfileWrite(takeProfileTicket());
@@ -465,11 +467,11 @@ export const useAccountStore = create<AccountState>((set, get) => {
       });
     },
 
-    register: (params) => auth.registerEmail(params).then(applyAuthResult),
-    login: (params) => auth.loginEmail(params).then(applyAuthResult),
-    signInGoogle: () => auth.signInWithGoogle().then(applyAuthResult),
-    signInApple: () => auth.signInWithApple().then(applyAuthResult),
-    resetPassword: (params) => auth.resetPassword(params).then(applyAuthResult),
+    register: (params) => signIn(() => auth.registerEmail(params)),
+    login: (params) => signIn(() => auth.loginEmail(params)),
+    signInGoogle: () => signIn(() => auth.signInWithGoogle()),
+    signInApple: () => signIn(() => auth.signInWithApple()),
+    resetPassword: (params) => signIn(() => auth.resetPassword(params)),
 
     linkGoogle: () => auth.linkGoogle().then(applyProfileResult),
     linkApple: () => auth.linkApple().then(applyProfileResult),

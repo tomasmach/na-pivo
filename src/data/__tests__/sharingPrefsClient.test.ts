@@ -2,6 +2,7 @@ import {
   adoptServerSharing,
   flushSharingPrefs,
   forgetSharingPrefsForAccountBoundary,
+  sharingChangeCount,
   sharingReadTicket,
   syncSharingPrefs,
   updateSharingPrefs,
@@ -55,6 +56,31 @@ it('keeps a sharing change made while the profile was loading', async () => {
   await settle();
 
   expect(useVycepStore.getState()).toMatchObject({ shareDefault: 'friends', nightAutopublish: 'friends', sharingDirty: false });
+});
+
+it('keeps a sharing change delivered while a sign-in to the same account was running', async () => {
+  mockSessionToken = 'old-token';
+  useVycepStore.setState({ ...DEFAULT_SHARING_PREFS });
+  const changes = sharingChangeCount();
+  global.fetch = jest.fn(async () => ({ ok: true, status: 200, json: async () => ({ share_default: 'public', night_autopublish: 'public' }) })) as unknown as typeof fetch;
+
+  await updateSharingPrefs({ shareDefault: 'public', nightAutopublish: 'public' });
+  adoptServerSharing({ shareDefault: 'friends', nightAutopublish: 'off' }, sharingReadTicket(changes));
+  await settle();
+
+  expect(useVycepStore.getState()).toMatchObject({ shareDefault: 'public', nightAutopublish: 'public', sharingDirty: false });
+});
+
+it('takes the sharing of the account a sign-in switched to', async () => {
+  useVycepStore.setState({ ...DEFAULT_SHARING_PREFS });
+  const changes = sharingChangeCount();
+
+  forgetSharingPrefsForAccountBoundary();
+  useVycepStore.setState({ ...DEFAULT_SHARING_PREFS });
+  adoptServerSharing({ shareDefault: 'public', nightAutopublish: 'friends' }, sharingReadTicket(changes));
+  await settle();
+
+  expect(useVycepStore.getState()).toMatchObject({ shareDefault: 'public', nightAutopublish: 'friends' });
 });
 
 it('does not read the profile when no sharing change waits', async () => {

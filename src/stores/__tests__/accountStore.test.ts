@@ -22,6 +22,7 @@ import { reconcileDiarySnapshot, type DiarySnapshot } from '@/data/diarySync';
 import { beginTourAccountChange, endTourAccountChange } from '@/data/toursBoundary';
 import { useTallyStore } from '@/stores/tallyStore';
 import { DEFAULT_SHARING_PREFS, useVycepStore } from '@/stores/vycepStore';
+import { updateSharingPrefs } from '@/data/sharingPrefsClient';
 
 jest.mock('@/data/auth');
 jest.mock('@/data/account', () => ({
@@ -36,6 +37,12 @@ jest.mock('@/data/account', () => ({
   setAccountPreferencesRefusedListener: jest.fn(),
   pendingAccountPreferences: jest.fn(async () => ({})),
   accountPreferencesDeliveries: jest.fn(() => 0),
+  getSessionToken: jest.fn(async () => 'tok'),
+  runAccountMeWrite: <T,>(task: () => Promise<T>) => task(),
+}));
+jest.mock('@/data/backendConfig', () => ({
+  ...jest.requireActual('@/data/backendConfig'),
+  getBackendEndpoint: (path: string) => `http://127.0.0.1:8000${path}`,
 }));
 jest.mock('@/data/telemetryClient', () => ({
   setTelemetrySession: jest.fn(),
@@ -473,6 +480,25 @@ describe('register', () => {
 });
 
 describe('login', () => {
+  it('keeps a sharing change saved while signing in again to the same account', async () => {
+    useVycepStore.setState({ ...DEFAULT_SHARING_PREFS });
+    let answer: (result: AuthResult) => void = () => undefined;
+    mockedAuth.loginEmail.mockReturnValueOnce(new Promise((resolve) => (answer = resolve)));
+    global.fetch = jest.fn(async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({ share_default: 'public', night_autopublish: 'public' }),
+    })) as unknown as typeof fetch;
+
+    const login = useAccountStore.getState().login({ email: 'a@b.cz', password: 'x' });
+    await updateSharingPrefs({ shareDefault: 'public', nightAutopublish: 'public' });
+    answer(okResult(signedInProfile({ sharing: { shareDefault: 'friends', nightAutopublish: 'off' } })));
+    await login;
+    await new Promise((resolve) => setImmediate(resolve));
+
+    expect(useVycepStore.getState()).toMatchObject({ shareDefault: 'public', nightAutopublish: 'public', sharingDirty: false });
+  });
+
   it('sets the profile and loads the authoritative diary snapshot on success', async () => {
     const profile = signedInProfile();
     mockedAuth.loginEmail.mockResolvedValue(okResult(profile));

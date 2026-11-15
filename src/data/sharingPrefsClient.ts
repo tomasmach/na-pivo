@@ -123,10 +123,17 @@ function whenHydrated(): Promise<void> {
   });
 }
 
-/** Take before reading the account profile. Null while a local change waits for the server. */
-export function sharingReadTicket(): SharingReadTicket | null {
+export function sharingChangeCount(): number {
+  return localChanges;
+}
+
+/**
+ * Take before reading the account profile. Null while a local change waits for the server.
+ * A sign-in passes the change count from before its request, since the sign-in itself may move the account boundary.
+ */
+export function sharingReadTicket(changesBefore = localChanges): SharingReadTicket | null {
   if (useVycepStore.getState().sharingDirty) return null;
-  return { generation: boundaryGeneration, changes: localChanges };
+  return { generation: boundaryGeneration, changes: changesBefore };
 }
 
 /** Adopt the sharing values of an account profile read, unless something changed here since the read began. */
