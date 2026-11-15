@@ -382,3 +382,18 @@ def test_account_me_sends_party_evenings_additively(client):
 
     assert body["badge_progress"]["party_evenings"] == 0
     assert body["badge_progress"]["friends"] == 0
+
+
+@pytest.mark.django_db
+def test_account_me_reads_stats_in_a_fixed_number_of_queries(client, django_assert_max_num_queries):
+    token, me = _register(client, "tomas")
+    _, friend = _register(client, "jirka")
+    _befriend(me, friend)
+    evening = datetime.fromisoformat("2026-06-12T19:00:00+00:00")
+    for day in range(5):
+        _visit(me, evening + timedelta(days=day), cache_key=f"u2fkbn{day}z")
+        _visit(friend, evening + timedelta(days=day), cache_key=f"u2fkbn{day}z")
+    client.get("/v1/account/me", **_auth(token))
+
+    with django_assert_max_num_queries(13):
+        assert client.get("/v1/account/me", **_auth(token)).status_code == status.HTTP_200_OK
