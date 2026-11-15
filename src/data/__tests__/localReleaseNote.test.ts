@@ -52,6 +52,10 @@ describe('bundled release pagers', () => {
     expect(await noteIn('en', '2.1.0')).toBeNull();
   });
 
+  it.each(['cs', 'en'] as const)('bundles the 2.5.0 redesign letter in %s', async (locale) => {
+    expect(await noteIn(locale, '2.5.0')).toMatchObject({ version: '2.5.0', pager: true });
+  });
+
   it('leaves other versions to the backend', async () => {
     expect(await noteIn('cs', '2.2.2')).toBeNull();
   });

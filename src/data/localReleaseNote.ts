@@ -3,7 +3,8 @@
  *
  * 2.1.0's Czech apology, 2.1.1's fixes and the features of 2.2.0 and 2.3.0
  * must reach people who update even offline, so they are bundled as
- * full-screen pagers.
+ * full-screen pagers. 2.5.0 carries the author's letter about the redesign,
+ * which the new look opens as its own screen.
  * releaseStore still owns who sees them: fresh installs record the baseline
  * silently, and an existing install sees each note only after its version
  * changes.
@@ -13,7 +14,12 @@ import { locale, t } from '@/i18n';
 
 import type { ReleaseNote } from './releaseNotesClient';
 
+export const REDESIGN_LETTER_VERSION = '2.5.0';
+
 export function localReleaseNote(version: string): ReleaseNote | null {
+  if (version === REDESIGN_LETTER_VERSION) {
+    return { version, title: '', items: [], pager: true };
+  }
   if (version === '2.1.0' && locale === 'cs') {
     return { version, title: '', items: [], pager: true };
   }

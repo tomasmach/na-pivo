@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { usePathname, useRouter, type Href } from 'expo-router';
 
+import { REDESIGN_LETTER_VERSION } from '@/data/localReleaseNote';
 import { getCurrentAppVersion } from '@/data/releaseNotesClient';
 import { t } from '@/i18n';
 import {
@@ -15,6 +16,7 @@ import { selectNeedsNickname, useAccountStore } from '@/stores/accountStore';
 import { useBadgeStore } from '@/stores/badgeStore';
 import { useLaunchModalMutex } from '@/stores/launchModalMutex';
 import { useOnboardingStore } from '@/stores/onboardingStore';
+import { useReleaseStore } from '@/stores/releaseStore';
 import { useSettingsStore, waitForSettingsHydration } from '@/stores/settingsStore';
 import { markPublicNightsAsked, shouldAskPublicNights } from '@/vycep/publicNightsAsk';
 
@@ -27,6 +29,7 @@ let levelCheck: string | null = null;
 let nudgeChecked = false;
 let reminderChecked = false;
 let publicNightsChecked = false;
+let letterOpened = false;
 let openSheet: string | null = null;
 
 function release(id: string) {
@@ -38,8 +41,10 @@ function release(id: string) {
  * its own, so the header avatar, which sits on every tab, raises them: a medal
  * toast when a badge goes up, the level-up sheet once per new level, the
  * one-time ask to post nights publicly, and the pub-reminder offer and the
- * nickname prompt once per app version. Sheets only open over a tab, one at a
- * time: each holds the launch-modal mutex until the user is back on a tab.
+ * nickname prompt once per app version. The redesign letter comes before all of
+ * them, so they wait until the release check settles. Sheets only open over a
+ * tab, one at a time: each holds the launch-modal mutex until the user is back
+ * on a tab.
  */
 export function useProfilWatchers() {
   const router = useRouter();
@@ -50,6 +55,8 @@ export function useProfilWatchers() {
   const firstLaunch = useOnboardingStore((s) => s.firstLaunchSession);
   const remindersOn = useSettingsStore((s) => s.pubReminderEnabled);
   const holder = useLaunchModalMutex((s) => s.holder);
+  const releaseSettled = useReleaseStore((s) => s.checkSettled);
+  const letterPending = useReleaseStore((s) => s.pendingNote?.version === REDESIGN_LETTER_VERSION);
   const states = useAccountBadges();
   const { xp, isSignedIn } = useMe();
   const level = xp?.level ?? null;
@@ -86,7 +93,15 @@ export function useProfilWatchers() {
       router.push(href);
     };
 
-    // The welcome pager owns the first launch.
+    if (!releaseSettled) return;
+
+    if (onTab && letterPending && !firstLaunch && !letterOpened) {
+      if (useLaunchModalMutex.getState().claim('letter')) {
+        letterOpened = true;
+        open('letter', '/nv/vzkaz');
+      }
+    }
+
     if (onTab && !firstLaunch && !publicNightsChecked) {
       if (useLaunchModalMutex.getState().claim('public-nights')) {
         publicNightsChecked = true;
@@ -144,5 +159,5 @@ export function useProfilWatchers() {
         });
       }
     }
-  }, [accountId, firstLaunch, holder, isSignedIn, level, needsNickname, onTab, remindersOn, router]);
+  }, [accountId, firstLaunch, holder, isSignedIn, letterPending, level, needsNickname, onTab, releaseSettled, remindersOn, router]);
 }

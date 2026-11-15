@@ -280,6 +280,18 @@ export const profilEn: Strings['nv']['profil'] = {
     privacy: 'Privacy policy',
     footer: 'No ads · No payments',
   },
+  letter: {
+    title: 'I redid it. All of it.',
+    paragraphs: [
+      "I stopped liking the original look, so I redesigned the app. It wasn't two prompts, it was two weeks of work. I build it on my own as a hobby, and I want it to be something we both enjoy.",
+      "If the new look isn't for you at all, I'm really sorry. If something specific bugs you, reach out through \"Write\u00a0to\u00a0me\" in Settings. I'd love to hear what you think, and I'll try to make it better.",
+      "A few bugs might slip through after a change this big. If you run into one, let me know and I'll fix it as soon as I can.",
+      'I have big plans for the app, and now I want to really get stuck in.',
+      'And above all, thanks for sticking around. I appreciate it a lot.',
+    ],
+    signature: 'Cheers, Mach',
+    done: 'Off to the pub',
+  },
   onboarding: {
     skip: 'Skip',
     next: "What's next?",
