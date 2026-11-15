@@ -4,6 +4,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { nvBack } from '@/newlook/navigation';
 
 import { generateUuidV4 } from '@/data/account';
+import type { FriendProfile } from '@/data/friendsClient';
 import { enqueueFriendOp, isRetriableFriendError } from '@/data/friendsQueue';
 import { createPartaPlan, fetchPlanDetail, updatePartaPlan, type PartaPlan, type PlanInput } from '@/data/partaPlansClient';
 import { resolvePubSearchResult, searchPubNames, type PubSearchResult } from '@/data/pubSearchClient';
@@ -25,6 +26,7 @@ import { usePartaStore } from './partaStore';
 type Open = 'where' | 'when' | 'whom' | null;
 type PlaceKindChoice = 'home' | 'pub';
 const DAYS_AHEAD = 14;
+const NO_FRIENDS: FriendProfile[] = [];
 function defaultWhen(now = new Date()): Date {
   const at = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 19, 0);
   if (now.getHours() >= 17) at.setDate(at.getDate() + 1);
@@ -90,7 +92,7 @@ function initialPlace(plan: PartaPlan | null): { kind: PlaceKindChoice; address:
 
 function PlanForm({ editing }: { editing: PartaPlan | null }) {
   const router = useRouter();
-  const friends = usePartaStore((st) => st.dashboard?.friends ?? []);
+  const friends = usePartaStore((st) => st.dashboard?.friends ?? NO_FRIENDS);
   const groups = usePartyGroupsStore((st) => st.groups);
   const profile = useAccountStore((st) => st.profile);
   const clientId = useRef(generateUuidV4()).current;

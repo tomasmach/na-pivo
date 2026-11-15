@@ -3,6 +3,7 @@ import { AppState } from 'react-native';
 import { useFocusEffect } from 'expo-router';
 import * as Location from 'expo-location';
 import type { Region } from 'react-native-maps';
+import { useShallow } from 'zustand/react/shallow';
 
 import type { DevicePosition } from '@/compass/useDevicePosition';
 import type { BeerSearchArea } from '@/data/beerSuggestionsClient';
@@ -37,7 +38,7 @@ import {
 } from '@/data/visitsSnapshot';
 import { usePubStore } from '@/stores/pubStore';
 import { selectIsSignedIn, useAccountStore } from '@/stores/accountStore';
-import { allSessionsNewestFirst, useTallyStore } from '@/stores/tallyStore';
+import { allSessionsNewestFirst, useTallyStore, type TallySession } from '@/stores/tallyStore';
 import {
   buildLivePubs,
   buildVisitedCities,
@@ -170,8 +171,16 @@ export function useBeerMap(
   const requestSerial = useRef(0);
   const forceNextPubFetch = useRef(false);
   const privateReadsSuspended = useRef(false);
-  const current = useTallyStore((state) => state.current);
-  const history = useTallyStore((state) => state.history);
+  const shownTally = useRef<{ current: TallySession | null; history: TallySession[] } | null>(null);
+  const tally = useTallyStore(
+    useShallow((state) =>
+      focused || !shownTally.current ? { current: state.current, history: state.history } : shownTally.current,
+    ),
+  );
+  useEffect(() => {
+    shownTally.current = tally;
+  }, [tally]);
+  const { current, history } = tally;
   const catalogRevision = usePubStore((state) => state.catalogRevision);
   const reportedPubIds = usePubStore((state) => state.reportedPubIds);
   const reportedCacheKeys = usePubStore((state) => state.reportedCacheKeys);

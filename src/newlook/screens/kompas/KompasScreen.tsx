@@ -4,6 +4,7 @@ import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, { LayoutAnimationConfig, runOnJS, useAnimatedStyle, useSharedValue, withDelay, withTiming } from 'react-native-reanimated';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useShallow } from 'zustand/react/shallow';
 
 import { haversineMeters } from '@/compass/distance';
 import type { AmenityKey } from '@/data/amenities';
@@ -198,7 +199,19 @@ function MapMode({ k, name, onCompass, beside = false }: { k: Kompas; name: Name
   const insets = useSafeAreaInsets();
   const tabSpace = useTabBarSpace();
   const mapRef = useRef<NvMapHandle>(null);
-  const st = useKompasState();
+  const st = useKompasState(
+    useShallow((state) => ({
+      browsingWithoutLocation: state.browsingWithoutLocation,
+      filters: state.filters,
+      mapView: state.mapView,
+      onlyDrunk: state.onlyDrunk,
+      picked: state.picked,
+      set: state.set,
+      setFilters: state.setFilters,
+      clearFilters: state.clearFilters,
+      pick: state.pick,
+    })),
+  );
   const { target } = k;
   const [collapsed, setCollapsed] = useState(false);
   const [cityKey, setCityKey] = useState<string | null>(null);
@@ -634,7 +647,9 @@ function CompassMode({ k, name, onMap }: { k: Kompas; name: NameReveal; onMap?: 
   const router = useNvRouter();
   const insets = useSafeAreaInsets();
   const tabSpace = useTabBarSpace();
-  const st = useKompasState();
+  const st = useKompasState(
+    useShallow((state) => ({ filters: state.filters, setFilters: state.setFilters, clearFilters: state.clearFilters, pick: state.pick })),
+  );
   const { target, state } = k;
   const tour = target?.kind === 'tour';
   const nearest = k.nearest;
