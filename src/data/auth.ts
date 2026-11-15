@@ -36,6 +36,7 @@ import {
 import { getBackendEndpoint } from './backendConfig';
 import { createQueueLock } from './createQueue';
 import { clearLocalPrivateAccountData } from './privateAccountData';
+import { parseServerSharing, type ServerSharing } from './sharingPrefsClient';
 import { adoptToursOwner } from '@/stores/toursStore';
 import { beginTourAccountChange, endTourAccountChange } from './toursBoundary';
 import { disableCachedPushDeviceWithBearer } from './pushDeviceClient';
@@ -162,6 +163,8 @@ export interface AccountProfile {
   mapper?: AccountMapper;
   /** Pivař gamification snapshot — attached only when the backend returns it. */
   pivar?: AccountPivar;
+  /** Sharing defaults for nights, ratings and photos; absent on older backends. */
+  sharing?: ServerSharing;
 }
 
 /** Success carries the fresh account state; failure carries a code + message. */
@@ -428,6 +431,8 @@ function parseProfile(data: RawAccount): AccountProfile {
   if (usage) profile.usage = usage;
   if (mapper) profile.mapper = mapper;
   if (pivar) profile.pivar = pivar;
+  const sharing = parseServerSharing(data as Record<string, unknown>);
+  if (sharing) profile.sharing = sharing;
   return profile;
 }
 
@@ -884,6 +889,19 @@ export async function fetchAccountProfile(): Promise<AccountProfile | null> {
   const res = await authFetch('/v1/account/me', { method: 'GET', bearer: 'current' });
   if ('networkError' in res || !res.ok) return null;
   return parseProfile(res.data);
+}
+
+/**
+ * Only the badge values (GET /v1/account/me/badge-progress). Null when
+ * unavailable; 'unsupported' when the backend does not have this read yet.
+ */
+export async function fetchBadgeProgress(): Promise<{ id: string; badgeProgress: BadgeProgress } | 'unsupported' | null> {
+  const res = await authFetch('/v1/account/me/badge-progress', { method: 'GET', bearer: 'current' });
+  if ('networkError' in res) return null;
+  if (res.status === 404) return 'unsupported';
+  const { id, badge_progress: raw } = res.data as { id?: unknown; badge_progress?: RawBadgeProgress };
+  if (!res.ok || typeof id !== 'string' || !raw) return null;
+  return { id, badgeProgress: parseBadgeProgress(raw) };
 }
 
 /**

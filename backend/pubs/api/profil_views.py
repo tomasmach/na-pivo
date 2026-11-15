@@ -26,6 +26,27 @@ from .authentication import AccountTokenAuthentication
 _XP_EVENTS_LIMIT = 20
 
 
+class AccountBadgeProgressView(APIView):
+    """GET /v1/account/me/badge-progress — only the ``badge_progress`` block of
+    GET /v1/account/me, for refreshing badges after a beer without the profile."""
+
+    authentication_classes = [AccountTokenAuthentication]
+    permission_classes = [IsAuthenticated]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "account"
+
+    def get(self, request: Request) -> Response:
+        account = request.user
+        return Response(
+            {
+                "id": str(account.public_id),
+                "badge_progress": derive_account_badge_progress(
+                    derive_account_profile_stats(account)
+                ),
+            }
+        )
+
+
 class AccountXpEventsView(APIView):
     """GET /v1/account/me/xp-events?since=<ISO datetime> — what earned my XP lately.
 

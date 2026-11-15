@@ -385,6 +385,23 @@ def test_account_me_sends_party_evenings_additively(client):
 
 
 @pytest.mark.django_db
+def test_badge_progress_read_matches_the_profile_and_needs_a_token(client):
+    token, me = _register(client, "tomas")
+    _, friend = _register(client, "jirka")
+    _befriend(me, friend)
+    evening = datetime.fromisoformat("2026-06-12T19:00:00+00:00")
+    _visit(me, evening)
+    _visit(friend, evening + timedelta(hours=1))
+
+    body = client.get("/v1/account/me/badge-progress", **_auth(token)).json()
+    profile = client.get("/v1/account/me", **_auth(token)).json()
+
+    assert body == {"id": str(me.public_id), "badge_progress": profile["badge_progress"]}
+    assert body["badge_progress"]["party_evenings"] == 1
+    assert client.get("/v1/account/me/badge-progress").status_code == status.HTTP_401_UNAUTHORIZED
+
+
+@pytest.mark.django_db
 def test_account_me_reads_stats_in_a_fixed_number_of_queries(client, django_assert_max_num_queries):
     token, me = _register(client, "tomas")
     _, friend = _register(client, "jirka")

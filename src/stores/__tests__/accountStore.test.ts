@@ -21,6 +21,7 @@ import { setTelemetrySession, trackApiFailure } from '@/data/telemetryClient';
 import { reconcileDiarySnapshot, type DiarySnapshot } from '@/data/diarySync';
 import { beginTourAccountChange, endTourAccountChange } from '@/data/toursBoundary';
 import { useTallyStore } from '@/stores/tallyStore';
+import { DEFAULT_SHARING_PREFS, useVycepStore } from '@/stores/vycepStore';
 
 jest.mock('@/data/auth');
 jest.mock('@/data/account', () => ({
@@ -274,6 +275,23 @@ describe('resumeSession', () => {
       authenticated: true,
     });
     expect(useAccountStore.getState()).toMatchObject({ status: 'ready', profile: refreshed });
+  });
+
+  it('takes the sharing defaults from the profile it validated', async () => {
+    useVycepStore.setState({ ...DEFAULT_SHARING_PREFS });
+    useAccountStore.setState({
+      session: { deviceId: 'd', accountId: 'a', token: 'tok', authenticated: true },
+      profile: signedInProfile(),
+    });
+    mockedAuth.validateAccountSession.mockResolvedValue({
+      status: 'valid',
+      profile: signedInProfile({ sharing: { shareDefault: 'public', nightAutopublish: 'friends' } }),
+    });
+
+    await useAccountStore.getState().resumeSession();
+    await new Promise((resolve) => setImmediate(resolve));
+
+    expect(useVycepStore.getState()).toMatchObject({ shareDefault: 'public', nightAutopublish: 'friends' });
   });
 
   it('drops a profile that arrives after the account changed', async () => {
@@ -649,39 +667,53 @@ describe('unlink', () => {
 // logout — clears profile + reverts (via auth.logout)
 // ---------------------------------------------------------------------------
 describe('refreshBadges', () => {
+  const badges = (beers: number) => ({ id: 'acc-1', badgeProgress: { beers } as NonNullable<AccountProfile['badgeProgress']> });
+
   it('keeps newer badge values when an older answer comes last', async () => {
     useAccountStore.setState({
       session: { deviceId: 'd', accountId: 'a', token: 'tok', authenticated: true },
       profile: signedInProfile(),
     });
-    let olderAnswer: (profile: AccountProfile) => void = () => undefined;
-    const withBeers = (beers: number) =>
-      signedInProfile({ badgeProgress: { beers } as AccountProfile['badgeProgress'] });
-    mockedAuth.fetchAccountProfile
+    let olderAnswer: (value: ReturnType<typeof badges>) => void = () => undefined;
+    mockedAuth.fetchBadgeProgress
       .mockReturnValueOnce(new Promise((resolve) => (olderAnswer = resolve)))
-      .mockResolvedValueOnce(withBeers(10));
+      .mockResolvedValueOnce(badges(10));
 
     const older = useAccountStore.getState().refreshBadges();
     await useAccountStore.getState().refreshBadges();
-    olderAnswer(withBeers(1));
+    olderAnswer(badges(1));
     await older;
 
     expect(useAccountStore.getState().profile?.badgeProgress?.beers).toBe(10);
   });
 
-  it('takes only the badge values, so a slow answer cannot undo a settings change', async () => {
+  it('reads only the badge values, so it cannot undo a settings change', async () => {
     useAccountStore.setState({
       session: { deviceId: 'd', accountId: 'a', token: 'tok', authenticated: true },
       profile: signedInProfile({ nickname: 'local', settings: { hidePubNames: false } }),
     });
+    mockedAuth.fetchBadgeProgress.mockResolvedValueOnce(badges(3));
+
+    await useAccountStore.getState().refreshBadges();
+
+    expect(mockedAuth.fetchAccountProfile).not.toHaveBeenCalled();
+    expect(useAccountStore.getState().profile).toMatchObject({ nickname: 'local', badgeProgress: { beers: 3 } });
+    expect(mockSetHidePubNames).not.toHaveBeenCalled();
+  });
+
+  it('falls back to the whole profile on a backend without the badge read', async () => {
+    useAccountStore.setState({
+      session: { deviceId: 'd', accountId: 'a', token: 'tok', authenticated: true },
+      profile: signedInProfile({ nickname: 'local' }),
+    });
+    mockedAuth.fetchBadgeProgress.mockResolvedValueOnce('unsupported');
     mockedAuth.fetchAccountProfile.mockResolvedValueOnce(
-      signedInProfile({ nickname: 'server', settings: { hidePubNames: true }, badgeProgress: { beers: 3 } as AccountProfile['badgeProgress'] }),
+      signedInProfile({ nickname: 'server', badgeProgress: { beers: 4 } as AccountProfile['badgeProgress'] }),
     );
 
     await useAccountStore.getState().refreshBadges();
 
-    expect(useAccountStore.getState().profile).toMatchObject({ nickname: 'local', badgeProgress: { beers: 3 } });
-    expect(mockSetHidePubNames).not.toHaveBeenCalled();
+    expect(useAccountStore.getState().profile).toMatchObject({ nickname: 'local', badgeProgress: { beers: 4 } });
   });
 });
 
