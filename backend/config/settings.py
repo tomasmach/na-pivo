@@ -105,6 +105,8 @@ MIDDLEWARE = [
     # Above everything that reads or writes the body, so it compresses the
     # final response. Streams (live game SSE, file downloads) pass through.
     "pubs.compression.BufferedGZipMiddleware",
+    # Below gzip, so the ETag hashes the uncompressed body; gzip then marks it weak.
+    "pubs.conditional.ApiConditionalGetMiddleware",
     "pubs.observability.RequestLogMiddleware",
     # /hospody/, /CENY and /zebricky?kraj=praha lead to the page's address before anything else looks at it.
     "pubs.web.routes.canonical_address_middleware",
