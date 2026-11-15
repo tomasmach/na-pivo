@@ -5133,6 +5133,10 @@ class FriendsView(APIView):
     in-app notifications. Blocked accounts (either direction) are excluded from
     every list. Reads use the separate ``friends_dashboard`` throttle budget so
     the bounded live poll never starves the friend write budget.
+
+    ``?view=compact`` is the dashboard the current app reads: no following,
+    followers, leaderboard, streak, block list, unread count or day plans, and only
+    the unread notifications. None of those are computed for it.
     """
 
     authentication_classes = [AccountTokenAuthentication, WebSessionAuthentication]
@@ -5142,6 +5146,7 @@ class FriendsView(APIView):
 
     def get(self, request: Request) -> Response:
         now = dj_timezone.now()
+        compact = request.query_params.get("view") == "compact"
         context = _friend_profile_context(request)
         blocked_ids = _blocked_account_ids(request.user)
         activity_context = _friend_activity_context(request, blocked_ids)
@@ -5216,6 +5221,106 @@ class FriendsView(APIView):
             ]
         else:
             all_friend_ids = page_friend_ids
+        if compact:
+            following, following_rows, following_count, following_have_more = [], [], None, False
+        else:
+            following, following_rows, following_count, following_have_more = self._following(
+                request, blocked_ids, context, pagination_requested, page_limit, following_cursor
+            )
+        shared_stats, shared_dates = _shared_pub_stats(request.user, page_friend_ids)
+        slices = _friend_activity_slices(
+            request, all_friend_ids, now, activity_context, include_plans=not compact
+        )
+        presence_slice = _friend_presence_slice(request, all_friend_ids, now)
+        from .parta_views import home_presence_slice
+
+        home_presence = home_presence_slice(request.user, all_friend_ids, now)
+
+        notification_base = (
+            FriendNotification.objects.filter(recipient=request.user)
+            .filter(
+                Q(actor__isnull=True)
+                | Q(actor__status=Account.Status.ACTIVE, actor__ghost_mode=False)
+            )
+            .filter(
+                Q(activity__isnull=True)
+                | Q(activity__account=request.user)
+                | Q(
+                    activity__account__status=Account.Status.ACTIVE,
+                    activity__account__ghost_mode=False,
+                )
+            )
+            .exclude(actor_id__in=blocked_ids)
+        )
+        if compact:
+            notification_base = notification_base.filter(read_at__isnull=True)
+        notifications = notification_base.select_related(
+            "actor", "friendship", "activity", "activity__account"
+        ).order_by("-created_at")[:30]
+
+        response_body = {
+            "friends": FriendProfileSerializer(friend_accounts, many=True, context=context).data,
+            "friend_stats": {
+                str(account.public_id): _friend_stats_item(shared_stats.get(account.id, {}))
+                for account in friend_accounts
+            },
+            "incoming_requests": FriendshipSerializer(incoming, many=True, context=context).data,
+            "outgoing_requests": FriendshipSerializer(outgoing, many=True, context=context).data,
+            **slices,
+            "presence": presence_slice["presence"],
+            "my_presence": presence_slice["my_presence"],
+            "home_presence": home_presence,
+            "notifications": FriendNotificationSerializer(
+                notifications, many=True, context=context
+            ).data,
+            "settings": _friend_settings_payload(request.user),
+        }
+        if not compact:
+            response_body.update(
+                {
+                    "following": following,
+                    "followers_count": (
+                        Follow.objects.filter(
+                            target=request.user,
+                            follower__status=Account.Status.ACTIVE,
+                        ).count()
+                        if request.user.is_public
+                        else 0
+                    ),
+                    "unread_count": notification_base.filter(read_at__isnull=True).count(),
+                    "streak": _party_streak(shared_dates),
+                    "leaderboard": self._build_leaderboard(
+                        request, friend_accounts, shared_stats, now, context
+                    ),
+                    "blocked_ids": [
+                        str(public_id)
+                        for public_id in FriendBlock.objects.filter(
+                            blocker=request.user
+                        ).values_list("blocked__public_id", flat=True)
+                    ],
+                }
+            )
+        if pagination_requested:
+            response_body.update(
+                {
+                    "next_cursor": (
+                        friendships[-1].id if friendships_have_more and friendships else None
+                    ),
+                    "following_next_cursor": (
+                        following_rows[-1].id if following_have_more and following_rows else None
+                    ),
+                    "truncated": friendships_have_more or following_have_more,
+                    "friends_count": len(all_friend_ids),
+                    "following_count": following_count,
+                    "friends_truncated": friendships_have_more,
+                    "following_truncated": following_have_more,
+                }
+            )
+        return Response(response_body, status=status.HTTP_200_OK)
+
+    @staticmethod
+    def _following(request, blocked_ids, context, pagination_requested, page_limit, following_cursor):
+        """Public accounts I follow, each with the last beer from their public nights."""
         latest_followed_beer = (
             DrinkLog.objects.filter(
                 account_id=OuterRef("target_id"),
@@ -5265,92 +5370,7 @@ class FriendsView(APIView):
             {**profile, "last_drink": row.last_drink or None}
             for row, profile in zip(following_rows, following_profiles, strict=True)
         ]
-        shared_stats, shared_dates = _shared_pub_stats(request.user, page_friend_ids)
-        slices = _friend_activity_slices(request, all_friend_ids, now, activity_context)
-        presence_slice = _friend_presence_slice(request, all_friend_ids, now)
-        from .parta_views import home_presence_slice
-
-        home_presence = home_presence_slice(request.user, all_friend_ids, now)
-
-        notification_base = (
-            FriendNotification.objects.filter(recipient=request.user)
-            .filter(
-                Q(actor__isnull=True)
-                | Q(actor__status=Account.Status.ACTIVE, actor__ghost_mode=False)
-            )
-            .filter(
-                Q(activity__isnull=True)
-                | Q(activity__account=request.user)
-                | Q(
-                    activity__account__status=Account.Status.ACTIVE,
-                    activity__account__ghost_mode=False,
-                )
-            )
-            .exclude(actor_id__in=blocked_ids)
-        )
-        notifications = notification_base.select_related(
-            "actor", "friendship", "activity", "activity__account"
-        ).order_by("-created_at")[:30]
-        unread_count = notification_base.filter(read_at__isnull=True).count()
-
-        streak = _party_streak(shared_dates)
-        leaderboard = self._build_leaderboard(request, friend_accounts, shared_stats, now, context)
-
-        response_body = {
-            "friends": FriendProfileSerializer(friend_accounts, many=True, context=context).data,
-            "friend_stats": {
-                str(account.public_id): _friend_stats_item(shared_stats.get(account.id, {}))
-                for account in friend_accounts
-            },
-            "incoming_requests": FriendshipSerializer(incoming, many=True, context=context).data,
-            "outgoing_requests": FriendshipSerializer(outgoing, many=True, context=context).data,
-            "following": following,
-            "followers_count": (
-                Follow.objects.filter(
-                    target=request.user,
-                    follower__status=Account.Status.ACTIVE,
-                ).count()
-                if request.user.is_public
-                else 0
-            ),
-            "active_friends": slices["active_friends"],
-            "my_active_activity": slices["my_active_activity"],
-            "plans": slices["plans"],
-            "my_plan": slices["my_plan"],
-            "presence": presence_slice["presence"],
-            "my_presence": presence_slice["my_presence"],
-            "home_presence": home_presence,
-            "notifications": FriendNotificationSerializer(
-                notifications, many=True, context=context
-            ).data,
-            "unread_count": unread_count,
-            "settings": _friend_settings_payload(request.user),
-            "streak": streak,
-            "leaderboard": leaderboard,
-            "blocked_ids": [
-                str(public_id)
-                for public_id in FriendBlock.objects.filter(blocker=request.user).values_list(
-                    "blocked__public_id", flat=True
-                )
-            ],
-        }
-        if pagination_requested:
-            response_body.update(
-                {
-                    "next_cursor": (
-                        friendships[-1].id if friendships_have_more and friendships else None
-                    ),
-                    "following_next_cursor": (
-                        following_rows[-1].id if following_have_more and following_rows else None
-                    ),
-                    "truncated": friendships_have_more or following_have_more,
-                    "friends_count": len(all_friend_ids),
-                    "following_count": following_count,
-                    "friends_truncated": friendships_have_more,
-                    "following_truncated": following_have_more,
-                }
-            )
-        return Response(response_body, status=status.HTTP_200_OK)
+        return following, following_rows, following_count, following_have_more
 
     @staticmethod
     def _build_leaderboard(

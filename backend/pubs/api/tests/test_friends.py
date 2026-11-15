@@ -209,6 +209,57 @@ def test_friends_dashboard_keeps_released_request_keys(client):
 
 
 @pytest.mark.django_db
+def test_compact_dashboard_sends_only_what_the_app_reads(client):
+    token, owner = _register(client, "janek")
+    friend_token, friend = _register(client, "petr")
+    asker_token, asker = _register(client, "karel")
+    for other_token in (friend_token, asker_token):
+        sent = client.post(
+            "/v1/friends/requests",
+            data={"target_account_id": str(owner.public_id)},
+            format="json",
+            **_auth(other_token),
+        )
+        assert sent.status_code == status.HTTP_201_CREATED
+    from_friend = Friendship.objects.get(requester=friend)
+    accepted = client.post(f"/v1/friends/requests/{from_friend.public_id}/accept", **_auth(token))
+    assert accepted.status_code == status.HTTP_200_OK
+    seen = FriendNotification.objects.get(recipient=owner, actor=friend)
+    client.post("/v1/friends/notifications/read", data={"ids": [str(seen.public_id)]}, format="json", **_auth(token))
+    for day in ("2026-06-12", "2026-06-13"):
+        _visit(owner, day=day)
+        _visit(friend, day=day)
+
+    with CaptureQueriesContext(connection) as full_queries:
+        full = client.get("/v1/friends", **_auth(token))
+    with CaptureQueriesContext(connection) as compact_queries:
+        compact = client.get("/v1/friends?view=compact", **_auth(token))
+
+    assert compact.status_code == status.HTTP_200_OK
+    body = compact.json()
+    assert set(body) == {
+        "friends",
+        "friend_stats",
+        "incoming_requests",
+        "outgoing_requests",
+        "active_friends",
+        "my_active_activity",
+        "presence",
+        "my_presence",
+        "home_presence",
+        "notifications",
+        "settings",
+    }
+    assert [row["nickname"] for row in body["friends"]] == ["petr"]
+    assert body["friend_stats"] == full.json()["friend_stats"]
+    assert [row["requester"]["nickname"] for row in body["incoming_requests"]] == ["karel"]
+    assert [row["actor"]["nickname"] for row in body["notifications"]] == ["karel"]
+    assert len(full.json()["notifications"]) == 2
+    assert {"leaderboard", "streak", "following", "blocked_ids", "unread_count", "plans"} <= set(full.json())
+    assert len(compact_queries) <= len(full_queries) - 7
+
+
+@pytest.mark.django_db
 def test_friends_dashboard_paginates_relationships_and_follows(client):
     token, owner = _register(client, "janek")
     others = [_register(client, f"friend{index}")[1] for index in range(3)]
