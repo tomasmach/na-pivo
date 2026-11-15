@@ -26,6 +26,7 @@ import {
 } from '@/data/auth';
 import { FALLBACK_LEVELS, FALLBACK_XP_RULES } from '@/data/mapperXp';
 import { reconcileDiarySnapshot, restoreAccountDiary, type DiarySnapshot } from '@/data/diarySync';
+import { adoptServerSharing, sharingReadTicket } from '@/data/sharingPrefsClient';
 import { tourBoundary } from '@/data/toursBoundary';
 import { t } from '@/i18n';
 import { useSettingsStore } from '@/stores/settingsStore';
@@ -126,8 +127,9 @@ interface AccountState {
   /** Re-fetch GET /v1/account/me into `profile`. */
   refreshProfile: () => Promise<void>;
   /**
-   * Re-fetch only the badge values into the current profile. Settings and the
-   * rest stay as they are, so a slow answer cannot undo a change made meanwhile.
+   * Re-fetch only the badge values (GET /v1/account/me/badge-progress) into the
+   * current profile. Settings and the rest stay as they are, so a slow answer
+   * cannot undo a change made meanwhile.
    */
   refreshBadges: () => Promise<void>;
   /** Flush local diary queues, then refresh the authoritative drink/visit snapshot. */
@@ -273,12 +275,15 @@ export const useAccountStore = create<AccountState>((set, get) => {
     return data != null;
   };
 
-  /** After a session-changing auth call: persist the new token + profile. */
-  const applyAuthResult = async (result: AuthResult): Promise<AuthResult> => {
+  /** Run a session-changing auth call, then persist the new token + profile. */
+  const signIn = async (request: () => Promise<AuthResult>): Promise<AuthResult> => {
+    const sharingBefore = sharingReadTicket();
+    const result = await request();
     if (result.ok) {
       claimProfileWrite(takeProfileTicket());
       set({ profile: result.profile });
       applyAccountSettings(result.profile.settings);
+      adoptServerSharing(result.profile.sharing, sharingBefore && sharingReadTicket(sharingBefore.changes));
       await syncSession();
       await refreshDiarySnapshot();
     }
@@ -287,7 +292,7 @@ export const useAccountStore = create<AccountState>((set, get) => {
 
   /** After a profile-changing auth call that leaves the session token intact
    *  (link / unlink / profile / avatar / purchases): persist the updated profile
-   *  + settings. Mirrors applyAuthResult without the session re-sync. */
+   *  + settings. Mirrors signIn without the session re-sync. */
   const applyProfileResult = (result: AuthResult): AuthResult => {
     if (result.ok) {
       claimProfileWrite(takeProfileTicket());
@@ -320,6 +325,7 @@ export const useAccountStore = create<AccountState>((set, get) => {
         if (session) {
           const ticket = takeProfileTicket();
           const readStartedAt = accountPreferencesDeliveries();
+          const sharingTicket = sharingReadTicket();
           const [profile] = await Promise.all([
             auth.fetchAccountProfile(),
             // A successful launch pull lets the first foreground skip it.
@@ -330,6 +336,7 @@ export const useAccountStore = create<AccountState>((set, get) => {
             if (!claimProfileWrite(ticket)) return;
             set({ profile });
             applyAccountSettings(profile.settings, readStartedAt);
+            adoptServerSharing(profile.sharing, sharingTicket);
           } else {
             // The profile includes settings on current backends. Keep the
             // narrower read as a fallback when that request is unavailable.
@@ -360,6 +367,7 @@ export const useAccountStore = create<AccountState>((set, get) => {
 
       const ticket = takeProfileTicket();
       const readStartedAt = accountPreferencesDeliveries();
+      const sharingTicket = sharingReadTicket();
       const validation = await auth.validateAccountSession(session);
       // Ignore a response for a session that was replaced while validation was
       // in flight (for example by a manual login opened from another screen).
@@ -378,6 +386,7 @@ export const useAccountStore = create<AccountState>((set, get) => {
       set({ profile: validation.profile, status: 'ready' });
       setTelemetrySession(session);
       applyAccountSettings(validation.profile.settings, readStartedAt);
+      adoptServerSharing(validation.profile.sharing, sharingTicket);
       return 'valid';
     },
 
@@ -385,19 +394,25 @@ export const useAccountStore = create<AccountState>((set, get) => {
       const token = get().session?.token;
       const ticket = takeProfileTicket();
       const readStartedAt = accountPreferencesDeliveries();
+      const sharingTicket = sharingReadTicket();
       const profile = await auth.fetchAccountProfile();
       if (get().session?.token !== token) return;
       if (profile && claimProfileWrite(ticket)) {
         set({ profile });
         applyAccountSettings(profile.settings, readStartedAt);
+        adoptServerSharing(profile.sharing, sharingTicket);
       }
     },
 
     refreshBadges: async () => {
       const token = get().session?.token;
       const ticket = takeProfileTicket();
-      const fresh = await auth.fetchAccountProfile();
-      if (!fresh?.badgeProgress || get().session?.token !== token) return;
+      let fresh = await auth.fetchBadgeProgress();
+      if (fresh === 'unsupported') {
+        const profile = await auth.fetchAccountProfile();
+        fresh = profile?.badgeProgress ? { id: profile.id, badgeProgress: profile.badgeProgress } : null;
+      }
+      if (!fresh || get().session?.token !== token) return;
       const current = get().profile;
       if (current?.id !== fresh.id || !claimProfileWrite(ticket)) return;
       set({ profile: { ...current, badgeProgress: fresh.badgeProgress } });
@@ -452,11 +467,11 @@ export const useAccountStore = create<AccountState>((set, get) => {
       });
     },
 
-    register: (params) => auth.registerEmail(params).then(applyAuthResult),
-    login: (params) => auth.loginEmail(params).then(applyAuthResult),
-    signInGoogle: () => auth.signInWithGoogle().then(applyAuthResult),
-    signInApple: () => auth.signInWithApple().then(applyAuthResult),
-    resetPassword: (params) => auth.resetPassword(params).then(applyAuthResult),
+    register: (params) => signIn(() => auth.registerEmail(params)),
+    login: (params) => signIn(() => auth.loginEmail(params)),
+    signInGoogle: () => signIn(() => auth.signInWithGoogle()),
+    signInApple: () => signIn(() => auth.signInWithApple()),
+    resetPassword: (params) => signIn(() => auth.resetPassword(params)),
 
     linkGoogle: () => auth.linkGoogle().then(applyProfileResult),
     linkApple: () => auth.linkApple().then(applyProfileResult),

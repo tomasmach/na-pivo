@@ -83,7 +83,7 @@ from .piva_views import (
     BeerSearchView,
     BeerStyleVoteView,
 )
-from .profil_views import AccountNightSummaryView, AccountXpEventsView
+from .profil_views import AccountBadgeProgressView, AccountNightSummaryView, AccountXpEventsView
 from .pub_beers_views import PubBeerBoardView, PubBeersLastWeekView
 from .pub_event_views import PubEventView
 from .pub_reach_views import PubReachView
@@ -590,6 +590,11 @@ urlpatterns = [
     ),
     path("account/me/avatar", AccountAvatarView.as_view(), name="account-me-avatar"),
     path("account/me/xp-events", AccountXpEventsView.as_view(), name="account-me-xp-events"),
+    path(
+        "account/me/badge-progress",
+        AccountBadgeProgressView.as_view(),
+        name="account-me-badge-progress",
+    ),
     path(
         "account/me/night-summary",
         AccountNightSummaryView.as_view(),
