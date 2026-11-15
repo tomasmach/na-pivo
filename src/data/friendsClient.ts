@@ -106,21 +106,6 @@ export interface FriendNotification {
   createdAt: string;
 }
 
-export interface FriendStreak {
-  currentWeeks: number;
-  thisWeekLit: boolean;
-}
-
-export interface LeaderboardEntry {
-  account: FriendProfile;
-  /** Null means private or unavailable, never zero. */
-  visits30d: number | null;
-  /** Undefined on older backends; null when the member does not share. */
-  beers30d?: number | null;
-  sharedCount: number;
-  isMe: boolean;
-}
-
 export interface FriendSocialSettings {
   ghostMode: boolean;
   quietHoursEnabled: boolean;
@@ -190,23 +175,15 @@ export interface FriendsDashboard {
   outgoingRequests: Friendship[];
   activeFriends: FriendPubActivity[];
   myActiveActivity: FriendPubActivity | null;
-  /** Friends' plans for today (kind=plan). Empty on older backends. */
-  plans: FriendPubActivity[];
-  /** My own plan for today, or null. */
-  myPlan: FriendPubActivity | null;
   /** Who from the party is sitting right now, broadcast or not. */
   presence: FriendPresence[];
   /** Where the server thinks I am sitting, or null. */
   myPresence: MyPresence | null;
   /** Friends at somebody's home now. Missing in snapshots saved by older builds. */
   homePresence?: FriendHomePresence[];
-  /** Account ids I've blocked, for client-side filtering. */
-  blockedIds: string[];
   settings: FriendSocialSettings;
-  streak: FriendStreak;
-  leaderboard: LeaderboardEntry[];
+  /** Only the unread ones: opening Parta marks them read. */
   notifications: FriendNotification[];
-  unreadCount: number;
 }
 
 /**
@@ -381,19 +358,6 @@ export interface RawFriendActivity {
   scheduled_for?: string | null;
   reactions?: RawActivityReactions;
   my_reaction?: string | null;
-}
-
-interface RawFriendStreak {
-  current_weeks?: number;
-  this_week_lit?: boolean;
-}
-
-interface RawLeaderboardEntry {
-  account?: RawFriendProfile;
-  visits_30d?: number | null;
-  beers_30d?: number | null;
-  shared_count?: number;
-  is_me?: boolean;
 }
 
 interface RawFriendSocialSettings {
@@ -602,13 +566,6 @@ export function parseActivity(raw: RawFriendActivity): FriendPubActivity {
   };
 }
 
-function parseStreak(raw: RawFriendStreak | undefined | null): FriendStreak {
-  return {
-    currentWeeks: typeof raw?.current_weeks === 'number' ? raw.current_weeks : 0,
-    thisWeekLit: raw?.this_week_lit === true,
-  };
-}
-
 function parseSocialSettings(raw: RawFriendSocialSettings | undefined | null): FriendSocialSettings {
   return {
     ghostMode: raw?.ghost_mode === true,
@@ -659,18 +616,6 @@ function parseHomePresence(raw: unknown): FriendHomePresence[] {
       activityId: typeof row.activity_id === 'string' ? row.activity_id : null,
     }];
   });
-}
-
-function parseLeaderboardEntry(raw: RawLeaderboardEntry): LeaderboardEntry {
-  return {
-    account: parseProfile(raw.account),
-    visits30d: typeof raw.visits_30d === 'number' ? raw.visits_30d : null,
-    beers30d: raw.beers_30d === undefined
-      ? undefined
-      : typeof raw.beers_30d === 'number' ? raw.beers_30d : null,
-    sharedCount: typeof raw.shared_count === 'number' ? raw.shared_count : 0,
-    isMe: raw.is_me === true,
-  };
 }
 
 function parseNotification(raw: RawFriendNotification): FriendNotification {
@@ -878,7 +823,7 @@ export async function fetchFriendsDashboard(signal?: AbortSignal): Promise<Frien
   // the snapshot while this fetch is in flight, the write below is dropped instead
   // of re-persisting the previous account's graph under the next account.
   const generation = snapshotGeneration();
-  const res = await requestJson('/v1/friends', { signal });
+  const res = await requestJson('/v1/friends?view=compact', { signal });
   if (!res.ok) return null;
   const rawStats = (res.data.friend_stats ?? {}) as Record<string, RawFriendStats>;
   const friendStats: Record<string, FriendStats> = {};
@@ -902,25 +847,13 @@ export async function fetchFriendsDashboard(signal?: AbortSignal): Promise<Frien
     myActiveActivity: res.data.my_active_activity
       ? parseActivity(res.data.my_active_activity as RawFriendActivity)
       : null,
-    plans: Array.isArray(res.data.plans)
-      ? (res.data.plans as RawFriendActivity[]).map(parseActivity)
-      : [],
-    myPlan: res.data.my_plan ? parseActivity(res.data.my_plan as RawFriendActivity) : null,
     presence: parsePresenceList(res.data.presence),
     myPresence: parseMyPresence(res.data.my_presence),
     homePresence: parseHomePresence(res.data.home_presence),
-    blockedIds: Array.isArray(res.data.blocked_ids)
-      ? (res.data.blocked_ids as unknown[]).filter((id): id is string => typeof id === 'string')
-      : [],
     settings: parseSocialSettings(res.data.settings as RawFriendSocialSettings | undefined),
-    streak: parseStreak(res.data.streak as RawFriendStreak | undefined),
-    leaderboard: Array.isArray(res.data.leaderboard)
-      ? (res.data.leaderboard as RawLeaderboardEntry[]).map(parseLeaderboardEntry)
-      : [],
     notifications: Array.isArray(res.data.notifications)
       ? (res.data.notifications as RawFriendNotification[]).map(parseNotification)
       : [],
-    unreadCount: typeof res.data.unread_count === 'number' ? res.data.unread_count : 0,
   };
   // Persist the freshly-loaded graph so an offline cold start can hydrate it
   // behind the OfflineBanner (§H2). Fire-and-forget; never blocks the return. The
@@ -943,13 +876,13 @@ export async function fetchFriendsLive(signal?: AbortSignal): Promise<FriendsLiv
       return {
         activeFriends: dashboard.activeFriends,
         myActiveActivity: dashboard.myActiveActivity,
-        plans: dashboard.plans,
-        myPlan: dashboard.myPlan,
+        plans: [],
+        myPlan: null,
         presence: dashboard.presence,
         myPresence: dashboard.myPresence,
         homePresence: dashboard.homePresence ?? [],
         incomingCount: dashboard.incomingRequests.length,
-        unreadCount: dashboard.unreadCount,
+        unreadCount: dashboard.notifications.length,
         serverTime: null,
       };
     }
