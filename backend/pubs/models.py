@@ -4176,7 +4176,38 @@ class BeerRegionRanking(models.Model):
         return f"BeerRegionRanking({self.product_id}, {self.region}: {self.rank})"
 
 
-class DrinkLog(models.Model):
+class DiaryRowQuerySet(models.QuerySet):
+    """Every bulk write moves ``updated_at``, which GET ?since= syncs from."""
+
+    def update(self, **kwargs):
+        kwargs.setdefault("updated_at", timezone.now())
+        return super().update(**kwargs)
+
+    def bulk_update(self, objs, fields, batch_size=None):
+        now = timezone.now()
+        for obj in objs:
+            obj.updated_at = now
+        return super().bulk_update(objs, {*fields, "updated_at"}, batch_size=batch_size)
+
+
+class DiaryRow(models.Model):
+    """A private diary row the app syncs by changes since its last read."""
+
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="Upraveno")
+
+    objects = DiaryRowQuerySet.as_manager()
+
+    class Meta:
+        abstract = True
+
+    def save(self, *args, **kwargs):
+        update_fields = kwargs.get("update_fields")
+        if update_fields and "updated_at" not in update_fields:
+            kwargs["update_fields"] = {*update_fields, "updated_at"}
+        super().save(*args, **kwargs)
+
+
+class DrinkLog(DiaryRow):
     """
     A single drink the user logged via the in-app counter.
 
@@ -4657,7 +4688,7 @@ class PubFavoriteTombstone(models.Model):
         return f"PubFavoriteTombstone({self.cache_key})"
 
 
-class PubVisit(models.Model):
+class PubVisit(DiaryRow):
     """
     An explicit user visit to a pub — one "evening" out.
 
@@ -4732,7 +4763,6 @@ class PubVisit(models.Model):
         verbose_name="Upraveno v appce",
     )
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="Vytvořeno")
-    updated_at = models.DateTimeField(auto_now=True, verbose_name="Upraveno")
 
     class Meta:
         verbose_name = "návštěva"
