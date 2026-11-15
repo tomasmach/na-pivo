@@ -7,7 +7,6 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { useEffect, useRef, useState } from 'react';
 
-import { fontAssets } from '@/theme/fonts';
 import { Colors } from '@/theme/colors';
 import { flushPubReportQueue } from '@/data/pubReportQueue';
 import { flushPubNameCorrectionsQueue } from '@/data/pubNameCorrectionsQueue';
@@ -229,12 +228,8 @@ const launchInviteStashed = Linking.getInitialURL()
 // The first screen is the map; its saved pubs load while the fonts do.
 void hydratePubsSnapshot();
 
-// The first screen draws in the new look's fonts; loading them behind the
-// splash saves a blank frame between the splash and the first tab.
-const startupFonts = { ...fontAssets, ...NewLookFontFiles };
-
 export default function RootLayout() {
-  const [fontsLoaded, fontError] = useFonts(startupFonts);
+  const [fontsLoaded, fontError] = useFonts(NewLookFontFiles);
   const router = useRouter();
   const pathname = usePathname();
   const pathnameRef = useRef(pathname);
