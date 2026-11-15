@@ -77,7 +77,7 @@ bounce, elastic ani back easing, žádné vyskočení zvětšením. Všechny jeh
 berou tokeny z `src/newlook/motion.ts`: trvání 120 ms (stisk), 160, 220 a 280 ms
 (sheet), vstup `Easing.bezier(0.2, 0, 0, 1)`, odchod rychlejší
 `Easing.bezier(0.3, 0, 1, 1)`. Hýbe se jen průhlednost a malé posuny (8 až 16 bodů),
-celé plochy jen u sheetu. Pro nový vzhled tím neplatí pružiny a přejetí z §7.2b a §10
+celé plochy jen u sheetu a dál letí jen piny na mapě (níže). Pro nový vzhled tím neplatí pružiny a přejetí z §7.2b a §10
 (sheet s dojezdem, pop počítadla, váleček s `bezier(0.3, 1.22, …)`).
 
 - **Sheet** vyjede zespoda za 280 ms a závoj se zároveň prolne. Zavřením (křížek,
@@ -92,6 +92,13 @@ celé plochy jen u sheetu. Pro nový vzhled tím neplatí pružiny a přejetí z
   prstem nevlnilo.
 - **Změna hodnoty** se prolne na místě: číslo piv, hospoda po „Jinou“. Nový řádek
   pití se jen prolne. Při otevření obrazovky se nic neanimuje.
+- **Piny na mapě** se přeskupují už během zoomu a posunu, nejvýš jednou za 220 ms.
+  Pin, který pohltí bublina, do ní doletí a zbledne. Při rozpadu z ní hospody vyletí
+  na svá místa. Let trvá 220 ms se vstupní křivkou a smí být delší než 16 bodů,
+  protože ukazuje, kam hospoda zmizela. Letí jen piny, které jsou vidět. Pin bez
+  bubliny, třeba nově načtený, se prolne na místě. Prolnutí má čtyři kroky společné
+  pro celou změnu. Odcházející pin zmizí o krok dřív, než doletí, bublina leží nad
+  piny a vyšší součet ukáže až ve chvíli, kdy do ní hospody dosednou.
 - **Načítání** nesmí posunout obsah: zástupná karta drží výšku výsledku a načtený
   obsah se prolne.
 - **Omezit pohyb:** posuny odpadnou, zůstanou krátká prolnutí. Jen sheet a tlačítko

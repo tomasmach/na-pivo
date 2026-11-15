@@ -1,15 +1,20 @@
 import React, { forwardRef, memo, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
+import { useReducedMotion } from 'react-native-reanimated';
 import { useIsFocused } from 'expo-router';
 import MapView, { Marker, Polyline, PROVIDER_GOOGLE, type MapStyleElement, type Region } from 'react-native-maps';
 
-import { bubblesOverlap, clusterCamera, clusterPins, NO_CLUSTER_ZOOM, targetPin, type PinCluster } from '@/map/clusterPins';
+import { bubblesOverlap, clusterCamera, clusterIndex, clusterLevel, NO_CLUSTER_ZOOM, pinNode, targetPin, zoomOf, type PinNode } from '@/map/clusterPins';
+import { FlyingMarker } from '@/map/FlyingMarker';
+import { movePins, type ShownPin } from '@/map/pinTransitions';
 import { StaticMapMarker } from '@/map/StaticMapMarker';
+import { steadyPins } from '@/map/steadyPins';
 import { visiblePins } from '@/map/visiblePins';
 import { trackPinsSeen } from '@/data/pubReachClient';
 
 import { Icon } from '../../components/Icon';
 import { Person, T } from '../../components/ui';
+import { DURATION } from '../../motion';
 import { C, s } from '../../theme';
 
 // Gray Google style without museums, shops and transit (the redesign decision "Mapa").
@@ -69,15 +74,117 @@ type Props = {
   coveredRight?: number;
 };
 
+type Frame = { south: number; north: number; west: number; east: number };
+/** How far past the screen edge pins are kept ready, as a share of the screen. */
+const FRAME_MARGIN = 0.35;
+/** The pins regroup at most this often, one pin flight apart. */
+const REGROUP_GAP_MS = 220;
+/** A pin this far past the screen edge still counts as seen, so a flight across the edge is whole. */
+const SEEN_MARGIN = 0.08;
+
+/** The part of the map that gets markers: what `region` shows, the map under the controls and a margin around. */
+function frameAround(region: Region, underBottom: number, underRight: number): Frame {
+  const lat = region.latitudeDelta;
+  const lng = region.longitudeDelta;
+  return {
+    south: region.latitude - lat * (0.5 + FRAME_MARGIN + underBottom),
+    north: region.latitude + lat * (0.5 + FRAME_MARGIN),
+    west: region.longitude - lng * (0.5 + FRAME_MARGIN),
+    east: region.longitude + lng * (0.5 + FRAME_MARGIN + underRight),
+  };
+}
+
+function frameShows(frame: Frame, region: Region): boolean {
+  return (
+    region.latitude - region.latitudeDelta / 2 >= frame.south &&
+    region.latitude + region.latitudeDelta / 2 <= frame.north &&
+    region.longitude - region.longitudeDelta / 2 >= frame.west &&
+    region.longitude + region.longitudeDelta / 2 <= frame.east
+  );
+}
+
+function inFrame(frame: Frame, at: Point): boolean {
+  return at.lat >= frame.south && at.lat <= frame.north && at.lng >= frame.west && at.lng <= frame.east;
+}
+
 export const NvMap = forwardRef<NvMapHandle, Props>(function NvMap(
-  { pins, me, target, friends, cities, view, selectedCity, onPub, onCity, onRegion, onPan, showRoute = true, bottomPadding = 0, coveredTop = 0, coveredRight = 0 },
+  { pins: loadedPins, me, target, friends, cities, view, selectedCity, onPub, onCity, onRegion, onPan, showRoute = true, bottomPadding = 0, coveredTop = 0, coveredRight = 0 },
   handle,
 ) {
   const ref = useRef<MapView>(null);
   const centered = useRef(false);
+  const [steady, setSteady] = useState(() => ({ loaded: loadedPins, pins: steadyPins([], loadedPins) }));
+  let { pins } = steady;
+  if (steady.loaded !== loadedPins) {
+    pins = steadyPins(pins, loadedPins);
+    setSteady({ loaded: loadedPins, pins });
+  }
   const [initialRegion] = useState(() => (me ? nearRegion(me) : COUNTRY_REGION));
   const [viewport, setViewport] = useState<Region>(initialRegion);
   const [size, setSize] = useState({ width: 0, height: 0 });
+  const width = size.width || 390;
+  const [level, setLevel] = useState(() => clusterLevel(zoomOf(initialRegion, width)));
+  const shownLevel = useRef(level);
+  // The map under the bottom card and the Duo's side column lies outside the region Google reports.
+  const underBottom = size.height > bottomPadding ? bottomPadding / (size.height - bottomPadding) : 0;
+  const underRight = width > coveredRight ? coveredRight / (width - coveredRight) : 0;
+  const [frame, setFrame] = useState(() => frameAround(initialRegion, underBottom, underRight));
+  const shownFrame = useRef(frame);
+  const lastRegion = useRef<Region>(initialRegion);
+  const regroupedAt = useRef(0);
+  const regroupLater = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const regroupNow = useCallback(
+    (region: Region) => {
+      const next = clusterLevel(zoomOf(region, width), shownLevel.current);
+      if (next === shownLevel.current && frameShows(shownFrame.current, region)) return;
+      regroupedAt.current = Date.now();
+      shownLevel.current = next;
+      shownFrame.current = frameAround(region, underBottom, underRight);
+      setLevel(next);
+      setFrame(shownFrame.current);
+    },
+    [underBottom, underRight, width],
+  );
+  // A fast zoom would mount the pins of every step it passes and drop them a moment later, and a
+  // regroup that cuts into a running flight makes the pins jump. The last region still gets its turn.
+  const regroup = useCallback(
+    (region: Region) => {
+      lastRegion.current = region;
+      const wait = regroupedAt.current + REGROUP_GAP_MS - Date.now();
+      if (wait <= 0) regroupNow(region);
+      else
+        regroupLater.current ??= setTimeout(() => {
+          regroupLater.current = null;
+          regroupNow(lastRegion.current);
+        }, wait);
+    },
+    [regroupNow],
+  );
+  useEffect(
+    () => () => {
+      if (regroupLater.current) clearTimeout(regroupLater.current);
+    },
+    [],
+  );
+  useEffect(() => {
+    shownFrame.current = frameAround(lastRegion.current, underBottom, underRight);
+    setFrame(shownFrame.current);
+  }, [underBottom, underRight]);
+  const under = useRef({ underBottom, underRight });
+  useEffect(() => {
+    under.current = { underBottom, underRight };
+  });
+  const seen = useCallback((at: Point) => {
+    const region = lastRegion.current;
+    const lat = region.latitudeDelta;
+    const lng = region.longitudeDelta;
+    return (
+      at.lat >= region.latitude - lat * (0.5 + SEEN_MARGIN + under.current.underBottom) &&
+      at.lat <= region.latitude + lat * (0.5 + SEEN_MARGIN) &&
+      at.lng >= region.longitude - lng * (0.5 + SEEN_MARGIN) &&
+      at.lng <= region.longitude + lng * (0.5 + SEEN_MARGIN + under.current.underRight)
+    );
+  }, []);
   const padding = useMemo(() => ({ top: 0, left: 0, right: coveredRight, bottom: bottomPadding }), [bottomPadding, coveredRight]);
   // Position fixes re-render the map; stable handlers let the marker lists skip them.
   const handlers = useRef({ onPub, onCity });
@@ -90,7 +197,7 @@ export const NvMap = forwardRef<NvMapHandle, Props>(function NvMap(
   useEffect(() => {
     layout.current = { size, bottomPadding };
   });
-  const pressCluster = useCallback((cluster: PinCluster) => {
+  const pressCluster = useCallback((cluster: PinNode<MapPin>) => {
     const { size: map, bottomPadding: bottom } = layout.current;
     const pad = CLUSTER_EDGE_PADDING;
     const camera = clusterCamera(cluster.members, {
@@ -120,28 +227,35 @@ export const NvMap = forwardRef<NvMapHandle, Props>(function NvMap(
     ref.current?.setCamera({ center: { latitude: me.lat, longitude: me.lng }, zoom: NEAR_ZOOM });
     onRegion?.(nearRegion(me));
     setViewport(nearRegion(me));
-  }, [me, onRegion, ready, view]);
+    regroup(nearRegion(me));
+  }, [me, onRegion, ready, regroup, view]);
 
   const targetKey = target?.key ?? null;
   const targetLat = target?.lat;
   const targetLng = target?.lng;
-  const { singles, clusters, clusterUnderTarget } = useMemo(() => {
-    if (view === 'stopy') return { singles: [], clusters: [], clusterUnderTarget: null };
-    // The pub the compass points at stays its own pin, never inside a cluster.
-    const own = targetKey && targetLat != null && targetLng != null ? targetPin(pins, { key: targetKey, lat: targetLat, lng: targetLng }) : undefined;
-    const width = size.width || 390;
-    const grouped = clusterPins(own ? pins.filter((p) => p !== own) : pins, viewport, width);
+  // The pub the compass points at stays its own pin, never inside a cluster.
+  const own = useMemo(
+    () => (targetKey && targetLat != null && targetLng != null ? targetPin(pins, { key: targetKey, lat: targetLat, lng: targetLng }) : undefined),
+    [pins, targetKey, targetLat, targetLng],
+  );
+  const ownNode = useMemo(() => (own ? pinNode(own) : null), [own]);
+  const groupsAt = useMemo(() => clusterIndex(own ? pins.filter((p) => p !== own) : pins), [own, pins]);
+  const { nodes, clusterUnderTarget } = useMemo(() => {
+    if (view === 'stopy') return { nodes: [], clusterUnderTarget: null };
+    const grouped = groupsAt(level).filter((node) => inFrame(frame, node));
+    if (!ownNode) return { nodes: grouped, clusterUnderTarget: null };
     // A cluster peeking out from under the target pin would lend it the cluster's beers.
-    const under = own ? grouped.clusters.find((c) => bubblesOverlap(c, own, viewport, width)) : undefined;
-    return { singles: own ? [...grouped.singles, own] : grouped.singles, clusters: grouped.clusters, clusterUnderTarget: under?.key ?? null };
-  }, [pins, targetKey, targetLat, targetLng, view, viewport, size.width]);
+    const under = grouped.find((c) => c.members.length > 1 && bubblesOverlap(c, ownNode, level));
+    return { nodes: [...grouped, ownNode], clusterUnderTarget: under?.key ?? null };
+  }, [frame, groupsAt, level, ownNode, view]);
 
   // Counts a pub as seen once the map stops on it as its own pin; a pub inside a cluster bubble is not shown.
   const focused = useIsFocused();
   useEffect(() => {
     if (!ready || !focused || view === 'stopy' || !size.height) return;
-    trackPinsSeen(visiblePins(singles, viewport, size.height - bottomPadding, coveredTop).map((p) => p.key));
-  }, [bottomPadding, coveredTop, focused, ready, singles, size.height, view, viewport]);
+    const alone = groupsAt(shownLevel.current).filter((n) => n.members.length === 1).map((n) => n.lead);
+    trackPinsSeen(visiblePins(own ? [...alone, own] : alone, viewport, size.height - bottomPadding, coveredTop).map((p) => p.key));
+  }, [bottomPadding, coveredTop, focused, groupsAt, own, ready, size.height, view, viewport]);
 
   return (
     <MapView
@@ -159,7 +273,9 @@ export const NvMap = forwardRef<NvMapHandle, Props>(function NvMap(
       userInterfaceStyle="dark"
       onLayout={(e) => setSize({ width: e.nativeEvent.layout.width, height: e.nativeEvent.layout.height })}
       onMapReady={() => setReady(true)}
+      onRegionChange={regroup}
       onRegionChangeComplete={(region, details) => {
+        regroup(region);
         setViewport(region);
         onRegion?.(region);
         if (details?.isGesture) onPan?.();
@@ -180,7 +296,7 @@ export const NvMap = forwardRef<NvMapHandle, Props>(function NvMap(
             />
           ) : null}
           {me ? (
-            <StaticMapMarker coordinate={{ latitude: me.lat, longitude: me.lng }} anchor={{ x: 0.5, y: 0.5 }} zIndex={1}>
+            <StaticMapMarker coordinate={{ latitude: me.lat, longitude: me.lng }} anchor={{ x: 0.5, y: 0.5 }} zIndex={2}>
               <View style={[{ width: 40, height: 40, borderRadius: 20, backgroundColor: C.line }, s.center]}>
                 <View style={{ width: 16, height: 16, borderRadius: 8, backgroundColor: C.white, borderWidth: 3, borderColor: C.black }} />
               </View>
@@ -188,68 +304,149 @@ export const NvMap = forwardRef<NvMapHandle, Props>(function NvMap(
           ) : null}
         </>
       ) : null}
-      <PubMarkers pins={singles} targetKey={targetKey} onPress={pressPub} />
-      <ClusterMarkers clusters={clusters} quietKey={clusterUnderTarget} onPress={pressCluster} />
+      <PinMarkers nodes={nodes} frame={frame} seen={seen} targetKey={targetKey} quietKey={clusterUnderTarget} onPub={pressPub} onCluster={pressCluster} />
       {view === 'parta' ? <FriendMarkers friends={friends} /> : null}
       {view === 'stopy' ? <CityMarkers cities={cities} selected={selectedCity ?? null} onPress={pressCity} /> : null}
     </MapView>
   );
 });
 
-const PubMarkers = memo(function PubMarkers({
-  pins,
+/** A pin fades in this many steps, the last one as its flight lands; DESIGN.md keeps the fade with Reduce Motion on. */
+const FADE_STEPS = 4;
+
+const PinMarkers = memo(function PinMarkers({
+  nodes,
+  frame,
+  seen,
   targetKey,
-  onPress,
+  quietKey,
+  onPub,
+  onCluster,
 }: {
-  pins: MapPin[];
+  nodes: PinNode<MapPin>[];
+  /** A marker that leaves outside of it goes at once; nobody would see it fade. */
+  frame: Frame;
+  seen: (at: Point) => boolean;
   targetKey: string | null;
-  onPress: (id: string) => void;
+  /** The cluster whose beers stay unshown. */
+  quietKey: string | null;
+  onPub: (id: string) => void;
+  onCluster: (cluster: PinNode<MapPin>) => void;
 }) {
-  return pins.map((p) => (
-    <StaticMapMarker
-      key={`${p.id}-${p.key === targetKey}-${p.label ?? ''}-${p.beers}`}
-      coordinate={{ latitude: p.lat, longitude: p.lng }}
-      anchor={{ x: 0.5, y: 0.5 }}
-      onPress={() => onPress(p.id)}
-      zIndex={p.key === targetKey ? 2 : 0}
-    >
-      <WithBeers beers={p.beers}>
-        <PubPin label={p.label} target={p.key === targetKey} restaurant={p.restaurant} />
-      </WithBeers>
-    </StaticMapMarker>
+  const still = useReducedMotion();
+  const [state, setState] = useState(() => ({
+    nodes,
+    shown: movePins([], nodes),
+    fresh: new Set(nodes.map((node) => node.key)),
+    growing: new Map<string, PinNode<MapPin>>(),
+    step: 1,
+  }));
+  let now = state;
+  if (state.nodes !== nodes) {
+    const before = state.shown.filter((pin) => !pin.leaving);
+    const known = new Map(before.map((pin) => [pin.node.key, pin.node]));
+    const shown = movePins(before, nodes).filter((pin) => !pin.leaving || inFrame(frame, pin.node));
+    const fresh = new Set<string>();
+    // A bubble that takes in more pubs keeps its old count until they land, so the map never counts a pub twice.
+    const growing = new Map<string, PinNode<MapPin>>();
+    for (const { node, leaving } of shown) {
+      const was = known.get(node.key);
+      if (!was) fresh.add(node.key);
+      else if (!leaving && node.members.length > was.members.length) growing.set(node.key, was);
+    }
+    now = { nodes, shown, fresh, growing, step: 1 };
+    setState(now);
+  }
+  // One clock fades every pin of a change, so a fade costs a few renders however many pins it moves.
+  useEffect(() => {
+    if (state.step >= FADE_STEPS) return;
+    const timer = setTimeout(
+      () =>
+        setState((last) => {
+          if (last !== state) return last;
+          const step = last.step + 1;
+          return step < FADE_STEPS ? { ...last, step } : { ...last, step, shown: last.shown.filter((pin) => !pin.leaving) };
+        }),
+      DURATION.base / (FADE_STEPS - 1),
+    );
+    return () => clearTimeout(timer);
+  }, [state]);
+  const landed = now.step >= FADE_STEPS;
+  // A leaving pin is gone a step before it lands, so it never lies half faded over the bubble's number.
+  const leaving = Math.max(0, 1 - now.step / (FADE_STEPS - 1));
+  return now.shown.map((pin) => (
+    <PinMarker
+      key={pin.node.key}
+      pin={pin}
+      drawn={landed ? pin.node : (now.growing.get(pin.node.key) ?? pin.node)}
+      opacity={pin.leaving ? leaving : now.fresh.has(pin.node.key) ? now.step / FADE_STEPS : 1}
+      seen={seen}
+      still={still}
+      target={pin.node.lead.key === targetKey}
+      quiet={pin.node.key === quietKey}
+      onPub={onPub}
+      onCluster={onCluster}
+    />
   ));
 });
 
-const ClusterMarkers = memo(function ClusterMarkers({
-  clusters,
-  quietKey,
-  onPress,
+const PinMarker = memo(function PinMarker({
+  pin,
+  drawn,
+  opacity,
+  seen,
+  still,
+  target,
+  quiet,
+  onPub,
+  onCluster,
 }: {
-  clusters: PinCluster<MapPin>[];
-  /** The cluster whose beers stay unshown. */
-  quietKey: string | null;
-  onPress: (cluster: PinCluster<MapPin>) => void;
+  pin: ShownPin<PinNode<MapPin>>;
+  /** The group whose count and beers the marker shows. */
+  drawn: PinNode<MapPin>;
+  opacity: number;
+  seen: (at: Point) => boolean;
+  /** With Reduce Motion on a pin fades where it stands and does not fly. */
+  still: boolean;
+  target: boolean;
+  quiet: boolean;
+  onPub: (id: string) => void;
+  onCluster: (cluster: PinNode<MapPin>) => void;
 }) {
-  return clusters.map((c) => {
-    const beers = c.key === quietKey ? 0 : c.members.reduce((sum, pin) => sum + pin.beers, 0);
-    return (
-      <StaticMapMarker
-        key={`${c.key}-${c.count}-${beers}`}
-        coordinate={{ latitude: c.lat, longitude: c.lng }}
-        anchor={{ x: 0.5, y: 0.5 }}
-        onPress={() => onPress(c)}
-      >
-        <WithBeers beers={beers}>
-          <ClusterPin count={c.count} />
-        </WithBeers>
-      </StaticMapMarker>
-    );
-  });
+  const { node } = pin;
+  const { lead } = node;
+  const count = drawn.members.length;
+  const alone = count === 1;
+  const beers = alone ? lead.beers : quiet ? 0 : drawn.members.reduce((sum, member) => sum + member.beers, 0);
+  const { label, restaurant } = lead;
+  const content = useMemo(
+    () => <WithBeers beers={beers}>{alone ? <PubPin label={label} target={target} restaurant={restaurant} /> : <ClusterPin count={count} />}</WithBeers>,
+    [alone, beers, count, label, restaurant, target],
+  );
+  return (
+    <FlyingMarker
+      at={still && pin.leaving ? node : pin.at}
+      from={still ? null : pin.from}
+      seen={seen}
+      still={still}
+      opacity={opacity}
+      snapshot={alone ? `${target}-${label ?? ''}-${beers}-${restaurant === true}` : `${count}-${beers}`}
+      anchor={{ x: 0.5, y: 0.5 }}
+      onPress={() => {
+        if (pin.leaving) return;
+        if (alone) onPub(lead.id);
+        else onCluster(node);
+      }}
+      zIndex={!alone ? 1 : target ? 3 : 0}
+    >
+      {content}
+    </FlyingMarker>
+  );
 });
 
 const FriendMarkers = memo(function FriendMarkers({ friends }: { friends: MapFriend[] }) {
   return friends.map((f) => (
-    <Marker key={f.key} coordinate={{ latitude: f.lat + 0.0004, longitude: f.lng }} anchor={{ x: 0.5, y: 1 }} tracksViewChanges={false}>
+    <Marker key={f.key} coordinate={{ latitude: f.lat + 0.0004, longitude: f.lng }} anchor={{ x: 0.5, y: 1 }} zIndex={2} tracksViewChanges={false}>
       <Person initial={f.initial} size={34} />
     </Marker>
   ));
