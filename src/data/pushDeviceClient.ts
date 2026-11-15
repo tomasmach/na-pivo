@@ -18,26 +18,23 @@ export const PUSH_TOKEN_KEY = 'na-pivo-expo-push-token';
 // Installation-wide (not account data): a later opt-out must survive a timed-out
 // PUT that is still running on the server, including across an app restart.
 const REVISION_KEY = 'na-pivo-push-device-revision';
-const REGISTERED_KEY = 'na-pivo-push-device-registered';
 const REREGISTER_AFTER_MS = 12 * 60 * 60 * 1000;
+let registeredThisProcess: { signature: string; at: number } | null = null;
 
 function registrationSignature(pushToken: string, accountId: string, friendPush: boolean): string {
   return JSON.stringify([pushToken, accountId, friendPush, getAppVersionLabel(), locale]);
 }
 
-/** True when this device told the server exactly this, under this account, in the last hours. */
+/** True when this app process already told the server exactly this, under this account, in the last hours. */
 export async function pushDeviceRegisteredRecently(friendPush?: boolean): Promise<boolean> {
+  const stamp = registeredThisProcess;
+  if (!stamp) return false;
   try {
-    const [pushToken, saved, session] = await Promise.all([
-      AsyncStorage.getItem(PUSH_TOKEN_KEY),
-      AsyncStorage.getItem(REGISTERED_KEY),
-      ensureAccount(),
-    ]);
-    if (!pushToken || !saved || !session) return false;
+    const [pushToken, session] = await Promise.all([AsyncStorage.getItem(PUSH_TOKEN_KEY), ensureAccount()]);
+    if (!pushToken || !session) return false;
     await waitForSettingsHydration();
     const partaPush = friendPush ?? !useSettingsStore.getState().friendPushOptedOut;
-    const stamp = JSON.parse(saved) as { signature?: unknown; at?: unknown };
-    const age = Date.now() - Number(stamp.at);
+    const age = Date.now() - stamp.at;
     return (
       stamp.signature === registrationSignature(pushToken, session.accountId, partaPush) &&
       age >= 0 &&
@@ -80,6 +77,7 @@ export async function registerPushDevice(
   if (!session || signal?.aborted) return false;
 
   await waitForSettingsHydration();
+  registeredThisProcess = null;
   const abort = chainAbortSignal(signal, REQUEST_TIMEOUT_MS);
   try {
     const clientRevision = await nextRevision();
@@ -118,10 +116,7 @@ export async function registerPushDevice(
     const result = await resp.json();
     const applied = result.applied !== false;
     if (applied) {
-      await AsyncStorage.setItem(
-        REGISTERED_KEY,
-        JSON.stringify({ signature: registrationSignature(pushToken, session.accountId, partaPush), at: Date.now() }),
-      ).catch(() => undefined);
+      registeredThisProcess = { signature: registrationSignature(pushToken, session.accountId, partaPush), at: Date.now() };
     }
     return applied;
   } catch (err) {
@@ -145,7 +140,7 @@ export async function disableCachedPushDeviceWithBearer(
 ): Promise<boolean> {
   const endpoint = getBackendEndpoint('/v1/push-device');
   if (!endpoint || !bearerToken || signal?.aborted) return false;
-  await AsyncStorage.removeItem(REGISTERED_KEY).catch(() => undefined);
+  registeredThisProcess = null;
 
   let pushToken: string | null = null;
   try {

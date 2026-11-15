@@ -792,6 +792,45 @@ def test_a_batch_records_every_valid_event_and_its_usage(client):
 
 
 @pytest.mark.django_db
+def test_every_event_of_a_batch_counts_toward_the_rate_limit(client, monkeypatch):
+    from rest_framework.throttling import ScopedRateThrottle
+
+    rates = dict(ScopedRateThrottle.THROTTLE_RATES)
+    rates["client_events"] = "3/min"
+    monkeypatch.setattr(ScopedRateThrottle, "THROTTLE_RATES", rates)
+    token = _register(client)
+
+    def send(count):
+        events = [{"event": "app_open", "platform": "ios"}] * count
+        data = {"events": events} if count > 1 else events[0]
+        return client.post("/v1/client-events", data=data, format="json", **_auth(token)).status_code
+
+    assert [send(2), send(2), send(1), send(1)] == [
+        status.HTTP_202_ACCEPTED,
+        status.HTTP_429_TOO_MANY_REQUESTS,
+        status.HTTP_202_ACCEPTED,
+        status.HTTP_429_TOO_MANY_REQUESTS,
+    ]
+    assert ClientEvent.objects.count() == 3
+
+
+@pytest.mark.django_db
+def test_a_body_that_is_not_json_still_counts_toward_the_rate_limit(client, monkeypatch):
+    from rest_framework.throttling import ScopedRateThrottle
+
+    rates = dict(ScopedRateThrottle.THROTTLE_RATES)
+    rates["client_events"] = "1/min"
+    monkeypatch.setattr(ScopedRateThrottle, "THROTTLE_RATES", rates)
+
+    statuses = [
+        client.post("/v1/client-events", data="{", content_type="application/json").status_code
+        for _ in range(2)
+    ]
+
+    assert statuses == [status.HTTP_400_BAD_REQUEST, status.HTTP_429_TOO_MANY_REQUESTS]
+
+
+@pytest.mark.django_db
 @pytest.mark.parametrize("events", [[], "app_open", [{"event": "app_open"}] * 26])
 def test_a_batch_outside_the_limits_is_refused(client, events):
     resp = client.post("/v1/client-events", data={"events": events}, format="json")

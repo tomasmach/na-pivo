@@ -60,6 +60,7 @@ const DASHBOARD = {
 } as unknown as FriendsDashboard;
 
 const load = jest.fn(async () => undefined);
+const refresh = jest.fn(async () => undefined);
 let appStateHandlers: ((state: string) => void)[] = [];
 const appStateChange = (state: string) => appStateHandlers.forEach((handler) => handler(state));
 
@@ -84,7 +85,7 @@ beforeEach(() => {
     appStateHandlers.push(handler);
     return { remove: () => (appStateHandlers = appStateHandlers.filter((other) => other !== handler)) };
   });
-  usePartaStore.setState({ dashboard: DASHBOARD, plans: [], failed: false, loading: false, load });
+  usePartaStore.setState({ dashboard: DASHBOARD, plans: [], failed: false, loading: false, load, refresh });
 });
 afterEach(() => {
   act(() => mounted?.unmount());
@@ -96,36 +97,36 @@ describe('Parta keeps itself fresh while it is open', () => {
   it('refreshes on its own while the tab is showing and the app is active', async () => {
     await renderParta();
     await wait(PARTA_REFRESH_MS - 1);
-    expect(load).not.toHaveBeenCalled();
+    expect(refresh).not.toHaveBeenCalled();
     await wait(1);
-    expect(load).toHaveBeenCalledTimes(1);
+    expect(refresh).toHaveBeenCalledTimes(1);
     await wait(PARTA_REFRESH_MS);
-    expect(load).toHaveBeenCalledTimes(2);
+    expect(refresh).toHaveBeenCalledTimes(2);
   });
 
   it('sends nothing while another tab is showing', async () => {
     mockFocused.current = false;
     await renderParta();
     await wait(PARTA_REFRESH_MS * 5);
-    expect(load).not.toHaveBeenCalled();
+    expect(refresh).not.toHaveBeenCalled();
   });
 
   it('sends nothing in the background and catches up once on the way back', async () => {
     await renderParta();
     await act(async () => appStateChange('background'));
     await wait(PARTA_REFRESH_MS * 5);
-    expect(load).not.toHaveBeenCalled();
+    expect(refresh).not.toHaveBeenCalled();
     await act(async () => appStateChange('active'));
-    expect(load).toHaveBeenCalledTimes(1);
+    expect(refresh).toHaveBeenCalledTimes(1);
     await wait(PARTA_REFRESH_MS);
-    expect(load).toHaveBeenCalledTimes(2);
+    expect(refresh).toHaveBeenCalledTimes(2);
   });
 
   it('does not reload on a quick app switch right after a refresh', async () => {
     await renderParta();
     await act(async () => appStateChange('inactive'));
     await act(async () => appStateChange('active'));
-    expect(load).not.toHaveBeenCalled();
+    expect(refresh).not.toHaveBeenCalled();
   });
 
   it('refreshes at once when the list is pulled down and hides the spinner when done', async () => {
