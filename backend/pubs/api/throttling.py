@@ -45,7 +45,8 @@ class SharedScopedRateThrottle(ScopedRateThrottle):
             1,
             math.ceil(window_epoch + self.duration - now.timestamp()),
         )
-        if self.num_requests <= 0:
+        cost = view.throttle_cost(request) if hasattr(view, "throttle_cost") else 1
+        if not 0 < cost <= self.num_requests:
             return False
         window_started_at = datetime.fromtimestamp(window_epoch, tz=UTC)
         identity_hash = self._identity_hash(request)
@@ -56,15 +57,15 @@ class SharedScopedRateThrottle(ScopedRateThrottle):
                 f"""
                 INSERT INTO {table}
                     (scope, identity_hash, window_started_at, request_count, updated_at)
-                VALUES (%s, %s, %s, 1, %s)
+                VALUES (%s, %s, %s, %s, %s)
                 ON CONFLICT (scope, identity_hash, window_started_at)
                 DO UPDATE SET
-                    request_count = {table}.request_count + 1,
+                    request_count = {table}.request_count + EXCLUDED.request_count,
                     updated_at = EXCLUDED.updated_at
-                WHERE {table}.request_count < %s
+                WHERE {table}.request_count + EXCLUDED.request_count <= %s
                 RETURNING request_count
                 """,
-                [self.scope, identity_hash, window_started_at, now, self.num_requests],
+                [self.scope, identity_hash, window_started_at, cost, now, self.num_requests],
             )
             admitted = cursor.fetchone() is not None
 
