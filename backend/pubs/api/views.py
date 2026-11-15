@@ -4641,11 +4641,16 @@ def _update_usage_stats(event: ClientEvent) -> None:
     AccountUsageStats.objects.filter(pk=stats.pk).update(**update_fields)
 
 
+CLIENT_EVENT_BATCH_MAX = 25
+
+
 class ClientEventsView(APIView):
     """
     POST /v1/client-events
 
-    Accept one sanitized app observability event. Auth is optional: events with a
+    Accept one sanitized app observability event, or up to
+    CLIENT_EVENT_BATCH_MAX of them as {"events": [...]}; invalid batch items are
+    dropped like an invalid single event. Auth is optional: events with a
     valid account token are linked to the anonymous account and folded into
     AccountUsageStats; unauthenticated events are still useful for aggregate
     diagnostics but cannot affect per-account leaderboards.
@@ -4657,11 +4662,21 @@ class ClientEventsView(APIView):
     throttle_scope = "client_events"
 
     def post(self, request: Request) -> Response:
-        serializer = ClientEventRequestSerializer(data=request.data)
-        if not serializer.is_valid():
-            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        batch = request.data.get("events") if isinstance(request.data, dict) else None
+        if batch is not None:
+            if not isinstance(batch, list) or not 1 <= len(batch) <= CLIENT_EVENT_BATCH_MAX:
+                return Response(
+                    {"events": [f"Send 1 to {CLIENT_EVENT_BATCH_MAX} events."]},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            items = [ClientEventRequestSerializer(data=item) for item in batch]
+            events = [item.validated_data for item in items if item.is_valid()]
+        else:
+            serializer = ClientEventRequestSerializer(data=request.data)
+            if not serializer.is_valid():
+                return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+            events = [serializer.validated_data]
 
-        data = serializer.validated_data
         account = _account_from_request(request)
 
         def write() -> None:
@@ -4677,19 +4692,20 @@ class ClientEventsView(APIView):
                 ).first()
                 if locked_account is None:
                     return
-            event = ClientEvent.objects.create(
-                account=locked_account,
-                event=data["event"],
-                severity=data["severity"],
-                message=data.get("message") or "",
-                context=data.get("context") or {},
-                app_version=data.get("app_version") or "",
-                platform=data.get("platform") or "",
-                os_version=data.get("os_version") or "",
-            )
-            # Keep the event and counters together. A failed counter write
-            # must not leave a partial event behind for the client retry.
-            _update_usage_stats(event)
+            for data in events:
+                event = ClientEvent.objects.create(
+                    account=locked_account,
+                    event=data["event"],
+                    severity=data["severity"],
+                    message=data.get("message") or "",
+                    context=data.get("context") or {},
+                    app_version=data.get("app_version") or "",
+                    platform=data.get("platform") or "",
+                    os_version=data.get("os_version") or "",
+                )
+                # Keep the event and counters together. A failed counter write
+                # must not leave a partial event behind for the client retry.
+                _update_usage_stats(event)
 
         try:
             _atomic_with_deadlock_retry(write)
