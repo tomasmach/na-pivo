@@ -480,6 +480,31 @@ describe('register', () => {
 });
 
 describe('login', () => {
+  it('keeps a sharing change that was still being sent when the sign-in started', async () => {
+    useVycepStore.setState({ ...DEFAULT_SHARING_PREFS });
+    let deliver: () => void = () => undefined;
+    global.fetch = jest.fn(
+      () =>
+        new Promise((resolve) => {
+          deliver = () =>
+            resolve({ ok: true, status: 200, json: async () => ({ share_default: 'public', night_autopublish: 'public' }) });
+        }),
+    ) as unknown as typeof fetch;
+    let answer: (result: AuthResult) => void = () => undefined;
+    mockedAuth.loginEmail.mockReturnValueOnce(new Promise((resolve) => (answer = resolve)));
+
+    const sent = updateSharingPrefs({ shareDefault: 'public', nightAutopublish: 'public' });
+    await new Promise((resolve) => setImmediate(resolve));
+    const login = useAccountStore.getState().login({ email: 'a@b.cz', password: 'x' });
+    deliver();
+    await sent;
+    answer(okResult(signedInProfile({ sharing: { shareDefault: 'friends', nightAutopublish: 'off' } })));
+    await login;
+    await new Promise((resolve) => setImmediate(resolve));
+
+    expect(useVycepStore.getState()).toMatchObject({ shareDefault: 'public', nightAutopublish: 'public', sharingDirty: false });
+  });
+
   it('keeps a sharing change saved while signing in again to the same account', async () => {
     useVycepStore.setState({ ...DEFAULT_SHARING_PREFS });
     let answer: (result: AuthResult) => void = () => undefined;

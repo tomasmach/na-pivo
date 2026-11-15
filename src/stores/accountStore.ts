@@ -26,7 +26,7 @@ import {
 } from '@/data/auth';
 import { FALLBACK_LEVELS, FALLBACK_XP_RULES } from '@/data/mapperXp';
 import { reconcileDiarySnapshot, restoreAccountDiary, type DiarySnapshot } from '@/data/diarySync';
-import { adoptServerSharing, sharingChangeCount, sharingReadTicket } from '@/data/sharingPrefsClient';
+import { adoptServerSharing, sharingReadTicket } from '@/data/sharingPrefsClient';
 import { tourBoundary } from '@/data/toursBoundary';
 import { t } from '@/i18n';
 import { useSettingsStore } from '@/stores/settingsStore';
@@ -277,13 +277,13 @@ export const useAccountStore = create<AccountState>((set, get) => {
 
   /** Run a session-changing auth call, then persist the new token + profile. */
   const signIn = async (request: () => Promise<AuthResult>): Promise<AuthResult> => {
-    const sharingChanges = sharingChangeCount();
+    const sharingBefore = sharingReadTicket();
     const result = await request();
     if (result.ok) {
       claimProfileWrite(takeProfileTicket());
       set({ profile: result.profile });
       applyAccountSettings(result.profile.settings);
-      adoptServerSharing(result.profile.sharing, sharingReadTicket(sharingChanges));
+      adoptServerSharing(result.profile.sharing, sharingBefore && sharingReadTicket(sharingBefore.changes));
       await syncSession();
       await refreshDiarySnapshot();
     }

@@ -2,7 +2,6 @@ import {
   adoptServerSharing,
   flushSharingPrefs,
   forgetSharingPrefsForAccountBoundary,
-  sharingChangeCount,
   sharingReadTicket,
   syncSharingPrefs,
   updateSharingPrefs,
@@ -61,7 +60,7 @@ it('keeps a sharing change made while the profile was loading', async () => {
 it('keeps a sharing change delivered while a sign-in to the same account was running', async () => {
   mockSessionToken = 'old-token';
   useVycepStore.setState({ ...DEFAULT_SHARING_PREFS });
-  const changes = sharingChangeCount();
+  const changes = sharingReadTicket()!.changes;
   global.fetch = jest.fn(async () => ({ ok: true, status: 200, json: async () => ({ share_default: 'public', night_autopublish: 'public' }) })) as unknown as typeof fetch;
 
   await updateSharingPrefs({ shareDefault: 'public', nightAutopublish: 'public' });
@@ -73,7 +72,7 @@ it('keeps a sharing change delivered while a sign-in to the same account was run
 
 it('takes the sharing of the account a sign-in switched to', async () => {
   useVycepStore.setState({ ...DEFAULT_SHARING_PREFS });
-  const changes = sharingChangeCount();
+  const changes = sharingReadTicket()!.changes;
 
   forgetSharingPrefsForAccountBoundary();
   useVycepStore.setState({ ...DEFAULT_SHARING_PREFS });

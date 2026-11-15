@@ -123,10 +123,6 @@ function whenHydrated(): Promise<void> {
   });
 }
 
-export function sharingChangeCount(): number {
-  return localChanges;
-}
-
 /**
  * Take before reading the account profile. Null while a local change waits for the server.
  * A sign-in passes the change count from before its request, since the sign-in itself may move the account boundary.
