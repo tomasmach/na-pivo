@@ -56,7 +56,11 @@ def create_thumbnail(photo: BeerPhoto) -> bool:
         return False
     if BeerPhoto.objects.filter(pk=photo.pk, thumbnail="").update(thumbnail=photo.thumbnail.name):
         return True
-    if not BeerPhoto.objects.filter(pk=photo.pk).exists():
+    if BeerPhoto.objects.filter(pk=photo.pk).exists():
+        return False
+    try:
+        photo.thumbnail.storage.delete(photo.thumbnail.name)
+    except OSError:
         queued = BeerPhotoFileDeletion.objects.filter(image_name=photo.image.name)
         cleanup_id = queued.values_list("pk", flat=True).first()
         if cleanup_id is None:
