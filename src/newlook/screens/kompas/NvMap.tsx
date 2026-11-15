@@ -250,12 +250,14 @@ export const NvMap = forwardRef<NvMapHandle, Props>(function NvMap(
   }, [frame, groupsAt, level, ownNode, view]);
 
   // Counts a pub as seen once the map stops on it as its own pin; a pub inside a cluster bubble is not shown.
+  // The pins of a stop can regroup a moment later, so a regroup after the stop counts too.
   const focused = useIsFocused();
+  const moving = useRef(false);
   useEffect(() => {
-    if (!ready || !focused || view === 'stopy' || !size.height) return;
-    const alone = groupsAt(shownLevel.current).filter((n) => n.members.length === 1).map((n) => n.lead);
+    if (moving.current || !ready || !focused || view === 'stopy' || !size.height) return;
+    const alone = groupsAt(level).filter((n) => n.members.length === 1).map((n) => n.lead);
     trackPinsSeen(visiblePins(own ? [...alone, own] : alone, viewport, size.height - bottomPadding, coveredTop).map((p) => p.key));
-  }, [bottomPadding, coveredTop, focused, groupsAt, own, ready, size.height, view, viewport]);
+  }, [bottomPadding, coveredTop, focused, groupsAt, level, own, ready, size.height, view, viewport]);
 
   return (
     <MapView
@@ -273,8 +275,12 @@ export const NvMap = forwardRef<NvMapHandle, Props>(function NvMap(
       userInterfaceStyle="dark"
       onLayout={(e) => setSize({ width: e.nativeEvent.layout.width, height: e.nativeEvent.layout.height })}
       onMapReady={() => setReady(true)}
-      onRegionChange={regroup}
+      onRegionChange={(region) => {
+        moving.current = true;
+        regroup(region);
+      }}
       onRegionChangeComplete={(region, details) => {
+        moving.current = false;
         regroup(region);
         setViewport(region);
         onRegion?.(region);
