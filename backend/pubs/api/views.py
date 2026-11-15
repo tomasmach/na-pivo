@@ -89,7 +89,7 @@ from django.db.models.lookups import LessThan
 from django.utils import timezone as dj_timezone
 from django.utils.translation import gettext, gettext_lazy
 from rest_framework import status
-from rest_framework.exceptions import AuthenticationFailed
+from rest_framework.exceptions import APIException, AuthenticationFailed
 from rest_framework.parsers import JSONParser, MultiPartParser
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.request import Request
@@ -4661,6 +4661,15 @@ class ClientEventsView(APIView):
     throttle_classes = [ScopedRateThrottle]
     throttle_scope = "client_events"
 
+    def throttle_cost(self, request: Request) -> int:
+        try:
+            batch = request.data.get("events") if isinstance(request.data, dict) else None
+        except APIException:
+            return 1
+        if isinstance(batch, list) and 1 <= len(batch) <= CLIENT_EVENT_BATCH_MAX:
+            return len(batch)
+        return 1
+
     def post(self, request: Request) -> Response:
         batch = request.data.get("events") if isinstance(request.data, dict) else None
         if batch is not None:
@@ -5445,6 +5454,11 @@ class FriendsLiveView(APIView):
     365-day shared-stats scan or leaderboard query. Uses the ``friends_dashboard``
     throttle budget. Old backends 404 this, so the client falls back to the full
     dashboard.
+
+    ``?view=parta`` is what an open Parta polls: the invitations from
+    ``GET /v1/friends/plans`` come in the same answer as ``parta_plans``, and the
+    day's ``plans`` / ``my_plan`` that only released apps read are left out. The
+    body holds no clock, so an unchanged party answers a conditional GET with 304.
     """
 
     authentication_classes = [AccountTokenAuthentication]
@@ -5454,13 +5468,16 @@ class FriendsLiveView(APIView):
 
     def get(self, request: Request) -> Response:
         now = dj_timezone.now()
+        parta_view = request.query_params.get("view") == "parta"
         blocked_ids = _blocked_account_ids(request.user)
         activity_context = _friend_activity_context(request, blocked_ids)
 
         friend_ids = [fid for fid in _accepted_friend_ids(request.user) if fid not in blocked_ids]
-        slices = _friend_activity_slices(request, friend_ids, now, activity_context)
+        slices = _friend_activity_slices(
+            request, friend_ids, now, activity_context, include_plans=not parta_view
+        )
         presence_slice = _friend_presence_slice(request, friend_ids, now)
-        from .parta_views import home_presence_slice
+        from .parta_views import home_presence_slice, parta_plans
 
         incoming_count = (
             Friendship.objects.filter(
@@ -5489,21 +5506,17 @@ class FriendsLiveView(APIView):
             .count()
         )
 
-        return Response(
-            {
-                "active_friends": slices["active_friends"],
-                "my_active_activity": slices["my_active_activity"],
-                "plans": slices["plans"],
-                "my_plan": slices["my_plan"],
-                "presence": presence_slice["presence"],
-                "my_presence": presence_slice["my_presence"],
-                "home_presence": home_presence_slice(request.user, friend_ids, now),
-                "incoming_count": incoming_count,
-                "unread_count": unread_count,
-                "server_time": now.isoformat(),
-            },
-            status=status.HTTP_200_OK,
-        )
+        body = {
+            **slices,
+            "presence": presence_slice["presence"],
+            "my_presence": presence_slice["my_presence"],
+            "home_presence": home_presence_slice(request.user, friend_ids, now),
+            "incoming_count": incoming_count,
+            "unread_count": unread_count,
+        }
+        if parta_view:
+            body["parta_plans"] = parta_plans(request, friend_ids, now)
+        return Response(body, status=status.HTTP_200_OK)
 
 
 def _encode_friend_drink_feed_cursor(row: DrinkLog) -> str:

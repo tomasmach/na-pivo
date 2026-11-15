@@ -8,11 +8,12 @@ import {
 } from '@/data/friendsClient';
 import {
   loadFriendsDashboardSnapshot,
+  saveFriendsDashboardSnapshot,
   loadPartaPlansSnapshot,
   savePartaPlansSnapshot,
   snapshotGeneration,
 } from '@/data/friendsSnapshot';
-import { fetchPartaPlans, type PartaPlan } from '@/data/partaPlansClient';
+import { fetchPartaPlans, fetchPartaPulse, type PartaPlan } from '@/data/partaPlansClient';
 import type { CommunityEventsDashboard } from '@/data/communityEventsClient';
 import { usePartaSignalStore } from '@/stores/partaSignalStore';
 
@@ -31,6 +32,8 @@ type PartaState = {
   load: () => Promise<void>;
   /** A load that starts after any one already running, so it sees changes made since. */
   reload: () => Promise<void>;
+  /** Keeps an open Parta current with one small request; loads everything when something new arrived or every few minutes. */
+  refresh: () => Promise<void>;
   setDashboard: (fn: (d: FriendsDashboard) => FriendsDashboard) => void;
   upsertPlan: (plan: PartaPlan) => void;
   removePlan: (id: string) => void;
@@ -38,7 +41,12 @@ type PartaState = {
   setMeetups: (meetups: CommunityEventsDashboard | null) => void;
 };
 
+export const PARTA_FULL_LOAD_MS = 5 * 60_000;
+
 let inFlight: Promise<void> | null = null;
+let pulseInFlight: Promise<void> | null = null;
+let loadedAt = 0;
+let lastPulseUnread = 0;
 
 export const usePartaStore = create<PartaState>((set, get) => ({
   dashboard: null,
@@ -51,10 +59,14 @@ export const usePartaStore = create<PartaState>((set, get) => ({
 
   load: () => {
     if (inFlight) return inFlight;
+    if (pulseInFlight) return pulseInFlight.then(() => get().load());
     inFlight = (async () => {
       const generation = snapshotGeneration();
       // An account switch must not show the previous account's crew.
-      if (generation !== get().generation) set({ dashboard: null, plans: null, pingIds: [], meetups: null, generation });
+      if (generation !== get().generation) {
+        lastPulseUnread = 0;
+        set({ dashboard: null, plans: null, pingIds: [], meetups: null, generation });
+      }
       set({ loading: true });
       const sameAccount = () => generation === snapshotGeneration();
       const dashboardRequest = fetchFriendsDashboard();
@@ -69,6 +81,7 @@ export const usePartaStore = create<PartaState>((set, get) => ({
       await showSavedCopies(generation);
       const [dashboard, plans] = await Promise.all([dashboardRequest, plansRequest]);
       if (!sameAccount()) return;
+      if (dashboard && plans) loadedAt = Date.now();
       // Live pub pings come only with the dashboard, so they join the invitations here.
       const pingSource = dashboard ?? get().dashboard;
       const pings = plans && pingSource ? livePingPlans(pingSource, plans) : null;
@@ -83,6 +96,7 @@ export const usePartaStore = create<PartaState>((set, get) => ({
         // Opening Parta is what clears the tab dot, as in the old screen.
         const unread = dashboard.notifications.filter((n) => n.readAt == null).map((n) => n.id);
         if (unread.length) void markFriendNotificationsRead(unread);
+        lastPulseUnread = Math.max(0, lastPulseUnread - unread.length);
         usePartaSignalStore.getState().setSignal({
           pendingRequests: dashboard.incomingRequests.length,
           unread: 0,
@@ -96,6 +110,21 @@ export const usePartaStore = create<PartaState>((set, get) => ({
     return inFlight;
   },
   reload: () => (inFlight ? inFlight.then(() => get().load()) : get().load()),
+  refresh: () => {
+    if (inFlight) return inFlight;
+    if (pulseInFlight) return pulseInFlight;
+    const { dashboard, generation } = get();
+    if (!dashboard || generation !== snapshotGeneration() || Date.now() - loadedAt >= PARTA_FULL_LOAD_MS) return get().load();
+    let needsLoad = false;
+    pulseInFlight = applyPulse()
+      .then((outcome) => {
+        needsLoad = outcome === 'load';
+      })
+      .finally(() => {
+        pulseInFlight = null;
+      });
+    return pulseInFlight.then(() => (needsLoad ? get().load() : undefined));
+  },
   setDashboard: (fn) => {
     const current = get().dashboard;
     if (current) set({ dashboard: fn(current) });
@@ -116,6 +145,46 @@ export const usePartaStore = create<PartaState>((set, get) => ({
     }),
   setMeetups: (meetups) => set({ meetups }),
 }));
+
+/** `'load'` when the pulse saw something only the full load can show. */
+async function applyPulse(): Promise<'applied' | 'load' | 'skipped'> {
+  const generation = snapshotGeneration();
+  const pulse = await fetchPartaPulse();
+  const state = usePartaStore.getState();
+  if (generation !== snapshotGeneration() || generation !== state.generation) return 'skipped';
+  if (!pulse) {
+    usePartaStore.setState({ failed: true });
+    return 'skipped';
+  }
+  const { live, plans } = pulse;
+  const { dashboard } = state;
+  const unreadMoved = live.unreadCount > 0 && live.unreadCount !== lastPulseUnread;
+  lastPulseUnread = live.unreadCount;
+  // A request or notification (an accepted request, a new plan, a "going" answer) changes lists only the full load has.
+  if (!dashboard || !plans || unreadMoved || live.incomingCount !== dashboard.incomingRequests.length) return 'load';
+  const next = {
+    ...dashboard,
+    activeFriends: live.activeFriends,
+    myActiveActivity: live.myActiveActivity,
+    presence: live.presence,
+    myPresence: live.myPresence,
+    homePresence: live.homePresence,
+  };
+  const pings = livePingPlans(next, plans);
+  void saveFriendsDashboardSnapshot(next, generation);
+  usePartaStore.setState({
+    dashboard: next,
+    plans: [...plans, ...pings].sort(byPlanTime),
+    pingIds: pings.map((ping) => ping.id),
+    failed: false,
+  });
+  usePartaSignalStore.getState().setSignal({
+    pendingRequests: live.incomingCount,
+    unread: 0,
+    liveNow: live.presence.length > 0 || live.activeFriends.length > 0 || live.myActiveActivity != null,
+  });
+  return 'applied';
+}
 
 async function showSavedCopies(generation: number): Promise<void> {
   const { dashboard, plans } = usePartaStore.getState();

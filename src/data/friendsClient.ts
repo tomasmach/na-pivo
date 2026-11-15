@@ -740,10 +740,17 @@ function extractError(data: unknown, status: number): FriendActionError {
   return { ok: false, code: `http_${status}`, detail: t.clientErrors.save };
 }
 
+/**
+ * `etag` makes a conditional GET: an unchanged answer comes back as `notModified`
+ * with empty `data`, and the caller keeps the copy it holds for that tag.
+ */
 export async function requestJson(
   path: string,
-  options: { method?: string; body?: unknown; signal?: AbortSignal; session?: AccountSession } = {},
-): Promise<{ ok: true; data: Record<string, unknown> } | { ok: false; result: FriendActionError }> {
+  options: { method?: string; body?: unknown; signal?: AbortSignal; session?: AccountSession; etag?: string } = {},
+): Promise<
+  | { ok: true; data: Record<string, unknown>; etag: string | null; notModified: boolean }
+  | { ok: false; result: FriendActionError }
+> {
   const endpoint = getBackendEndpoint(path);
   if (!endpoint || options.signal?.aborted) {
     return { ok: false, result: { ok: false, code: 'offline', detail: t.clientErrors.offline } };
@@ -761,10 +768,13 @@ export async function requestJson(
       headers: {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${session.token}`,
+        ...(options.etag ? { 'If-None-Match': options.etag } : {}),
       },
       body: options.body !== undefined ? JSON.stringify(options.body) : undefined,
       signal: abort.signal,
     });
+    const etag = resp.headers?.get('etag') ?? null;
+    if (resp.status === 304 && options.etag) return { ok: true, data: {}, etag: options.etag, notModified: true };
     let data: Record<string, unknown> = {};
     try {
       const text = await resp.text();
@@ -777,7 +787,7 @@ export async function requestJson(
       return { ok: false, result: { ok: false, code: 'auth', detail: t.clientErrors.auth } };
     }
     if (!resp.ok) return { ok: false, result: extractError(data, resp.status) };
-    return { ok: true, data };
+    return { ok: true, data, etag, notModified: false };
   } catch (err) {
     const isAbort = err instanceof Error && err.name === 'AbortError';
     if (!options.signal?.aborted && !isAbort) {
@@ -888,23 +898,27 @@ export async function fetchFriendsLive(signal?: AbortSignal): Promise<FriendsLiv
     }
     return null;
   }
+  return parseFriendsLive(res.data);
+}
+
+export function parseFriendsLive(data: Record<string, unknown>): FriendsLiveSlice {
   return {
-    activeFriends: Array.isArray(res.data.active_friends)
-      ? (res.data.active_friends as RawFriendActivity[]).map(parseActivity)
+    activeFriends: Array.isArray(data.active_friends)
+      ? (data.active_friends as RawFriendActivity[]).map(parseActivity)
       : [],
-    myActiveActivity: res.data.my_active_activity
-      ? parseActivity(res.data.my_active_activity as RawFriendActivity)
+    myActiveActivity: data.my_active_activity
+      ? parseActivity(data.my_active_activity as RawFriendActivity)
       : null,
-    plans: Array.isArray(res.data.plans)
-      ? (res.data.plans as RawFriendActivity[]).map(parseActivity)
+    plans: Array.isArray(data.plans)
+      ? (data.plans as RawFriendActivity[]).map(parseActivity)
       : [],
-    myPlan: res.data.my_plan ? parseActivity(res.data.my_plan as RawFriendActivity) : null,
-    presence: parsePresenceList(res.data.presence),
-    myPresence: parseMyPresence(res.data.my_presence),
-    homePresence: parseHomePresence(res.data.home_presence),
-    incomingCount: typeof res.data.incoming_count === 'number' ? res.data.incoming_count : 0,
-    unreadCount: typeof res.data.unread_count === 'number' ? res.data.unread_count : 0,
-    serverTime: typeof res.data.server_time === 'string' ? res.data.server_time : null,
+    myPlan: data.my_plan ? parseActivity(data.my_plan as RawFriendActivity) : null,
+    presence: parsePresenceList(data.presence),
+    myPresence: parseMyPresence(data.my_presence),
+    homePresence: parseHomePresence(data.home_presence),
+    incomingCount: typeof data.incoming_count === 'number' ? data.incoming_count : 0,
+    unreadCount: typeof data.unread_count === 'number' ? data.unread_count : 0,
+    serverTime: typeof data.server_time === 'string' ? data.server_time : null,
   };
 }
 

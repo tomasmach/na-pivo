@@ -2109,7 +2109,8 @@ def test_friends_live_slice(client, monkeypatch):
     assert body["plans"] == []
     assert body["incoming_count"] == 0
     assert body["unread_count"] >= 1
-    assert body["server_time"]
+    unchanged = client.get("/v1/friends/live", HTTP_IF_NONE_MATCH=live["ETag"], **_auth(token_owner))
+    assert unchanged.status_code == status.HTTP_304_NOT_MODIFIED
 
 
 @pytest.mark.django_db
