@@ -25,7 +25,7 @@ from django.conf import settings
 from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
 from django.db.models import Q
-from django.db.models.functions import Lower
+from django.db.models.functions import Lower, Now
 from django.utils import timezone
 from django.utils.translation import gettext_lazy
 
@@ -4193,7 +4193,7 @@ class DiaryRowQuerySet(models.QuerySet):
 class DiaryRow(models.Model):
     """A private diary row the app syncs by changes since its last read."""
 
-    updated_at = models.DateTimeField(auto_now=True, verbose_name="Upraveno")
+    updated_at = models.DateTimeField(auto_now=True, db_default=Now(), verbose_name="Upraveno")
 
     objects = DiaryRowQuerySet.as_manager()
 
