@@ -35,6 +35,7 @@ import { t } from '@/i18n';
 import { useAccountStore } from '@/stores/accountStore';
 import { useTallyStore, whenTallyHydrated } from '@/stores/tallyStore';
 import { useToastStore } from '@/stores/toastStore';
+import { forgetPubHours } from './hoursClient';
 
 const STORAGE_KEY = 'na-pivo-drinks-queue';
 /** Historical backfill budget. Normal user counts are never evicted. */
@@ -159,6 +160,7 @@ async function flushUnlocked(signal: AbortSignal): Promise<void> {
 
   // Badges unlock on the server; refetch once so a new one shows up now,
   // not on the next app launch.
+  if (delivered) forgetPubHours();
   if (delivered && !signal.aborted) void useAccountStore.getState().refreshBadges();
 }
 
