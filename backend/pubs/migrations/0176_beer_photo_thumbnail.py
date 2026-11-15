@@ -12,6 +12,6 @@ class Migration(migrations.Migration):
         migrations.AddField(
             model_name="beerphoto",
             name="thumbnail",
-            field=models.ImageField(blank=True, editable=False, max_length=255, upload_to=""),
+            field=models.ImageField(blank=True, db_default="", editable=False, max_length=255, upload_to=""),
         ),
     ]

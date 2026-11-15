@@ -906,3 +906,36 @@ def test_thumbnail_backfill_removes_thumbnail_of_photo_deleted_meanwhile(client,
 
     assert command.create_thumbnail(photo) is False
     assert not thumbnail.exists()
+
+
+@pytest.mark.django_db
+def test_thumbnail_backfill_keeps_cleanup_of_a_late_thumbnail_it_could_not_delete(client, monkeypatch):
+    from pubs.beer_photo_deletions import retry_beer_photo_file_deletion
+    from pubs.management.commands import create_beer_photo_thumbnails as command
+
+    token, _account = _register(client, "janek")
+    _post_photo(client, token)
+    photo = BeerPhoto.objects.get()
+    thumbnail = Path(photo.thumbnail.path)
+    thumbnail.unlink()
+    BeerPhoto.objects.filter(pk=photo.pk).update(thumbnail="")
+    photo.refresh_from_db()
+    original_store = command.store_beer_photo_thumbnail
+    storage = BeerPhoto._meta.get_field("thumbnail").storage
+
+    def store_then_lose_row(target, content):
+        original_store(target, content)
+        BeerPhoto.objects.filter(pk=target.pk).delete()
+
+    def unavailable(_name):
+        raise OSError("media volume busy")
+
+    monkeypatch.setattr(command, "store_beer_photo_thumbnail", store_then_lose_row)
+    with monkeypatch.context() as patched:
+        patched.setattr(storage, "delete", unavailable)
+        assert command.create_thumbnail(photo) is False
+
+    assert thumbnail.exists()
+    cleanup = BeerPhotoFileDeletion.objects.get(image_name=photo.image.name)
+    assert retry_beer_photo_file_deletion(cleanup.pk) is True
+    assert not thumbnail.exists()

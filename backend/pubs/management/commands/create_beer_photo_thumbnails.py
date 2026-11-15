@@ -4,6 +4,10 @@ import logging
 
 from django.core.management.base import BaseCommand
 
+from pubs.beer_photo_deletions import (
+    enqueue_beer_photo_file_deletion,
+    retry_beer_photo_file_deletion,
+)
 from pubs.models import BeerPhoto
 from pubs.photos import BeerPhotoError, beer_photo_thumbnail, store_beer_photo_thumbnail
 
@@ -53,5 +57,5 @@ def create_thumbnail(photo: BeerPhoto) -> bool:
     if BeerPhoto.objects.filter(pk=photo.pk, thumbnail="").update(thumbnail=photo.thumbnail.name):
         return True
     if not BeerPhoto.objects.filter(pk=photo.pk).exists():
-        photo.thumbnail.storage.delete(photo.thumbnail.name)
+        retry_beer_photo_file_deletion(enqueue_beer_photo_file_deletion(photo, account=None))
     return False

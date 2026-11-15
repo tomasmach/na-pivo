@@ -2374,7 +2374,7 @@ class BeerPhoto(models.Model):
     )
     client_id = models.UUIDField(help_text="Client-generated idempotency key.")
     image = models.ImageField(upload_to=beer_photo_path)
-    thumbnail = models.ImageField(max_length=255, blank=True, editable=False)
+    thumbnail = models.ImageField(max_length=255, blank=True, editable=False, db_default="")
     caption = models.CharField(max_length=280, blank=True, default="")
     pub_cache_key = models.CharField(max_length=12, blank=True, default="", db_index=True)
     pub_name = models.TextField(blank=True, default="")
