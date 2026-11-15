@@ -1630,3 +1630,21 @@ def test_beer_change_also_removes_the_beer_from_a_merged_duplicate_in_the_same_c
     assert resp.status_code == status.HTTP_200_OK, resp.content
     assert PubCommunityData.objects.get(name="Stará hospoda").beers == [_MENU_NOW[1]]
     assert "Pilsner Urquell" not in [beer["name"] for beer in _read_pub(client, _NAME, _LAT, _LNG)["beers"]]
+
+
+@pytest.mark.django_db
+def test_pub_hours_get_answers_like_the_post_and_changes_after_an_edit(client):
+    token = _register(client)
+    pub = {"name": _NAME, "lat": _LAT, "lng": _LNG, "city": "Praha"}
+    first = client.get("/v1/pub-hours", pub)
+    posted = client.post("/v1/pub-hours", data={"pubs": [pub], "sync_budget": 0}, format="json")
+
+    assert first.status_code == status.HTTP_200_OK
+    assert first.json() == posted.json()
+    assert client.get("/v1/pub-hours", pub, HTTP_IF_NONE_MATCH=first["ETag"]).status_code == status.HTTP_304_NOT_MODIFIED
+
+    client.post("/v1/pub-community", data=_payload(), format="json", **_auth(token))
+    edited = client.get("/v1/pub-hours", pub, HTTP_IF_NONE_MATCH=first["ETag"])
+
+    assert edited.status_code == status.HTTP_200_OK
+    assert edited.json()["results"][0]["beers"] == _BEERS
