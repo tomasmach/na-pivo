@@ -100,10 +100,6 @@ export const profilCs = {
     writeMe: 'Napiš mi',
     about: 'O appce',
     language: 'Jazyk',
-    appIcon: 'Ikona appky',
-    appIconSub: 'Hnědá změní ikonu a Live Activity na zamčené obrazovce. Appka se při přepnutí restartuje.',
-    appIconGray: 'Šedá',
-    appIconBrown: 'Hnědá',
     cancel: 'Zrušit',
   },
   editProfile: {

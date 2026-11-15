@@ -70,8 +70,6 @@ import {
   useSettingsStore,
   type BeerCountReminderIntervalMinutes,
 } from '@/stores/settingsStore';
-import { palette, PALETTES, type Palette } from '@/theme/palette';
-import { switchPalette } from '@/theme/switchPalette';
 import { formatPrice } from '@/utils/currency';
 import { dateTimeFormat, numberFormat } from '@/utils/intlFormat';
 
@@ -967,10 +965,6 @@ export function NastaveniScreen() {
     }
   };
 
-  const pickPalette = async (next: Palette) => {
-    if (!(await switchPalette(next))) toast({ kind: 'error', title: t.account.errorGeneric });
-  };
-
   const pickLocale = async (code: Locale) => {
     if (code === locale) return;
     if (!(await switchLocale(code))) toast({ kind: 'error', title: t.account.errorGeneric });
@@ -1171,22 +1165,6 @@ export function NastaveniScreen() {
             />
           }
         />
-        {/* The new look ignores the palette and Android keeps its icon (switchPalette), so there it would change nothing. */}
-        {Platform.OS === 'ios' ? (
-          <Row
-            title={P().settings.appIcon}
-            sub={P().settings.appIconSub}
-            trailing={
-              <Segmented
-                height={36}
-                style={{ width: 180 }}
-                options={PALETTES.map((key) => ({ key, label: key === 'brown' ? P().settings.appIconBrown : P().settings.appIconGray }))}
-                value={palette}
-                onChange={(next) => void pickPalette(next)}
-              />
-            }
-          />
-        ) : null}
         <Row title={P().settings.writeMe} chevron onPress={() => router.push('/nv/napis-mi')} />
         <Row last title={P().settings.about} chevron onPress={() => router.push('/nv/o-appce')} />
       </Card>

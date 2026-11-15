@@ -100,10 +100,6 @@ export const profilEn: Strings['nv']['profil'] = {
     writeMe: 'Write to me',
     about: 'About the app',
     language: 'Language',
-    appIcon: 'App icon',
-    appIconSub: 'Brown changes the icon and the Live Activity on the lock screen. The app restarts when you switch.',
-    appIconGray: 'Gray',
-    appIconBrown: 'Brown',
     cancel: 'Cancel',
   },
   editProfile: {

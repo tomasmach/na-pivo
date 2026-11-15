@@ -3,34 +3,18 @@
  * Names mirror the `na-pivo-*` variables defined there.
  */
 
-import { palette } from './palette';
-
-// Backgrounds (DESIGN.md §2.1). Gray is the ground of the pub page and the
-// maintained look; brown is the earlier palette, selectable in settings.
-// Never pure black: on a warm-accented app that reads as a void.
-const GROUNDS = {
-  gray: {
-    stout: '#15120F',
-    stout2: '#1C1815',
-    stout3: '#262019',
-    border: '#3A322A',
-    // Below the ground: bands between sections, scrims under sheets.
-    deep: '#0E0C0A',
-    // Same contrast as the brown clay, without its tint.
-    mutedText: '#958E85',
-  },
-  brown: {
-    stout: '#1F1308',
-    stout2: '#2B1A0E',
-    stout3: '#3A2515',
-    border: '#5A3A20',
-    deep: '#0F0A05',
-    mutedText: '#A8896A',
-  },
-} as const;
+// Backgrounds (DESIGN.md §2.1). Never pure black: on a warm-accented app that
+// reads as a void.
+const MUTED_TEXT = '#958E85';
 
 export const Colors = {
-  ...GROUNDS[palette],
+  stout: '#15120F',
+  stout2: '#1C1815',
+  stout3: '#262019',
+  border: '#3A322A',
+  // Below the ground: bands between sections, scrims under sheets.
+  deep: '#0E0C0A',
+  mutedText: MUTED_TEXT,
 
   // Amber accent
   amber: '#E8A317',
@@ -49,7 +33,7 @@ export const Colors = {
 
   // Opening-hours status — hours-forward & warm, on the stout/amber palette
   open: '#F0BE5C', // warm foam-amber tone that sits beside the amber accent
-  closed: GROUNDS[palette].mutedText, // calm, never an alarming red
+  closed: MUTED_TEXT, // calm, never an alarming red
 
   // Pure
   black: '#000000',

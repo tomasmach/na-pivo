@@ -115,8 +115,7 @@ sloupci 76 bodů velké žluté číslo `#FFC400` (Sofia Sans Extra Condensed 80
 útrata ani chybějící spoj nenechávají prázdné místo. Always-On tlumí žlutou na
 `#A8891C` a tlačítko je jen obrys. Dynamic Island má vlevo pivo a vpravo
 „3 piva“, rozbalený ostrov číslo, hospodu a tlačítko. Písma Sofia jsou přibalená
-v rozšíření widgetu (`plugins/withLiveActivityFonts.js`). Hnědá paleta Live
-Activity nemění.
+v rozšíření widgetu (`plugins/withLiveActivityFonts.js`).
 
 ## Web na na-pivo.cz (3. 11. 2026)
 
@@ -166,15 +165,10 @@ tmavší než žlutá UI `#FFC400`, aby ikona na ploše nekřičela. Tmavé pás
 sekundární tlačítko je `stout3` bez okraje (§6.2), medailonek pod ikonou
 `foam` 0,07. Jantarový nádech zůstává jen vybraným a varovným stavům.
 Terciární text `mutedText` je na šedé zemi neutrální `#958E85` se stejným
-kontrastem jako hnědá hlína `#A8896A`, kterou si nechává hnědá paleta.
+kontrastem jako dřívější hnědá hlína `#A8896A`.
 
-Hnědá zůstává jako neudržovaná volba v Nastavení → Vzhled
-(`src/theme/palette.ts`). Čte se synchronně při startu jako jazyk a přepnutí
-restartuje appku. Mění stouty, `deep` a na iOS i ikonu
-(`expo-alternate-app-icons`, alternativní ikona `Brown`). Android ikonu
-nemění, protože jeho alias nemá filtr `napivo://`. Splash se nemění.
-Ilustrace mají průhledné pozadí a zrno z pěny s alfou ~3 %, takže sedí na
-obou zemích. Nové UI se navrhuje a ověřuje jen v šedé.
+Hnědá paleta a hnědá ikona už v Nastavení nejsou (15. 11. 2026). Appka má jen
+šedou zem. Ilustrace mají průhledné pozadí a zrno z pěny s alfou ~3 %.
 
 ## Schválená obnova plochých seznamů (22. 9. 2026)
 
@@ -514,7 +508,7 @@ dekorace, ne animace a rozhodně ne emoji v chromu.
 | `Colors.neon` | `#FFD27A` | Rezerva pro zvýrazněné stavy. Na etalonu se nepoužívá. |
 | `Colors.foam` | `#FBF3E0` | Primární text a světlé hairliny (s alfou). |
 | `Colors.foamMuted` | `#E8DCC0` | Sekundární text, popisek pod číslem, ikona zavírání. |
-| `Colors.mutedText` | `#958E85` | Terciární text, meta řádky, neaktivní stav, „…“ ikona. Hnědá paleta má `#A8896A`. |
+| `Colors.mutedText` | `#958E85` | Terciární text, meta řádky, neaktivní stav, „…“ ikona. |
 | `Colors.success` | `#7DD66B` | Potvrzení. Používej střídmě; jantar většinou stačí. |
 | `Colors.open` | `#F0BE5C` | Otevřeno (otevírací doba) — text i stavová tečka. |
 | `Colors.closed` | = `mutedText` | Zavřeno. Nikdy červená — nemáme na uživatele křičet. |
