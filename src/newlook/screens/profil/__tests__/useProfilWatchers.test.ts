@@ -1,6 +1,8 @@
 import React from 'react';
 import { act, renderHook } from '@testing-library/react-native';
 
+import type { ReleaseNote } from '@/data/releaseNotesClient';
+
 jest.mock('@react-native-async-storage/async-storage', () =>
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   require('@react-native-async-storage/async-storage/jest/async-storage-mock'),
@@ -37,6 +39,7 @@ type Loaded = {
   onboarding: typeof import('@/stores/onboardingStore').useOnboardingStore;
   settings: typeof import('@/stores/settingsStore').useSettingsStore;
   vycep: typeof import('@/stores/vycepStore').useVycepStore;
+  release: typeof import('@/stores/releaseStore').useReleaseStore;
   storage: typeof import('@react-native-async-storage/async-storage').default;
 };
 
@@ -51,10 +54,12 @@ function load(): Loaded {
       onboarding: require('@/stores/onboardingStore').useOnboardingStore,
       settings: require('@/stores/settingsStore').useSettingsStore,
       vycep: require('@/stores/vycepStore').useVycepStore,
+      release: require('@/stores/releaseStore').useReleaseStore,
       storage: (({ default: d, ...m }) => d ?? m)(require('@react-native-async-storage/async-storage')),
     };
     /* eslint-enable @typescript-eslint/no-require-imports */
   });
+  loaded.release.setState({ checkSettled: true });
   return loaded;
 }
 
@@ -80,6 +85,40 @@ async function loadAsked(): Promise<Loaded> {
   await loaded.storage.setItem(PUBLIC_ASK_KEY, '1');
   return loaded;
 }
+
+const LETTER: ReleaseNote = { version: '2.5.0', title: '', items: [], pager: true };
+
+describe('redesign letter after the 2.5.0 update', () => {
+  it('waits for the release check, then opens before every other sheet', async () => {
+    const { useProfilWatchers, release } = load();
+    release.setState({ checkSettled: false });
+    const view = await renderHook(() => useProfilWatchers());
+    await flush();
+    expect(mockPush).not.toHaveBeenCalled();
+
+    await act(async () => release.setState({ checkSettled: true, pendingNote: LETTER }));
+    await flush();
+    expect(mockPush.mock.calls).toEqual([['/nv/vzkaz']]);
+
+    mockPath = '/nv/vzkaz';
+    await view.rerender({});
+    await act(async () => release.getState().dismissNote());
+    mockPath = '/nv/kompas';
+    await view.rerender({});
+    await flush();
+    expect(mockPush.mock.calls).toEqual([['/nv/vzkaz'], ['/nv/verejne-noci']]);
+    expect(release.getState().lastSeenVersion).toBe('2.5.0');
+  });
+
+  it('waits out the welcome session', async () => {
+    const { useProfilWatchers, onboarding, release } = load();
+    onboarding.setState({ firstLaunchSession: true });
+    release.setState({ pendingNote: LETTER });
+    await renderHook(() => useProfilWatchers());
+    await flush();
+    expect(mockPush).not.toHaveBeenCalled();
+  });
+});
 
 describe('one-time ask to post nights publicly', () => {
   it('opens first, once, and comes before the pub-reminder offer', async () => {

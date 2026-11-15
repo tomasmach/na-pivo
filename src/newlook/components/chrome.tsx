@@ -392,7 +392,7 @@ export function Screen({
           revealBelow={NEXT_FIELD_REVEAL}
           revealAbove={floatHeader ? floatingHeaderH : 0}
           showsVerticalScrollIndicator={false}
-          contentContainerStyle={{ paddingBottom: footerRoom > 0 ? 24 : bottomBase + footerSpace + 24 }}
+          contentContainerStyle={{ flexGrow: 1, paddingBottom: footerRoom > 0 ? 24 : bottomBase + footerSpace + 24 }}
           keyboardShouldPersistTaps="handled"
         >
           {content}
