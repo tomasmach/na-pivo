@@ -62,11 +62,12 @@ function record(place: CountPlace, beer: CountableDrink, menu?: readonly Communi
 
 /**
  * The only count path of the new look. A tap that lands suspiciously soon
- * after the last drink writes nothing until the drinker confirms it.
+ * after the last drink writes nothing until the drinker confirms it, unless
+ * it was a deliberate tap on one drink's own plus, which sits next to its minus.
  */
-export function logDrink(place: CountPlace, beer: CountableDrink, menu?: readonly CommunityBeer[], opts?: { silentTap?: boolean }): void {
+export function logDrink(place: CountPlace, beer: CountableDrink, menu?: readonly CommunityBeer[], opts?: { silentTap?: boolean; deliberate?: boolean }): void {
   const at = lastAlcoholAt();
-  if (beer.drinkType === 'soft_drink' || !isRapidDrink(at)) {
+  if (opts?.deliberate || beer.drinkType === 'soft_drink' || !isRapidDrink(at)) {
     record(place, beer, menu);
     return;
   }
