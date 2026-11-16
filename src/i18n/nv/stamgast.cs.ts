@@ -43,7 +43,8 @@ export const stamgastCs = {
   close: 'Zavřít',
   tonightList: 'Dnešní piva',
   tonightEmpty: 'Zatím nic. První pivo zapíšeš tlačítkem dole.',
-  undoLast: 'Vrátit poslední zápis',
+  addOneA11y: (name: string) => `Přidat: ${name}`,
+  removeOneA11y: (name: string) => `Ubrat: ${name}`,
   newBeerTitle: 'Nové pivo do sbírky',
   rapidAgain: (minutes: number) =>
     minutes === 0 ? 'Další pivo hned po tom minulém?' : `Další pivo už po ${minutes === 1 ? 'minutě' : `${minutes} minutách`}?`,

@@ -75,7 +75,17 @@ const session: TallySession = {
   drinks: [drink('a', 15), drink('b', 10), drink('c', 5)],
 };
 
-it('keeps the undo link above the beer style question and the story row', async () => {
+function texts(renderer: any): string[] {
+  return renderer.root
+    .findAll((n: any) => typeof n.type === 'string' && n.type === 'Text')
+    .map((n: any) => [n.props.children].flat().join(''));
+}
+
+function stepper(renderer: any, testID: string, name: string): any {
+  return renderer.root.find((n: any) => n.props.testID === testID && n.props.accessibilityLabel?.endsWith(name) && typeof n.props.onPress === 'function');
+}
+
+it('keeps the minus above the beer style question and the story row', async () => {
   useTallyStore.setState({ current: session, history: [] });
   useCounterNudges.getState().set({ newBeer: { name: 'Pilsner Urquell 12°', pubName: 'U Zlatého tygra' }, stickerFor: 's1', tourBanner: null });
 
@@ -84,17 +94,43 @@ it('keeps the undo link above the beer style question and the story row', async 
     renderer = TestRenderer.create(<StamgastScreen />);
   });
 
-  const order = renderer.root
-    .findAll((n: any) => typeof n.type === 'string' && n.type === 'Text')
-    .map((n: any) => [n.props.children].flat().join(''));
-  const undo = order.indexOf(t.nv.stamgast.undoLast);
+  const order = texts(renderer);
+  const row = order.indexOf('Pilsner Urquell 12°');
   const question = order.indexOf(t.nv.piva.stylePick.nudgeTitle('Pilsner Urquell 12°'));
   const story = order.indexOf(t.nv.stamgast.stickerTitle(3));
 
-  expect(undo).toBeGreaterThan(-1);
+  expect(stepper(renderer, 'counter-row-minus', 'Pilsner Urquell 12°')).toBeTruthy();
+  expect(row).toBeGreaterThan(-1);
   expect(question).toBeGreaterThan(-1);
   expect(story).toBeGreaterThan(-1);
-  expect(undo).toBeLessThan(question);
-  expect(undo).toBeLessThan(story);
+  expect(row).toBeLessThan(question);
+  expect(row).toBeLessThan(story);
+  await act(async () => renderer.unmount());
+});
+
+it('folds identical drinks into one row whose plus logs another without asking', async () => {
+  const shot = (id: string, minutes: number) => ({ ...drink(id, minutes), beerName: 'Fernet Stock', volumeMl: 40, drinkType: 'shot' as const, priceCzk: 75 });
+  useTallyStore.setState({ current: { ...session, drinks: [drink('a', 15), shot('f1', 3), shot('f2', 1)] }, history: [] });
+  useCounterNudges.getState().set({ newBeer: null, stickerFor: null, tourBanner: null });
+  const { dialog } = require('@/newlook/ui/store');
+  dialog.mockClear();
+
+  let renderer: any;
+  await act(async () => {
+    renderer = TestRenderer.create(<StamgastScreen />);
+  });
+  expect(texts(renderer).filter((x) => x === 'Fernet Stock')).toHaveLength(1);
+  expect(texts(renderer)).toContain('2');
+
+  await act(async () => stepper(renderer, 'counter-row-plus', 'Fernet Stock').props.onPress());
+
+  const drinks = useTallyStore.getState().current!.drinks;
+  expect(dialog).not.toHaveBeenCalled();
+  expect(drinks).toHaveLength(4);
+  expect(drinks[3]).toMatchObject({ beerName: 'Fernet Stock', drinkType: 'shot', volumeMl: 40, priceCzk: 75 });
+  expect(texts(renderer)).toContain('3');
+
+  await act(async () => stepper(renderer, 'counter-row-minus', 'Fernet Stock').props.onPress());
+  expect(useTallyStore.getState().current!.drinks.map((d: { id: string }) => d.id)).toEqual(['a', 'f1', 'f2']);
   await act(async () => renderer.unmount());
 });

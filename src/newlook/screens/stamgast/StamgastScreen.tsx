@@ -12,6 +12,7 @@ import { fetchBeerPage, submitBeerStyle, type BeerDegree, type StyleAnswer } fro
 import { trackCounterTabOpened } from '@/data/counterTelemetry';
 import { cancelQueuedPubBroadcasts } from '@/data/friendsQueue';
 import { trackClientEvent } from '@/data/telemetryClient';
+import { normalizeBeerName } from '@/data/communityHours';
 import { trackUiInteraction } from '@/data/uxTelemetry';
 import { normalizeDrinkType } from '@/drinks/drinkTypes';
 import { useNowTick } from '@/friends/useNowTick';
@@ -173,16 +174,50 @@ export function StamgastScreen() {
   return <BookTab tab="stamgast" left={left} right={right} />;
 }
 
-/** The beer "Ještě jedno" repeats: the same pour, serving and price. */
+/** The drink a repeat logs again: the same kind, pour, serving and price. */
 function repeatOf(drink: TallyDrink | undefined): CountableDrink | null {
   if (!drink) return null;
   return {
     name: drink.beerName,
-    drinkType: 'beer',
+    drinkType: normalizeDrinkType(drink.drinkType),
     ...(typeof drink.priceCzk === 'number' ? { priceCzk: drink.priceCzk } : {}),
     ...(typeof drink.volumeMl === 'number' ? { volumeMl: drink.volumeMl } : {}),
     ...(drink.servingType ? { servingType: drink.servingType } : {}),
   };
+}
+
+interface DrinkGroup {
+  key: string;
+  latest: TallyDrink;
+  count: number;
+  totalCzk: number | null;
+}
+
+/** Tonight's drinks, one row per identical pour, in the order each was first logged. */
+function groupDrinks(drinks: readonly TallyDrink[]): DrinkGroup[] {
+  const groups = new Map<string, DrinkGroup>();
+  for (const drink of drinks) {
+    const serving = drink.servingType && drink.servingType !== 'unknown' ? drink.servingType : '';
+    const key = [normalizeDrinkType(drink.drinkType), normalizeBeerName(drink.beerName), drink.volumeMl ?? '', serving].join('|');
+    const price = typeof drink.priceCzk === 'number' ? drink.priceCzk : null;
+    const group = groups.get(key);
+    if (group) {
+      group.latest = drink;
+      group.count += 1;
+      group.totalCzk = group.totalCzk !== null && price !== null ? group.totalCzk + price : null;
+    } else {
+      groups.set(key, { key, latest: drink, count: 1, totalCzk: price });
+    }
+  }
+  return [...groups.values()];
+}
+
+function StepButton({ icon, label, testID, haptic = false, onPress }: { icon: IconName; label: string; testID: string; haptic?: boolean; onPress: () => void }) {
+  return (
+    <Press testID={testID} haptic={haptic} hitSlop={4} onPress={onPress} accessibilityRole="button" accessibilityLabel={label} style={[{ width: 40, height: 40, borderRadius: 20, backgroundColor: C.control }, s.center]}>
+      <Icon name={icon} size={20} color={C.text2} />
+    </Press>
+  );
 }
 
 function lastBeerOf(session: TallySession | null): TallyDrink | undefined {
@@ -308,7 +343,7 @@ function CounterView() {
   const inPub = place?.kind === 'pub';
   const count = sessionCount(session);
   const spent = sessionTotalCzk(session);
-  const drinks = useMemo(() => [...(session?.drinks ?? [])].reverse(), [session]);
+  const groups = useMemo(() => groupDrinks(session?.drinks ?? []), [session]);
   const lastBeer = lastBeerOf(session);
   const repeat = repeatOf(lastBeer);
   const resumable = key && count === 0 ? resumableSession(current, history, key, now) : null;
@@ -318,6 +353,12 @@ function CounterView() {
   const openPlace = () => {
     trackUiInteraction('counter_place_open');
     router.push('/nv/zmenit-misto');
+  };
+
+  const addAnother = (drink: TallyDrink) => {
+    const target = currentCountPlace();
+    const again = repeatOf(drink);
+    if (target && again) logDrink(target, again, undefined, { deliberate: true });
   };
 
   const openAddDrink = () => {
@@ -435,39 +476,39 @@ function CounterView() {
         {atFriend ? <FriendEveningCard /> : null}
         {session && count > 0 && !atFriend ? <TransitCard session={session} /> : null}
         <View style={{ backgroundColor: C.card, borderRadius: 24, paddingTop: 4, paddingHorizontal: 16, paddingBottom: 8 }}>
-          <View style={[s.row, { height: 50, justifyContent: 'space-between' }]}>
+          <View style={[s.row, { height: 50 }]}>
             <T s={16} w={700}>
               {copy.tonightList}
             </T>
-            {session && drinks.length ? (
-              <Press testID="counter-undo-last" hitSlop={10} onPress={() => removeCountedDrink(session.drinks[session.drinks.length - 1].id)} style={[s.row, { gap: 6 }]}>
-                <Icon name="undo-2" size={15} color={C.yellow} />
-                <T s={14} w={700} c={C.yellow}>
-                  {copy.undoLast}
-                </T>
-              </Press>
-            ) : null}
           </View>
-          {session && drinks.length ? (
-            drinks.map((d, i) => (
-              <Animated.View key={d.id} entering={i === 0 ? fadeIn : undefined}>
-                <Press onPress={() => drinkActions(router, nightsOf([session])[0].day, session.startedAt, d, { removeDrink: removeCountedDrink })} style={[s.row, { height: 62, gap: 12 }]}>
-                  <Tile icon={normalizeDrinkType(d.drinkType) === 'beer' ? 'beer' : 'circle-dot'} />
-                  <View style={[s.fill, { gap: 2 }]}>
-                    <T s={15} w={600} numberOfLines={1}>
-                      {d.beerName}
-                    </T>
-                    <T s={13} c={C.muted}>{servingLine(d, inPub)}</T>
+          {session && groups.length ? (
+            groups.map((g) => {
+              const sub = [servingLine(g.latest, false), g.totalCzk !== null ? formatPrice(g.totalCzk, priceCurrency) : null].filter(Boolean).join(' · ');
+              return (
+                <Animated.View key={g.key} entering={fadeIn} style={[s.row, { height: 62, gap: 12 }]}>
+                  <Press onPress={() => drinkActions(router, nightsOf([session])[0].day, session.startedAt, g.latest, { removeDrink: removeCountedDrink })} style={[s.row, s.fill, { gap: 12 }]}>
+                    <Tile icon={normalizeDrinkType(g.latest.drinkType) === 'beer' ? 'beer' : 'circle-dot'} />
+                    <View style={[s.fill, { gap: 2 }]}>
+                      <T s={15} w={600} numberOfLines={1}>
+                        {g.latest.beerName}
+                      </T>
+                      {sub ? (
+                        <T s={13} c={C.muted} numberOfLines={1}>
+                          {sub}
+                        </T>
+                      ) : null}
+                    </View>
+                  </Press>
+                  <View style={[s.row, { gap: 4 }]}>
+                    <StepButton icon="minus" haptic testID="counter-row-minus" label={copy.removeOneA11y(g.latest.beerName)} onPress={() => removeCountedDrink(g.latest.id)} />
+                    <D s={24} c={C.yellow} style={{ minWidth: 26, textAlign: 'center' }}>
+                      {String(g.count)}
+                    </D>
+                    <StepButton icon="plus" testID="counter-row-plus" label={copy.addOneA11y(g.latest.beerName)} onPress={() => addAnother(g.latest)} />
                   </View>
-                  <View style={{ alignItems: 'flex-end', gap: 2 }}>
-                    {typeof d.priceCzk === 'number' ? <T s={15} w={600}>{formatPrice(d.priceCzk, priceCurrency)}</T> : null}
-                    <T s={12} c={C.muted}>
-                      {formatClock(new Date(d.at))}
-                    </T>
-                  </View>
-                </Press>
-              </Animated.View>
-            ))
+                </Animated.View>
+              );
+            })
           ) : (
             <T s={14} c={C.muted} style={{ paddingVertical: 14 }}>
               {copy.tonightEmpty}
