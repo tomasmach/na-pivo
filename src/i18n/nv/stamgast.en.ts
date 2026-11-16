@@ -41,6 +41,7 @@ export const stamgastEn: typeof stamgastCs = {
   tonightEmpty: 'Nothing yet. Log your first beer with the button below.',
   addOneA11y: (name: string) => `Add one: ${name}`,
   removeOneA11y: (name: string) => `Remove one: ${name}`,
+  drinkRowA11y: (name: string, count: number) => `${name}, ${count}×`,
   newBeerTitle: 'New beer for your collection',
   rapidAgain: (minutes: number) =>
     minutes === 0 ? 'Another beer right after the last one?' : `Another beer after just ${minutes === 1 ? 'a minute' : `${minutes} minutes`}?`,

@@ -1271,6 +1271,11 @@ odečte si pivo omylem. Rozdělení podle záměru dělá z chybného tapu nemo�
 Prakticky: pojmenuj sheet slovesem nebo otázkou, která říká jeho jediný záměr, a když do něj chceš
 přidat akci opačného směru, **udělej místo toho druhý sheet**.
 
+**Výjimka: řádky „Dnešní piva“ na počítadle (16. 11. 2026).** Nejsou sheet. Stejné nápoje jsou v jednom
+řádku s „−“, počtem a „+“, aby šel panák nebo pivo přidat jedním klepnutím. Plus zapíše stejný nápoj
+znovu bez otázky na rychlý zápis. Minus ubere poslední zápis. U posledního kusu se zeptá dialogem
+„Odebrat jeden nápoj?“, protože po zmizení řádku najede pod prst další nápoj.
+
 ---
 
 ## 9. Ilustrace a osobnost

@@ -38,11 +38,11 @@ import { AvatarSlot, BottomFade, TabHeader, TopFade, useTabBarSpace } from '../.
 import { BookTab } from '../../duo/BookTab';
 import { useBook, useIsDuo } from '../../duo/layout';
 import { Icon, type IconName } from '../../components/Icon';
-import { Button, D, Press, Segmented, Stack, T, Tile } from '../../components/ui';
+import { Button, D, IconButton, Press, Segmented, Stack, T, Tile } from '../../components/ui';
 import { fadeIn, fadeOut, riseIn, sinkOut } from '../../motion';
 import { C, SCREEN_X, s, shadow } from '../../theme';
 import { useHidePubNames } from '../../hiddenPubNames';
-import { toast } from '../../ui/store';
+import { dialog, toast } from '../../ui/store';
 import { TourRunContent } from '../tour/TourScreens';
 import { useTourSegment } from '../tour/tourSegment';
 import { useCounterSegment } from './counterSegment';
@@ -197,7 +197,7 @@ interface DrinkGroup {
 function groupDrinks(drinks: readonly TallyDrink[]): DrinkGroup[] {
   const groups = new Map<string, DrinkGroup>();
   for (const drink of drinks) {
-    const serving = drink.servingType && drink.servingType !== 'unknown' ? drink.servingType : '';
+    const serving = drink.servingType && drink.servingType !== 'unknown' && drink.servingType !== 'draft' ? drink.servingType : '';
     const key = [normalizeDrinkType(drink.drinkType), normalizeBeerName(drink.beerName), drink.volumeMl ?? '', serving].join('|');
     const price = typeof drink.priceCzk === 'number' ? drink.priceCzk : null;
     const group = groups.get(key);
@@ -210,14 +210,6 @@ function groupDrinks(drinks: readonly TallyDrink[]): DrinkGroup[] {
     }
   }
   return [...groups.values()];
-}
-
-function StepButton({ icon, label, testID, haptic = false, onPress }: { icon: IconName; label: string; testID: string; haptic?: boolean; onPress: () => void }) {
-  return (
-    <Press testID={testID} haptic={haptic} hitSlop={4} onPress={onPress} accessibilityRole="button" accessibilityLabel={label} style={[{ width: 40, height: 40, borderRadius: 20, backgroundColor: C.control }, s.center]}>
-      <Icon name={icon} size={20} color={C.text2} />
-    </Press>
-  );
 }
 
 function lastBeerOf(session: TallySession | null): TallyDrink | undefined {
@@ -361,6 +353,19 @@ function CounterView() {
     if (target && again) logDrink(target, again, undefined, { deliberate: true });
   };
 
+  const removeOne = (g: DrinkGroup) => {
+    if (g.count > 1) {
+      removeCountedDrink(g.latest.id);
+      return;
+    }
+    const old = t.myBeers;
+    dialog({
+      title: old.deleteDrinkTitle,
+      body: old.deleteDrinkBody,
+      actions: [{ label: old.deleteDrinkCancel }, { label: old.deleteDrinkConfirm, kind: 'danger', onPress: () => removeCountedDrink(g.latest.id) }],
+    });
+  };
+
   const openAddDrink = () => {
     trackUiInteraction('counter_add_drink_open');
     router.push('/nv/zapis');
@@ -483,10 +488,15 @@ function CounterView() {
           </View>
           {session && groups.length ? (
             groups.map((g) => {
-              const sub = [servingLine(g.latest, false), g.totalCzk !== null ? formatPrice(g.totalCzk, priceCurrency) : null].filter(Boolean).join(' · ');
+              const sub = [servingLine(g.latest, inPub), g.totalCzk !== null ? formatPrice(g.totalCzk, priceCurrency) : null].filter(Boolean).join(' · ');
               return (
-                <Animated.View key={g.key} entering={fadeIn} style={[s.row, { height: 62, gap: 12 }]}>
-                  <Press onPress={() => drinkActions(router, nightsOf([session])[0].day, session.startedAt, g.latest, { removeDrink: removeCountedDrink })} style={[s.row, s.fill, { gap: 12 }]}>
+                <Animated.View key={g.key} entering={fadeIn} style={[s.row, { height: 68, gap: 12 }]}>
+                  <Press
+                    accessibilityRole="button"
+                    accessibilityLabel={copy.drinkRowA11y(g.latest.beerName, g.count)}
+                    onPress={() => drinkActions(router, nightsOf([session])[0].day, session.startedAt, g.latest, { removeDrink: removeCountedDrink })}
+                    style={[s.row, s.fill, { gap: 12 }]}
+                  >
                     <Tile icon={normalizeDrinkType(g.latest.drinkType) === 'beer' ? 'beer' : 'circle-dot'} />
                     <View style={[s.fill, { gap: 2 }]}>
                       <T s={15} w={600} numberOfLines={1}>
@@ -500,11 +510,11 @@ function CounterView() {
                     </View>
                   </Press>
                   <View style={[s.row, { gap: 4 }]}>
-                    <StepButton icon="minus" haptic testID="counter-row-minus" label={copy.removeOneA11y(g.latest.beerName)} onPress={() => removeCountedDrink(g.latest.id)} />
-                    <D s={24} c={C.yellow} style={{ minWidth: 26, textAlign: 'center' }}>
+                    <IconButton icon="minus" iconSize={20} color={C.text2} testID="counter-row-minus" label={copy.removeOneA11y(g.latest.beerName)} onPress={() => removeOne(g)} />
+                    <D s={24} c={C.yellow} accessibilityElementsHidden importantForAccessibility="no" style={{ minWidth: 26, textAlign: 'center' }}>
                       {String(g.count)}
                     </D>
-                    <StepButton icon="plus" testID="counter-row-plus" label={copy.addOneA11y(g.latest.beerName)} onPress={() => addAnother(g.latest)} />
+                    <IconButton icon="plus" iconSize={20} color={C.text2} haptic={false} testID="counter-row-plus" label={copy.addOneA11y(g.latest.beerName)} onPress={() => addAnother(g.latest)} />
                   </View>
                 </Animated.View>
               );

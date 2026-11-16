@@ -132,5 +132,12 @@ it('folds identical drinks into one row whose plus logs another without asking',
 
   await act(async () => stepper(renderer, 'counter-row-minus', 'Fernet Stock').props.onPress());
   expect(useTallyStore.getState().current!.drinks.map((d: { id: string }) => d.id)).toEqual(['a', 'f1', 'f2']);
+
+  await act(async () => stepper(renderer, 'counter-row-minus', 'Pilsner Urquell 12°').props.onPress());
+  expect(useTallyStore.getState().current!.drinks).toHaveLength(3);
+  expect(dialog).toHaveBeenCalledTimes(1);
+  const confirm = dialog.mock.calls[0][0].actions.find((a: { kind?: string }) => a.kind === 'danger');
+  await act(async () => confirm.onPress());
+  expect(useTallyStore.getState().current!.drinks.map((d: { id: string }) => d.id)).toEqual(['f1', 'f2']);
   await act(async () => renderer.unmount());
 });

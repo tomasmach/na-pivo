@@ -186,6 +186,8 @@ export function IconButton({
   label,
   style,
   badge,
+  haptic = true,
+  testID,
 }: {
   icon: IconName;
   onPress?: () => void;
@@ -196,10 +198,13 @@ export function IconButton({
   label?: string;
   style?: StyleProp<ViewStyle>;
   badge?: number | boolean;
+  haptic?: boolean;
+  testID?: string;
 }) {
   return (
     <Press
-      haptic
+      haptic={haptic}
+      testID={testID}
       onPress={onPress}
       accessibilityRole="button"
       accessibilityLabel={label ?? icon}
