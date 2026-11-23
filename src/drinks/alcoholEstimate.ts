@@ -3,10 +3,11 @@
  * body numbers the user typed in. It is a guess and every surface says so.
  *
  * Model: Watson total body water from sex, age, height and weight, Widmark
- * distribution into that water, each drink absorbed evenly over 45 minutes,
- * linear elimination. Three runs give the shown range; the middle run, an
- * average person, decides when you are at zero. While a drink is still being
- * absorbed the level is low on purpose, so the estimate also says where it peaks.
+ * distribution into that water, 90 % of each drink absorbed evenly over 45
+ * minutes (the usual forensic absorption deficit), linear elimination. Three
+ * runs give the shown range; the middle run, an average person, decides when
+ * you are at zero. While a drink is still being absorbed the level is low on
+ * purpose, so the estimate also says where it peaks.
  */
 
 import { normalizeDrinkType, type DrinkType } from './drinkTypes';
@@ -88,6 +89,7 @@ function drinkVolumeMl(drink: Pick<EstimateDrink, 'drinkType' | 'volumeMl'>): nu
 }
 
 const ETHANOL_DENSITY = 0.789;
+const ABSORBED_SHARE = 0.9;
 const BLOOD_WATER = 0.8;
 const BLOOD_DENSITY = 1.055;
 const ABSORPTION_MIN = 45;
@@ -196,7 +198,7 @@ export function estimateAlcohol(
   const doses = counted.map((drink) => ({
     startMs: Date.parse(drink.at),
     promile:
-      drinkVolumeMl(drink) * (drinkAbv(drink) / 100) * ETHANOL_DENSITY * promilePerGram,
+      drinkVolumeMl(drink) * (drinkAbv(drink) / 100) * ETHANOL_DENSITY * ABSORBED_SHARE * promilePerGram,
   }));
 
   const mid = simulate(doses, MID, nowMs);

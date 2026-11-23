@@ -54,25 +54,25 @@ describe('drinkAbv', () => {
 });
 
 describe('estimateAlcohol', () => {
-  it('matches the reference evening: ~0.9 ‰ at 22:40, an average person at zero by 5:00', () => {
+  it('matches the reference evening: ~0.8 ‰ at 22:40, an average person at zero by 4:00', () => {
     const estimate = estimateAlcohol(EVENING, PROFILE, Date.parse(at('22:40')));
 
     expect(estimate).not.toBeNull();
-    expect(estimate!.now).toBeCloseTo(0.92, 1);
-    expect(estimate!.low).toBeCloseTo(0.6, 1);
-    expect(estimate!.high).toBeCloseTo(1.39, 1);
-    expect(estimate!.zeroAt.getTime()).toBe(Date.parse(at('05:00', 18)));
+    expect(estimate!.now).toBeCloseTo(0.76, 1);
+    expect(estimate!.low).toBeCloseTo(0.46, 1);
+    expect(estimate!.high).toBeCloseTo(1.19, 1);
+    expect(estimate!.zeroAt.getTime()).toBe(Date.parse(at('04:00', 18)));
   });
 
   it('keeps counting overnight while nothing new is logged', () => {
     const night = estimateAlcohol(EVENING, PROFILE, Date.parse(at('03:00', 18)));
 
-    expect(night!.now).toBeCloseTo(0.3, 1);
-    expect(night!.zeroAt.getTime()).toBe(Date.parse(at('05:00', 18)));
+    expect(night!.now).toBeCloseTo(0.15, 1);
+    expect(night!.zeroAt.getTime()).toBe(Date.parse(at('04:00', 18)));
   });
 
   it('is gone once the average run reaches zero', () => {
-    expect(estimateAlcohol(EVENING, PROFILE, Date.parse(at('05:00', 18)))).toBeNull();
+    expect(estimateAlcohol(EVENING, PROFILE, Date.parse(at('04:00', 18)))).toBeNull();
   });
 
   it('ignores soft drinks, alcohol-free beer and drinks older than three days', () => {
@@ -89,7 +89,7 @@ describe('estimateAlcohol', () => {
     const small: BodyProfile = { sex: 'female', age: 30, heightCm: 165, weightKg: 58 };
     const night = ['18:00', '19:00', '20:00', '21:00', '22:00'].map((time, i) => beer(`h${i}`, time));
     const evening = estimateAlcohol(night, small, Date.parse(at('23:00')));
-    const nextMorning = estimateAlcohol(night, small, Date.parse(at('10:30', 18)));
+    const nextMorning = estimateAlcohol(night, small, Date.parse(at('08:30', 18)));
 
     expect(nextMorning?.zeroAt.getTime()).toBe(evening!.zeroAt.getTime());
   });
@@ -107,7 +107,7 @@ describe('estimateAlcohol', () => {
     const absorbed = estimateAlcohol(nine, PROFILE, Date.parse(at('20:45')))!;
 
     expect(justLogged.now).toBeLessThan(0.2);
-    expect(justLogged.rising!.promile).toBeGreaterThan(2.5);
+    expect(justLogged.rising!.promile).toBeGreaterThan(2.2);
     expect(justLogged.rising!.promile).toBeCloseTo(absorbed.now, 2);
     expect(justLogged.rising!.at.getTime()).toBe(Date.parse(at('20:44')));
     expect(absorbed.rising).toBeNull();
