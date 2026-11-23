@@ -61,7 +61,7 @@ const NON_ALCOHOLIC =
   /nealko|birell|bernard free|(^|\s)0[,.]0(\s|%|$)|alkoholfrei|non[- ]?alc|alcohol[- ]?free|clear mind|krystus|svěží pomelo/i;
 const RADLER = /radler|shandy/i;
 const DEGREES = /(\d{1,2}(?:[,.]\d)?)\s*°/;
-const BARE_DEGREES = /(?:^|\s)(\d{1,2})(?=\s|$)(?!\s*(?:%|[cdm]?l\b))/gi;
+const BARE_DEGREES = /(?:^|\s)(\d{1,2}(?:[,.]\d)?)(?=\s|$)(?!\s*(?:%|[cdm]?l(?!\p{L})))/giu;
 const TWELVE_DEGREE_LAGER_ABV = 5;
 
 function platoOf(name: string): number | null {
@@ -70,11 +70,12 @@ function platoOf(name: string): number | null {
     const plato = Number(marked[1].replace(',', '.'));
     return plato >= 3 && plato <= 30 ? plato : null;
   }
+  let plato: number | null = null;
   for (const [, bare] of name.matchAll(BARE_DEGREES)) {
-    const plato = Number(bare);
-    if (plato >= 7 && plato <= 30) return plato;
+    const value = Number(bare.replace(',', '.'));
+    if (value >= 7 && value <= 30) plato = value;
   }
-  return null;
+  return plato;
 }
 
 /** Alcohol by volume in percent, inferred from the drink type and the name. */
