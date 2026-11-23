@@ -60,8 +60,22 @@ export interface EstimateDrink {
 const NON_ALCOHOLIC =
   /nealko|birell|bernard free|(^|\s)0[,.]0(\s|%|$)|alkoholfrei|non[- ]?alc|alcohol[- ]?free|clear mind|krystus|svěží pomelo/i;
 const RADLER = /radler|shandy/i;
-const DEGREES = /(\d{1,2}(?:[,.]\d)?)\s*°|(?:^|\s)(\d{1,2})(?=\s|$)/;
+const DEGREES = /(\d{1,2}(?:[,.]\d)?)\s*°/;
+const BARE_DEGREES = /(?:^|\s)(\d{1,2})(?=\s|$)(?!\s*(?:%|[cdm]?l\b))/gi;
 const TWELVE_DEGREE_LAGER_ABV = 5;
+
+function platoOf(name: string): number | null {
+  const marked = name.match(DEGREES);
+  if (marked) {
+    const plato = Number(marked[1].replace(',', '.'));
+    return plato >= 3 && plato <= 30 ? plato : null;
+  }
+  for (const [, bare] of name.matchAll(BARE_DEGREES)) {
+    const plato = Number(bare);
+    if (plato >= 7 && plato <= 30) return plato;
+  }
+  return null;
+}
 
 /** Alcohol by volume in percent, inferred from the drink type and the name. */
 export function drinkAbv(drink: Pick<EstimateDrink, 'beerName' | 'drinkType'>): number {
@@ -72,12 +86,8 @@ export function drinkAbv(drink: Pick<EstimateDrink, 'beerName' | 'drinkType'>): 
   const name = drink.beerName;
   if (NON_ALCOHOLIC.test(name)) return 0;
   if (RADLER.test(name)) return 2.5;
-  const degrees = name.match(DEGREES);
-  if (degrees) {
-    const plato = Number((degrees[1] ?? degrees[2]).replace(',', '.'));
-    if (plato >= 3 && plato <= 30) return Math.round(plato * 0.42 * 10) / 10;
-  }
-  return TWELVE_DEGREE_LAGER_ABV;
+  const plato = platoOf(name);
+  return plato === null ? TWELVE_DEGREE_LAGER_ABV : Math.round(plato * 0.42 * 10) / 10;
 }
 
 function drinkVolumeMl(drink: Pick<EstimateDrink, 'drinkType' | 'volumeMl'>): number {
