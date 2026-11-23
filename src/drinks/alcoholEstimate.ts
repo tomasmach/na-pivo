@@ -3,10 +3,11 @@
  * body numbers the user typed in. It is a guess and every surface says so.
  *
  * Model: Watson total body water from sex, age, height and weight, Widmark
- * distribution into that water, each drink absorbed evenly over 45 minutes,
- * linear elimination. Three runs give the shown range; the middle run, an
- * average person, decides when you are at zero. While a drink is still being
- * absorbed the level is low on purpose, so the estimate also says where it peaks.
+ * distribution into that water, 90 % of each drink absorbed evenly over 45
+ * minutes (the usual forensic absorption deficit), linear elimination. Three
+ * runs give the shown range; the middle run, an average person, decides when
+ * you are at zero. While a drink is still being absorbed the level is low on
+ * purpose, so the estimate also says where it peaks.
  */
 
 import { normalizeDrinkType, type DrinkType } from './drinkTypes';
@@ -60,6 +61,22 @@ const NON_ALCOHOLIC =
   /nealko|birell|bernard free|(^|\s)0[,.]0(\s|%|$)|alkoholfrei|non[- ]?alc|alcohol[- ]?free|clear mind|krystus|svěží pomelo/i;
 const RADLER = /radler|shandy/i;
 const DEGREES = /(\d{1,2}(?:[,.]\d)?)\s*°/;
+const BARE_DEGREES = /(?:^|\s)(\d{1,2}(?:[,.]\d)?)(?=\s|$)(?!\s*(?:%|[cdm]?l(?!\p{L})))/giu;
+const TWELVE_DEGREE_LAGER_ABV = 5;
+
+function platoOf(name: string): number | null {
+  const marked = name.match(DEGREES);
+  if (marked) {
+    const plato = Number(marked[1].replace(',', '.'));
+    return plato >= 3 && plato <= 30 ? plato : null;
+  }
+  let plato: number | null = null;
+  for (const [, bare] of name.matchAll(BARE_DEGREES)) {
+    const value = Number(bare.replace(',', '.'));
+    if (value >= 7 && value <= 30) plato = value;
+  }
+  return plato;
+}
 
 /** Alcohol by volume in percent, inferred from the drink type and the name. */
 export function drinkAbv(drink: Pick<EstimateDrink, 'beerName' | 'drinkType'>): number {
@@ -70,13 +87,8 @@ export function drinkAbv(drink: Pick<EstimateDrink, 'beerName' | 'drinkType'>): 
   const name = drink.beerName;
   if (NON_ALCOHOLIC.test(name)) return 0;
   if (RADLER.test(name)) return 2.5;
-  const degrees = name.match(DEGREES);
-  if (degrees) {
-    const plato = Number(degrees[1].replace(',', '.'));
-    if (plato >= 3 && plato <= 30) return Math.round(plato * 0.42 * 10) / 10;
-  }
-  // Unknown strength: assume a strong-ish beer so the guess errs high.
-  return 6;
+  const plato = platoOf(name);
+  return plato === null ? TWELVE_DEGREE_LAGER_ABV : Math.round(plato * 0.42 * 10) / 10;
 }
 
 function drinkVolumeMl(drink: Pick<EstimateDrink, 'drinkType' | 'volumeMl'>): number {
@@ -88,6 +100,7 @@ function drinkVolumeMl(drink: Pick<EstimateDrink, 'drinkType' | 'volumeMl'>): nu
 }
 
 const ETHANOL_DENSITY = 0.789;
+const ABSORBED_SHARE = 0.9;
 const BLOOD_WATER = 0.8;
 const BLOOD_DENSITY = 1.055;
 const ABSORPTION_MIN = 45;
@@ -196,7 +209,7 @@ export function estimateAlcohol(
   const doses = counted.map((drink) => ({
     startMs: Date.parse(drink.at),
     promile:
-      drinkVolumeMl(drink) * (drinkAbv(drink) / 100) * ETHANOL_DENSITY * promilePerGram,
+      drinkVolumeMl(drink) * (drinkAbv(drink) / 100) * ETHANOL_DENSITY * ABSORBED_SHARE * promilePerGram,
   }));
 
   const mid = simulate(doses, MID, nowMs);
