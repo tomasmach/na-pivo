@@ -59,7 +59,8 @@ export interface EstimateDrink {
 const NON_ALCOHOLIC =
   /nealko|birell|bernard free|(^|\s)0[,.]0(\s|%|$)|alkoholfrei|non[- ]?alc|alcohol[- ]?free|clear mind|krystus|svěží pomelo/i;
 const RADLER = /radler|shandy/i;
-const DEGREES = /(\d{1,2}(?:[,.]\d)?)\s*°/;
+const DEGREES = /(\d{1,2}(?:[,.]\d)?)\s*°|(?:^|\s)(\d{1,2})(?=\s|$)/;
+const TWELVE_DEGREE_LAGER_ABV = 5;
 
 /** Alcohol by volume in percent, inferred from the drink type and the name. */
 export function drinkAbv(drink: Pick<EstimateDrink, 'beerName' | 'drinkType'>): number {
@@ -72,11 +73,10 @@ export function drinkAbv(drink: Pick<EstimateDrink, 'beerName' | 'drinkType'>): 
   if (RADLER.test(name)) return 2.5;
   const degrees = name.match(DEGREES);
   if (degrees) {
-    const plato = Number(degrees[1].replace(',', '.'));
+    const plato = Number((degrees[1] ?? degrees[2]).replace(',', '.'));
     if (plato >= 3 && plato <= 30) return Math.round(plato * 0.42 * 10) / 10;
   }
-  // Unknown strength: assume a strong-ish beer so the guess errs high.
-  return 6;
+  return TWELVE_DEGREE_LAGER_ABV;
 }
 
 function drinkVolumeMl(drink: Pick<EstimateDrink, 'drinkType' | 'volumeMl'>): number {

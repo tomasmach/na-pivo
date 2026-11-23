@@ -17,4 +17,4 @@ Lidé si o „alkohol tester“ říkají opakovaně, proto ho Na pivo nabízí 
 
 ## Jak se počítá
 
-`src/drinks/alcoholEstimate.ts`: Watsonova tělesná voda, Widmarkovo rozložení, vstřebání 45 minut na každé pití, lineární odbourávání. Procenta alkoholu se odvozují z typu pití a ze stupňů v názvu piva. Model a jeho čísla hlídá `src/drinks/__tests__/alcoholEstimate.test.ts`.
+`src/drinks/alcoholEstimate.ts`: Watsonova tělesná voda, Widmarkovo rozložení, vstřebání 45 minut na každé pití, lineární odbourávání. Procenta alkoholu se odvozují z typu pití a ze stupňů v názvu piva, i bez znaku stupňů („Klášter 10“). Pivo bez stupňů v názvu se od 23. 11. 2026 počítá jako dvanáctka (5 %), ne jako silné 6% pivo. Takhle se zapisuje hlavně Pilsner Urquell a další běžné ležáky a 6 % u nich odhad zbytečně nafukovalo. Model a jeho čísla hlídá `src/drinks/__tests__/alcoholEstimate.test.ts`.
