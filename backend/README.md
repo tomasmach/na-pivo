@@ -503,24 +503,28 @@ before its `deploy.py`; without it `deploy.py` stops at the proxy check and
 leaves traffic unchanged. Expect a few seconds without HTTPS while the two
 proxies swap ports 80 and 443.
 
+Run the block as one command. If the new Caddy does not answer, it starts
+`culinair-caddy-1` again and stops before `deploy.py`.
+
 ```bash
 cd /opt/na-pivo/backend   # checked out at the new api-* tag
 C="docker compose -p na-pivo -f docker-compose.yml -f docker-compose.production.yml"
-$C create caddy
-docker run --rm -v culinair_caddy_data:/from:ro -v na-pivo_caddy_data:/to \
-  caddy:2.11.9 cp -a /from/caddy /to/
-docker network connect na-pivo_proxy napivo-web
-docker stop --timeout 5 culinair-caddy-1 && $C start caddy
-curl -fsS https://api.na-pivo.cz/v1/health
-python3 deploy.py
-$C up -d --no-deps db
+$C create caddy &&
+  docker run --rm -v culinair_caddy_data:/from:ro -v na-pivo_caddy_data:/to \
+    caddy:2.11.9 cp -a /from/caddy /to/ &&
+  docker network connect na-pivo_proxy napivo-web &&
+  docker stop --timeout 5 culinair-caddy-1 &&
+  if $C start caddy &&
+    curl -fsS --retry 10 --retry-delay 1 --retry-all-errors https://api.na-pivo.cz/v1/health
+  then python3 deploy.py && $C up -d --no-deps db
+  else $C stop caddy; docker start culinair-caddy-1; false
+  fi
 ```
 
 Copying the certificates avoids issuing new ones during the swap. The extra
 network lets the new Caddy reach the running web; `deploy.py` then recreates
-the web on the project networks only. Before `deploy.py`, roll back with
-`$C stop caddy && docker start culinair-caddy-1`. Leave `culinair-caddy-1`
-stopped afterwards; it publishes the same ports.
+the web on the project networks only, so `culinair-caddy-1` can no longer serve
+it. Leave `culinair-caddy-1` stopped; it publishes the same ports.
 
 The last command recreates the database container so its 30-second healthcheck
 applies. Requests wait for the database restart, up to `DB_POOL_TIMEOUT`.
@@ -556,15 +560,18 @@ Run only one deploy at a time. The script holds `/var/lock/napivo-deploy.lock` a
 refuses an existing temporary instance. It requires a running `napivo-caddy` and
 exactly two `reverse_proxy napivo-web:8000` lines in `caddy/Caddyfile`. It edits
 that file in place during the rollout, refusing concurrent edits, and reloads the
-validated staged copy without restarting Caddy. After a failed rollout that left
-`napivo-web-next` serving, the file stays switched and the next deploy refuses the
-dirty checkout until you restore it. Do not use `compose up --build` for routine production replacement: it
-removes the serving web before the replacement is ready.
+validated staged copy without restarting Caddy. Do not use `compose up --build`
+for routine production replacement: it removes the serving web before the
+replacement is ready.
 
 On failure, read the final message and `state.json` in the printed backup directory.
 Before canonical replacement, traffic remains on or returns to the previous web.
 If canonical readiness fails after the first switch, **keep `napivo-web-next`
 running**: it serves traffic until the canonical instance is repaired and checked.
+`caddy/Caddyfile` then still points at it, and the next deploy refuses the dirty
+checkout. Once `napivo-web` is healthy, run `git checkout caddy/Caddyfile` and
+`docker exec napivo-caddy caddy reload --config /etc/caddy/Caddyfile --adapter caddyfile`,
+check HTTPS, and only then remove `napivo-web-next`.
 If both proxy reload and rollback fail, both instances are retained for inspection.
 The script restores the previous worker image when needed; it never rolls back the
 database automatically. Previous images receive dedicated local rollback tags
