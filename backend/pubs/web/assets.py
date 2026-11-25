@@ -13,7 +13,7 @@ import re
 from compression import zstd
 from pathlib import Path
 
-from django.http import Http404, HttpRequest, HttpResponse
+from django.http import HttpRequest, HttpResponse, HttpResponseNotFound
 
 ROOT = Path(__file__).resolve().parent.parent / "static" / "pubs" / "web"
 _CONTENT_TYPES = {
@@ -102,7 +102,8 @@ def _accepted(header: str) -> set[str]:
 def web_asset(request: HttpRequest, filename: str) -> HttpResponse:
     body = _BODIES.get(filename)
     if body is None:
-        raise Http404
+        # Not the 404 page: that one reads the database, and files skip the web's queue for it.
+        return HttpResponseNotFound()
     encoding = ""
     packed = _PACKED.get(filename)
     if packed:

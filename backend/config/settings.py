@@ -108,6 +108,8 @@ MIDDLEWARE = [
     # Below gzip, so the ETag hashes the uncompressed body; gzip then marks it weak.
     "pubs.conditional.ApiConditionalGetMiddleware",
     "pubs.observability.RequestLogMiddleware",
+    # Above everything that reads the database, so a crawler waits here, not for a connection the app needs.
+    "pubs.web.capacity.web_capacity_middleware",
     # /hospody/, /CENY and /zebricky?kraj=praha lead to the page's address before anything else looks at it.
     "pubs.web.routes.canonical_address_middleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
@@ -179,6 +181,15 @@ DB_POOL_TIMEOUT: float = float(os.environ.get("DB_POOL_TIMEOUT", "10"))
 # most ONE connection per window, so the default of 600 s would leave a spike's
 # worth of idle connections parked for hours after the evening peak.
 DB_POOL_MAX_IDLE: float = float(os.environ.get("DB_POOL_MAX_IDLE", "60"))
+# Web requests (everything but /v1/ and files like robots.txt) one worker serves at once.
+# Each holds at most one pooled connection, so the rest of the pool stays free for the app's API even
+# while a crawler walks every pub page. A quarter of the pool by default: 5 of 20, 2 of the 8 a deploy
+# candidate runs with. A pool of two or more always keeps at least one connection for the API.
+WEB_PAGE_CONCURRENCY: int = min(
+    max(1, int(os.environ.get("WEB_PAGE_CONCURRENCY", DB_POOL_MAX_SIZE // 4))), max(1, DB_POOL_MAX_SIZE - 1)
+)
+# Seconds a web request waits for one of those places before it gets a 503 with Retry-After.
+WEB_PAGE_QUEUE_SECONDS: float = float(os.environ.get("WEB_PAGE_QUEUE_SECONDS", "5"))
 
 if DATABASES["default"]["ENGINE"] == "django.db.backends.sqlite3":
     # Local Expo starts an evening, visit and first drink concurrently. SQLite
