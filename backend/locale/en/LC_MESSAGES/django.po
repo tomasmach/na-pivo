@@ -5656,3 +5656,6 @@ msgstr "A half litre under half the national median, now under %(floor)s CZK, I 
 #, python-format
 msgid "%(first)s–%(last)s z %(total)s"
 msgstr "%(first)s–%(last)s of %(total)s"
+
+msgid "Je tu teď narváno. Zkus stránku za chvíli načíst znovu."
+msgstr "It's packed in here right now. Try reloading the page in a moment."
