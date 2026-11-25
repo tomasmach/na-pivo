@@ -1,9 +1,7 @@
 name: na-pivo
 
 services:
-  # Django + DRF served by gunicorn. This is the only service exposed to the
-  # shared Caddy network; its unique name (napivo-web) avoids colliding with
-  # culinair's own "web" service alias on culinair_default.
+  # Django + DRF served by gunicorn, the only service Caddy proxies to.
   napivo-web:
     build: .
     image: ${NAPIVO_BACKEND_IMAGE:-na-pivo-backend:local}
@@ -16,13 +14,13 @@ services:
         condition: service_healthy
     # User-uploaded avatars live on a named volume so they survive deploys.
     # MEDIA_ROOT=/data/media (set in .env) must match this mount; Caddy serves
-    # /media/* from the same path on the host (Django does not serve media in
-    # prod). The worker mounts it too so it can clean up avatars on purge.
+    # /media/* from the same volume (Django does not serve media in prod). The
+    # worker mounts it too so it can clean up avatars on purge.
     volumes:
       - napivo_media:/data/media
     networks:
       - internal
-      - caddy
+      - proxy
     expose:
       - "8000"
     healthcheck:
@@ -95,21 +93,18 @@ services:
       - internal
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U napivo -d napivo"]
-      interval: 10s
+      interval: 30s
       timeout: 5s
       retries: 5
 
 networks:
   internal:
     driver: bridge
-  # The pre-existing culinair Caddy network, joined as external so the running
-  # Caddy can reverse_proxy to napivo-web. Not created/owned by this project.
-  caddy:
-    external: true
-    name: culinair_default
+  proxy:
+    driver: bridge
 
 volumes:
   napivo_pg:
   # User-uploaded avatars (MEDIA_ROOT=/data/media). Caddy serves /media/* from
-  # this volume's host path; it persists across container rebuilds/deploys.
+  # this volume; it persists across container rebuilds/deploys.
   napivo_media:
