@@ -503,8 +503,9 @@ before its `deploy.py`; without it `deploy.py` stops at the proxy check and
 leaves traffic unchanged. Expect a few seconds without HTTPS while the two
 proxies swap ports 80 and 443.
 
-Run the block as one command. If the new Caddy does not answer, it starts
-`culinair-caddy-1` again and stops before `deploy.py`.
+Run the block as one command. If the new Caddy does not answer within about a
+minute, it starts `culinair-caddy-1` again and stops before `deploy.py`; you can
+run it again after fixing the cause.
 
 ```bash
 cd /opt/na-pivo/backend   # checked out at the new api-* tag
@@ -515,9 +516,11 @@ $C create caddy &&
   docker network connect na-pivo_proxy napivo-web &&
   docker stop --timeout 5 culinair-caddy-1 &&
   if $C start caddy &&
-    curl -fsS --retry 10 --retry-delay 1 --retry-all-errors https://api.na-pivo.cz/v1/health
+    curl -fsS --max-time 5 --retry 10 --retry-delay 1 --retry-all-errors \
+      https://api.na-pivo.cz/v1/health
   then python3 deploy.py && $C up -d --no-deps db
-  else $C stop caddy; docker start culinair-caddy-1; false
+  else $C stop caddy; docker network disconnect na-pivo_proxy napivo-web
+    docker start culinair-caddy-1; false
   fi
 ```
 
