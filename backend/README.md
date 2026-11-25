@@ -413,13 +413,14 @@ Admin → Web analytika shows both for a chosen range, with the same range befor
 
 ## Deploy (Docker Compose)
 
-Production runs as **Docker Compose** from `/opt/na-pivo/backend` on a Hetzner VPS (`api.na-pivo.cz`), behind a shared **Caddy** reverse proxy that terminates TLS. The same service handles the small public invite surface on `na-pivo.cz` (`/p/*`, Open Graph assets and iOS association). `/opt/na-pivo` is a sparse checkout of the monorepo (only `backend/` is materialised) pinned to a detached `api-*` tag — the backend never deploys from a branch.
+Production runs as **Docker Compose** from `/opt/na-pivo/backend` on a Hetzner VPS (`api.na-pivo.cz`), behind its own **Caddy** reverse proxy that terminates TLS. The same service handles the small public invite surface on `na-pivo.cz` (`/p/*`, Open Graph assets and iOS association). `/opt/na-pivo` is a sparse checkout of the monorepo (only `backend/` is materialised) pinned to a detached `api-*` tag — the backend never deploys from a branch.
 
 Services:
 
 - `napivo-web` - gunicorn web process;
 - `worker` - background enrichment, durable account-export delivery and retention cleanup;
-- `db` - PostgreSQL 17.
+- `db` - PostgreSQL 17;
+- `caddy` - TLS and the reverse proxy (`docker-compose.production.yml`, config in `caddy/Caddyfile`).
 
 `docker-entrypoint.sh` runs `manage.py check --deploy` before applying migrations
 or collecting static files. Invalid production configuration therefore stops the
@@ -428,9 +429,13 @@ new container before it changes the database. A deploy is pull + rebuild.
 ### Prerequisites
 
 - VPS (CX22 or better), Ubuntu 24.04, with Docker Engine + the Compose plugin
-- A Caddy reverse proxy on an external `caddy` Docker network routing your hostname to the `napivo-web` service
+- Ports 80 and 443 free for Caddy
 - DNS for your hostname -> the VPS IP
 - Residential proxy setup if Firmy.cz detail enrichment needs it in production
+
+`caddy/Caddyfile` routes `api.na-pivo.cz` and `na-pivo.cz` to `napivo-web` and
+serves `/media/*` from the avatar volume. A deploy reloads Caddy with the
+checked-out file.
 
 The API host should reject oversized request bodies before they reach Django.
 Keep the Caddy site block aligned with `MENU_SCAN_MAX_REQUEST_BYTES`:
@@ -487,8 +492,45 @@ cp .env.production.example .env
 #            DATABASE_URL=postgres://napivo:strong-pass@db:5432/napivo,
 #            FIRMY_PROXY_URL=http://user:pass@proxy:port as the fallback
 
-docker compose -p na-pivo up -d --build
+docker compose -p na-pivo -f docker-compose.yml -f docker-compose.production.yml up -d --build
 ```
+
+### Moving off the culinair proxy (one time)
+
+Until this runs, production traffic still enters through `culinair-caddy-1`
+(`/opt/culinair`). The first tag with `caddy/Caddyfile` needs this cutover
+before its `deploy.py`; without it `deploy.py` stops at the proxy check and
+leaves traffic unchanged. Expect a few seconds without HTTPS while the two
+proxies swap ports 80 and 443.
+
+Run the block as one command. If the new Caddy does not answer within about a
+minute, it starts `culinair-caddy-1` again and stops before `deploy.py`; you can
+run it again after fixing the cause.
+
+```bash
+cd /opt/na-pivo/backend   # checked out at the new api-* tag
+C="docker compose -p na-pivo -f docker-compose.yml -f docker-compose.production.yml"
+$C create caddy &&
+  docker run --rm -v culinair_caddy_data:/from:ro -v na-pivo_caddy_data:/to \
+    caddy:2.11.9 cp -a /from/caddy /to/ &&
+  docker network connect na-pivo_proxy napivo-web &&
+  docker stop --timeout 5 culinair-caddy-1 &&
+  if $C start caddy &&
+    curl -fsS --max-time 5 --retry 10 --retry-delay 1 --retry-all-errors \
+      https://api.na-pivo.cz/v1/health
+  then python3 deploy.py && $C up -d --no-deps db
+  else $C stop caddy; docker network disconnect na-pivo_proxy napivo-web
+    docker start culinair-caddy-1; false
+  fi
+```
+
+Copying the certificates avoids issuing new ones during the swap. The extra
+network lets the new Caddy reach the running web; `deploy.py` then recreates
+the web on the project networks only, so `culinair-caddy-1` can no longer serve
+it. Leave `culinair-caddy-1` stopped; it publishes the same ports.
+
+The last command recreates the database container so its 30-second healthcheck
+applies. Requests wait for the database restart, up to `DB_POOL_TIMEOUT`.
 
 ### Routine deploys
 
@@ -511,24 +553,28 @@ docker compose -p na-pivo logs --tail=30 napivo-web
 under `/opt/na-pivo/backups/rollout-*` with owner-only permissions. It builds a
 tagged image, stops the worker, and starts a temporary `napivo-web-next` instance.
 Only after HTTP, migration, database and proxy-network checks pass does it reload
-the two Na Pivo upstreams in the shared Caddy. Other sites remain unchanged.
+Caddy with both Na Pivo upstreams pointing at the temporary instance.
 After a 30-second drain it replaces the canonical web, checks it, switches back,
 and starts and checks the worker. A final drain precedes temporary-instance cleanup.
 Long-lived SSE connections can reconnect during proxy reload or web shutdown;
 this procedure does not promise uninterrupted individual streams.
 
 Run only one deploy at a time. The script holds `/var/lock/napivo-deploy.lock` and
-refuses an existing temporary instance. It requires the current production
-topology: `culinair-caddy-1`, `/opt/culinair/Caddyfile`, and exactly two
-`reverse_proxy napivo-web:8000` lines. It writes that bind-mounted file in place,
-refusing concurrent edits, and reloads the validated staged copy without restarting
-Caddy. Do not use `compose up --build` for routine production replacement: it
-removes the serving web before the replacement is ready.
+refuses an existing temporary instance. It requires a running `napivo-caddy` and
+exactly two `reverse_proxy napivo-web:8000` lines in `caddy/Caddyfile`. It edits
+that file in place during the rollout, refusing concurrent edits, and reloads the
+validated staged copy without restarting Caddy. Do not use `compose up --build`
+for routine production replacement: it removes the serving web before the
+replacement is ready.
 
 On failure, read the final message and `state.json` in the printed backup directory.
 Before canonical replacement, traffic remains on or returns to the previous web.
 If canonical readiness fails after the first switch, **keep `napivo-web-next`
 running**: it serves traffic until the canonical instance is repaired and checked.
+`caddy/Caddyfile` then still points at it, and the next deploy refuses the dirty
+checkout. Once `napivo-web` is healthy, run `git checkout caddy/Caddyfile` and
+`docker exec napivo-caddy caddy reload --config /etc/caddy/Caddyfile --adapter caddyfile`,
+check HTTPS, and only then remove `napivo-web-next`.
 If both proxy reload and rollback fail, both instances are retained for inspection.
 The script restores the previous worker image when needed; it never rolls back the
 database automatically. Previous images receive dedicated local rollback tags

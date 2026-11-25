@@ -21,6 +21,7 @@ db.sqlite3-journal
 staticfiles
 media
 backups
+caddy
 
 # Local data exports are operational inputs, never application image content
 **/*.jsonl

@@ -21,7 +21,7 @@ from pathlib import Path
 NEXT = "napivo-web-next"
 WEB = "napivo-web"
 WORKER = "napivo-worker"
-CADDY = "culinair-caddy-1"
+CADDY = "napivo-caddy"
 COMPOSE = [
     "docker",
     "compose",
@@ -54,8 +54,6 @@ def upstream_config(original: bytes, source: str, destination: str) -> bytes:
 
 
 def write_in_place(path: Path, expected: bytes, replacement: bytes) -> None:
-    # Caddy bind-mounts this individual file. Replacing its inode would leave the
-    # container reading stale bytes. Refuse concurrent edits, then preserve inode.
     with path.open("r+b") as stream:
         fcntl.flock(stream, fcntl.LOCK_EX)
         if stream.read() != expected:
@@ -313,7 +311,9 @@ def deploy(caddyfile: Path, drain_seconds: int) -> None:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--caddyfile", type=Path, default=Path("/opt/culinair/Caddyfile"))
+    parser.add_argument(
+        "--caddyfile", type=Path, default=Path(__file__).resolve().parent / "caddy" / "Caddyfile"
+    )
     parser.add_argument("--drain-seconds", type=int, default=30)
     args = parser.parse_args()
     if args.drain_seconds < 30:

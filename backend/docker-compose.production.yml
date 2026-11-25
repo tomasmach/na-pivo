@@ -11,3 +11,22 @@ services:
       driver: journald
       options:
         tag: "{{.Name}}"
+  caddy:
+    image: caddy:2.11.9
+    container_name: napivo-caddy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      # A directory mount, so the container sees the file a new checkout writes.
+      - ./caddy:/etc/caddy:ro
+      - napivo_media:/srv/napivo-media:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    networks:
+      - proxy
+
+volumes:
+  caddy_data:
+  caddy_config:

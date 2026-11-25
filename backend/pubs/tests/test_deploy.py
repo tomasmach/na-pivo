@@ -23,6 +23,12 @@ def test_proxy_edit_preserves_other_sites_and_bind_mount_inode(tmp_path):
     assert path.read_bytes() == replacement
 
 
+def test_repository_caddyfile_routes_both_hosts_through_the_switchable_upstream():
+    config = (Path(deploy.__file__).parent / "caddy" / "Caddyfile").read_bytes()
+    switched = deploy.upstream_config(config, deploy.WEB, deploy.NEXT)
+    assert switched.count(b"reverse_proxy napivo-web-next:8000") == 2
+
+
 @pytest.mark.parametrize("count", [0, 1, 3])
 def test_proxy_edit_rejects_unexpected_topology(count):
     with pytest.raises(RuntimeError, match="exactly"):
