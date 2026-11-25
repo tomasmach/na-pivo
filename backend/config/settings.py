@@ -184,7 +184,7 @@ DB_POOL_MAX_IDLE: float = float(os.environ.get("DB_POOL_MAX_IDLE", "60"))
 # Web requests (everything but /v1/ and files like robots.txt) one worker serves at once.
 # Each holds at most one pooled connection, so the rest of the pool stays free for the app's API even
 # while a crawler walks every pub page. A quarter of the pool by default: 5 of 20, 2 of the 8 a deploy
-# candidate runs with. At least one connection always stays the API's.
+# candidate runs with. A pool of two or more always keeps at least one connection for the API.
 WEB_PAGE_CONCURRENCY: int = min(
     max(1, int(os.environ.get("WEB_PAGE_CONCURRENCY", DB_POOL_MAX_SIZE // 4))), max(1, DB_POOL_MAX_SIZE - 1)
 )
