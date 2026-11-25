@@ -71,6 +71,8 @@ export interface UseNearbyPubResult {
   retry: () => void;
   /** Keep live GPS while the manual picker is open so its distances stay current. */
   setPicking: (active: boolean) => void;
+  /** Unpin once the evening is over, so the next pub is detected again. */
+  release: () => void;
 }
 
 export interface UseNearbyPubOptions {
@@ -262,6 +264,12 @@ export function useNearbyPub({ pauseWhenPinned = false }: UseNearbyPubOptions = 
     }
   }, []);
 
+  const release = useCallback(() => {
+    pinnedRef.current = false;
+    setGpsPaused(false);
+    setRetryNonce((n) => n + 1);
+  }, []);
+
   const requestPermission = useCallback(async () => {
     const state = await ensureLocationPermission({ openSettingsIfDenied: true });
     setPermissionState(state);
@@ -292,7 +300,8 @@ export function useNearbyPub({ pauseWhenPinned = false }: UseNearbyPubOptions = 
       loading,
       retry,
       setPicking,
+      release,
     }),
-    [candidates, selected, selectPub, permissionState, requestPermission, loading, retry, setPicking],
+    [candidates, selected, selectPub, permissionState, requestPermission, loading, retry, setPicking, release],
   );
 }

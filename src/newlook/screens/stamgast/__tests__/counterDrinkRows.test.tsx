@@ -141,3 +141,55 @@ it('folds identical drinks into one row whose plus logs another without asking',
   expect(useTallyStore.getState().current!.drinks.map((d: { id: string }) => d.id)).toEqual(['f1', 'f2']);
   await act(async () => renderer.unmount());
 });
+
+it('goes on counting the night in the next pub after Dopito', async () => {
+  const lokal: TallySession = {
+    clientId: 'lokal',
+    pubKey: 'u2fkbnt0',
+    pubName: 'Lokál Dlouhá',
+    startedAt: new Date(Date.now() - 3 * 60000).toISOString(),
+    drinks: [drink('l1', 3), drink('l2', 3), drink('l3', 2)],
+  };
+  useTallyStore.setState({ current: lokal, history: [] });
+  useCounterNudges.getState().set({ newBeer: null, stickerFor: null, tourBanner: null });
+  useTallyStore.getState().archiveCurrent('manual');
+
+  let renderer: any;
+  await act(async () => {
+    renderer = TestRenderer.create(<StamgastScreen />);
+  });
+  const count = (n: number) => renderer.root.findAll((node: any) => node.props.accessibilityLabel === t.nv.stamgast.tonightA11y(n) && typeof node.type === 'string');
+  expect(count(3)).not.toHaveLength(0);
+  expect(texts(renderer)).toEqual(expect.arrayContaining(['Lokál Dlouhá', t.nv.stamgast.sittingDone, '3×']));
+  expect(texts(renderer)).not.toContain(t.nv.stamgast.tonightEmpty);
+  expect(texts(renderer)).toContain(t.nv.stamgast.logBeer);
+
+  await act(async () => {
+    useTallyStore.setState({ current: { ...session, startedAt: new Date(Date.now() - 60000).toISOString(), drinks: [drink('t1', 1)] } });
+  });
+  expect(count(4)).not.toHaveLength(0);
+  expect(texts(renderer)).toEqual(expect.arrayContaining(['U Zlatého tygra', 'Lokál Dlouhá', t.nv.stamgast.sittingDone]));
+  expect(stepper(renderer, 'counter-row-minus', 'Pilsner Urquell 12°')).toBeTruthy();
+  await act(async () => renderer.unmount());
+});
+
+it('does not call an evening closed for inactivity finished', async () => {
+  const lokal: TallySession = {
+    clientId: 'lokal-idle',
+    pubKey: 'u2fkbnt0',
+    pubName: 'Lokál Dlouhá',
+    startedAt: new Date(Date.now() - 3 * 60000).toISOString(),
+    drinks: [drink('i1', 3)],
+  };
+  useTallyStore.setState({ current: lokal, history: [] });
+  useCounterNudges.getState().set({ newBeer: null, stickerFor: null, tourBanner: null });
+  useTallyStore.getState().maybeAutoArchive(Date.now() + 4 * 60 * 60000);
+
+  let renderer: any;
+  await act(async () => {
+    renderer = TestRenderer.create(<StamgastScreen />);
+  });
+  expect(texts(renderer)).toContain('Lokál Dlouhá');
+  expect(texts(renderer)).not.toContain(t.nv.stamgast.sittingDone);
+  await act(async () => renderer.unmount());
+});

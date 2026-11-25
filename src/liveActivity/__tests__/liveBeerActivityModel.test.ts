@@ -5,6 +5,7 @@ import {
 } from '@/liveActivity/liveBeerActivityModel';
 import { intlLocale, t } from '@/i18n';
 import type { TallySession } from '@/stores/tallyStore';
+import { formatPrice } from '@/utils/currency';
 
 function session(overrides: Partial<TallySession> = {}): TallySession {
   return {
@@ -58,6 +59,30 @@ describe('buildBeerEveningLiveActivityProps', () => {
       openCounterLabel: t.liveActivity.openCounter,
       repeatBeerName: 'Plzeň 12°',
       repeatBeerPriceCzk: 65,
+    });
+  });
+
+  it('goes on counting the night in the next pub', () => {
+    const tygr = session({
+      clientId: 'tygr',
+      drinks: [1, 2, 3].map((n) => ({ id: `tygr-${n}`, beerName: 'Plzeň 12°', priceCzk: 59, at: '2026-07-21T18:00:00.000Z' })),
+    });
+    const lokal = session({
+      clientId: 'lokal',
+      pubName: 'Lokál Dlouhá',
+      startedAt: '2026-07-21T20:00:00.000Z',
+      drinks: [{ id: 'lokal-1', beerName: 'Pilsner Urquell', priceCzk: 62, at: '2026-07-21T20:00:00.000Z' }],
+    });
+
+    const result = buildBeerEveningLiveActivityProps(lokal, { hidePubNames: false, priceCurrency: 'CZK', night: [tygr, lokal] });
+
+    expect(result).toMatchObject({
+      sessionId: 'lokal',
+      pubName: 'Lokál Dlouhá',
+      beerCount: 4,
+      totalPrice: formatPrice(239, 'CZK'),
+      beerWordLabel: t.liveActivity.beerWord(4),
+      repeatBeerName: 'Pilsner Urquell',
     });
   });
 

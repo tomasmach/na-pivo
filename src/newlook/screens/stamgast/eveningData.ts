@@ -5,7 +5,7 @@
  */
 
 import { normalizeDrinkType } from '@/drinks/drinkTypes';
-import { drinkingDayKey, type TallyDrink, type TallySession } from '@/stores/tallyStore';
+import { drinkingDayKey, sessionDayKey, type TallyDrink, type TallySession } from '@/stores/tallyStore';
 
 export interface NightPub {
   name: string;
@@ -67,8 +67,7 @@ export function nightsOf(sessions: readonly TallySession[]): Night[] {
   const byDay = new Map<string, TallySession[]>();
   for (const session of sessions) {
     if (session.drinks.length === 0) continue;
-    const firstAt = Math.min(...session.drinks.map(atMs).filter(Number.isFinite), Date.parse(session.startedAt));
-    const day = drinkingDayKey(new Date(Number.isFinite(firstAt) ? firstAt : Date.parse(session.startedAt)));
+    const day = sessionDayKey(session);
     byDay.set(day, [...(byDay.get(day) ?? []), session]);
   }
   const nights: Night[] = [];

@@ -8,6 +8,7 @@ import { useNearbyPub, type NearbyCandidate } from '@/counter/useNearbyPub';
 import type { Pub } from '@/data/pubs';
 import type { OutsidePlaceContext } from '@/drinks/drinkTypes';
 import { useCounterHandoffStore } from '@/stores/counterHandoffStore';
+import { useTallyStore } from '@/stores/tallyStore';
 
 import type { IconName } from '../../components/Icon';
 
@@ -67,7 +68,7 @@ export function currentCountPlace(): CountPlace | null {
 /** Run once in the Štamgast tab: GPS detection, pins and the tour handoff. */
 export function useCountPlaceHost(): void {
   const nearby = useNearbyPub({ pauseWhenPinned: true });
-  const { candidates, selected, selectPub, permissionState, requestPermission, loading, retry, setPicking } = nearby;
+  const { candidates, selected, selectPub, permissionState, requestPermission, loading, retry, setPicking, release } = nearby;
   const picked = useNvPlaceStore((s) => s.picked);
 
   useEffect(() => {
@@ -88,6 +89,16 @@ export function useCountPlaceHost(): void {
   useEffect(() => {
     if (picked) selectPub(picked);
   }, [picked, selectPub]);
+
+  useEffect(
+    () =>
+      useTallyStore.subscribe((state, previous) => {
+        if (!previous.current || state.current) return;
+        useNvPlaceStore.setState({ picked: null, outside: null });
+        release();
+      }),
+    [release],
+  );
 
   useFocusEffect(
     useCallback(() => {

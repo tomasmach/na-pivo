@@ -208,6 +208,40 @@ describe('useNearbyPub', () => {
     hook.unmount();
   });
 
+  it('detects the next pub once the evening at the pinned pub is over', async () => {
+    (useDevicePosition as jest.Mock).mockImplementation(() => ({ position: currentPosition }));
+    useTallyStore.setState({
+      current: {
+        clientId: 'session-a',
+        pubKey: geohash8(PUB_A.lat, PUB_A.lng),
+        pubName: PUB_A.name,
+        startedAt: '2026-06-30T19:00:00.000Z',
+        drinks: [{ id: 'drink-1', beerName: 'Plzeň', priceCzk: 62, at: '2026-06-30T19:05:00.000Z' }],
+      },
+      history: [],
+    });
+    setNearby(PUB_A);
+    const hook = renderNearbyHook({ pauseWhenPinned: true });
+    const lastCall = () => (useDevicePosition as jest.Mock).mock.calls.at(-1);
+    await waitForExpectation(() => expect(lastCall()).toEqual([false]));
+
+    setNearby(PUB_B);
+    hook.rerender();
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(hook.result.selected?.id).toBe(PUB_A.id);
+
+    act(() => {
+      useTallyStore.getState().archiveCurrent('manual');
+      hook.result.release();
+    });
+    await waitForExpectation(() => expect(hook.result.selected?.id).toBe(PUB_B.id));
+    expect(lastCall()).toEqual([true]);
+    hook.unmount();
+  });
+
   it('keeps GPS live for callers that do not opt into pausing', async () => {
     setNearby(PUB_A);
     const hook = renderNearbyHook();

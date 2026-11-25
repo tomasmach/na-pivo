@@ -76,6 +76,8 @@ interface LiveBeerActivityPreferences {
   priceCurrency: PriceCurrency;
   homeTransit?: HomeTransitDeparture | null;
   nowMs?: number;
+  /** Every sitting of the night with the live one, so the count goes on in the next pub. */
+  night?: readonly TallySession[];
 }
 
 // GTFS route_type → SF Symbol. Anything unknown reads as a bus.
@@ -112,16 +114,17 @@ export function buildBeerEveningLiveActivityProps(
   session: TallySession | null,
   preferences: LiveBeerActivityPreferences,
 ): BeerEveningLiveActivityProps | null {
-  const beerCount = sessionCount(session);
-  if (!session || beerCount === 0) return null;
+  if (!session || sessionCount(session) === 0) return null;
+  const night = preferences.night ?? [session];
+  const beerCount = night.reduce((sum, sitting) => sum + sessionCount(sitting), 0);
 
   const latestBeer = [...session.drinks]
     .reverse()
     .find((drink) => normalizeDrinkType(drink.drinkType) === 'beer');
-  const hasKnownPrice = session.drinks.some((drink) => typeof drink.priceCzk === 'number');
+  const hasKnownPrice = night.some((sitting) => sitting.drinks.some((drink) => typeof drink.priceCzk === 'number'));
 
   const totalPrice = hasKnownPrice
-    ? formatPrice(sessionTotalCzk(session), preferences.priceCurrency)
+    ? formatPrice(night.reduce((sum, sitting) => sum + sessionTotalCzk(sitting), 0), preferences.priceCurrency)
     : '';
   const latestBeerName = latestBeer
     ? compactLabel(latestBeer.beerName, t.liveActivity.beerFallback)
