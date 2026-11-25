@@ -213,7 +213,7 @@ function groupDrinks(drinks: readonly TallyDrink[]): DrinkGroup[] {
   return [...groups.values()];
 }
 
-function DrinkGroupRow({ group, inPub, done = false, onPress, children }: { group: DrinkGroup; inPub: boolean; done?: boolean; onPress: () => void; children: React.ReactNode }) {
+function DrinkGroupRow({ group, inPub, done = false, onPress, children }: { group: DrinkGroup; inPub: boolean; done?: boolean; onPress: () => void; children?: React.ReactNode }) {
   const priceCurrency = useSettingsStore((st) => st.priceCurrency);
   const sub = [servingLine(group.latest, inPub), group.totalCzk !== null ? formatPrice(group.totalCzk, priceCurrency) : null].filter(Boolean).join(' · ');
   return (
@@ -235,17 +235,29 @@ function DrinkGroupRow({ group, inPub, done = false, onPress, children }: { grou
             </T>
           ) : null}
         </View>
+        {done ? (
+          <T s={15} w={600} c={C.muted}>
+            {`${group.count}×`}
+          </T>
+        ) : null}
       </Press>
       {children}
     </Animated.View>
   );
 }
 
-function SittingLabel({ label }: { label: string }) {
+function SittingLabel({ name, done = false }: { name: string; done?: boolean }) {
   return (
-    <T s={13} w={700} c={C.muted} numberOfLines={1} style={{ paddingTop: 6 }}>
-      {label}
-    </T>
+    <View style={[s.row, { gap: 4, paddingTop: 6 }]}>
+      <T s={13} w={700} c={C.muted} numberOfLines={1} style={{ flexShrink: 1 }}>
+        {name}
+      </T>
+      {done ? (
+        <T s={13} w={700} c={C.muted}>
+          {t.nv.stamgast.sittingDone}
+        </T>
+      ) : null}
+    </View>
   );
 }
 
@@ -461,10 +473,7 @@ function CounterView() {
       ? t.counter.outsideLabel(place.context)
       : place?.pub.name ?? copy.placeUnknown;
   const stickerShown = !!session && nudges.stickerFor === session.clientId && hereCount >= 3;
-  const sittingLabel = (sitting: TallySession) => {
-    const name = hidePubNames && !isContextPubKey(sitting.pubKey) ? t.nv.common.secretPub : sitting.pubName;
-    return sitting === current ? name : copy.sittingDone(name);
-  };
+  const sittingName = (sitting: TallySession) => (hidePubNames && !isContextPubKey(sitting.pubKey) ? t.nv.common.secretPub : sitting.pubName);
   const tourBanner = nudges.tourBanner && run?.statuses[nudges.tourBanner.stopId] === 'visited' ? nudges.tourBanner : null;
 
   // A direct log gives its own impact; a second buzz from the button would double it.
@@ -532,7 +541,7 @@ function CounterView() {
           </View>
           {session && groups.length ? (
             <>
-              {earlier.length ? <SittingLabel label={placeName} /> : null}
+              {earlier.length ? <SittingLabel name={placeName} /> : null}
               {groups.map((g) => (
                 <DrinkGroupRow
                   key={g.key}
@@ -553,13 +562,9 @@ function CounterView() {
           ) : null}
           {earlier.map((sitting) => (
             <View key={sitting.clientId}>
-              <SittingLabel label={sittingLabel(sitting)} />
+              <SittingLabel name={sittingName(sitting)} done={sitting.archivedReason === 'manual'} />
               {groupDrinks(sitting.drinks).map((g) => (
-                <DrinkGroupRow key={g.key} group={g} inPub={!isContextPubKey(sitting.pubKey)} done onPress={() => drinkActions(router, sessionDayKey(sitting), sitting.startedAt, g.latest)}>
-                  <D s={24} c={C.muted} accessibilityElementsHidden importantForAccessibility="no" style={{ minWidth: 26, textAlign: 'center' }}>
-                    {`${g.count}×`}
-                  </D>
-                </DrinkGroupRow>
+                <DrinkGroupRow key={g.key} group={g} inPub={!isContextPubKey(sitting.pubKey)} done onPress={() => drinkActions(router, sessionDayKey(sitting), sitting.startedAt, g.latest)} />
               ))}
             </View>
           ))}

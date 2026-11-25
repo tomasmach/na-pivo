@@ -43,7 +43,7 @@ export const stamgastCs = {
   close: 'Zavřít',
   tonightList: 'Dnešní piva',
   tonightEmpty: 'Zatím nic. První pivo zapíšeš tlačítkem dole.',
-  sittingDone: (pub: string) => `${pub} · dopito`,
+  sittingDone: '· dopito',
   addOneA11y: (name: string) => `Přidat: ${name}`,
   removeOneA11y: (name: string) => `Ubrat: ${name}`,
   drinkRowA11y: (name: string, count: number) => `${name}, ${count}×`,
