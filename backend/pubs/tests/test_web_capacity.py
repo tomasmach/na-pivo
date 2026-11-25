@@ -70,22 +70,36 @@ async def test_the_api_and_files_answer_while_every_web_place_is_taken(one_place
     assert response.status_code == 200
 
 
-@pytest.mark.django_db(transaction=True)
-async def test_a_client_that_hangs_up_keeps_its_place_until_its_page_is_done(one_place, monkeypatch):
-    reached, finish = threading.Event(), threading.Event()
-    cities_by_size = pubs_data.cities_by_size
+async def test_a_missing_file_answers_404_without_the_database_while_every_web_place_is_taken(one_place):
+    places = capacity._places_of_this_loop()
+    await places.acquire()
+    try:
+        response = await _get("/web/old.css")
+    finally:
+        places.release()
 
-    def slow_cities():
+    assert response.status_code == 404
+
+
+@pytest.mark.django_db(transaction=True)
+@pytest.mark.parametrize(
+    ("module", "name"), [(pubs_data, "cities_by_size"), (capacity, "_return_connections")], ids=["view", "returning"]
+)
+async def test_a_client_that_hangs_up_keeps_its_place_until_its_connection_is_back(one_place, monkeypatch, module, name):
+    reached, finish = threading.Event(), threading.Event()
+    original = getattr(module, name)
+
+    def slow():
         reached.set()
         finish.wait(5)
-        return cities_by_size()
+        return original()
 
-    monkeypatch.setattr(pubs_data, "cities_by_size", slow_cities)
+    monkeypatch.setattr(module, name, slow)
     gone = asyncio.ensure_future(_get("/hospody"))
     assert await asyncio.to_thread(reached.wait, 5)
     gone.cancel()
 
-    # The view's thread still holds its connection, so the place is not free yet.
+    # The request's thread still holds its connection, so the place is not free yet.
     assert (await _get("/hospody")).status_code == 503
 
     finish.set()

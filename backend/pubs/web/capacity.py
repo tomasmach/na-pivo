@@ -89,12 +89,11 @@ def web_capacity_middleware(get_response):
             try:
                 return await get_response(request)
             finally:
-                try:
-                    # The request's own thread runs this once the view is done. A client that hangs up
-                    # ends the wait above, but the view's thread goes on with its connection until then.
-                    await sync_to_async(_return_connections)()
-                finally:
-                    places.release()
+                # The request's own thread runs this once the view is done. A client that hangs up ends
+                # the waits here, not the view's thread, so the place is freed when the connection is back.
+                returned = asyncio.ensure_future(sync_to_async(_return_connections)())
+                returned.add_done_callback(lambda _: places.release())
+                await asyncio.shield(returned)
 
     else:
         places = threading.BoundedSemaphore(settings.WEB_PAGE_CONCURRENCY)
