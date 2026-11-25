@@ -495,6 +495,36 @@ cp .env.production.example .env
 docker compose -p na-pivo -f docker-compose.yml -f docker-compose.production.yml up -d --build
 ```
 
+### Moving off the culinair proxy (one time)
+
+Until this runs, production traffic still enters through `culinair-caddy-1`
+(`/opt/culinair`). The first tag with `caddy/Caddyfile` needs this cutover
+before its `deploy.py`; without it `deploy.py` stops at the proxy check and
+leaves traffic unchanged. Expect a few seconds without HTTPS while the two
+proxies swap ports 80 and 443.
+
+```bash
+cd /opt/na-pivo/backend   # checked out at the new api-* tag
+C="docker compose -p na-pivo -f docker-compose.yml -f docker-compose.production.yml"
+$C create caddy
+docker run --rm -v culinair_caddy_data:/from:ro -v na-pivo_caddy_data:/to \
+  caddy:2.11.9 cp -a /from/caddy /to/
+docker network connect na-pivo_proxy napivo-web
+docker stop --timeout 5 culinair-caddy-1 && $C start caddy
+curl -fsS https://api.na-pivo.cz/v1/health
+python3 deploy.py
+$C up -d --no-deps db
+```
+
+Copying the certificates avoids issuing new ones during the swap. The extra
+network lets the new Caddy reach the running web; `deploy.py` then recreates
+the web on the project networks only. Before `deploy.py`, roll back with
+`$C stop caddy && docker start culinair-caddy-1`. Leave `culinair-caddy-1`
+stopped afterwards; it publishes the same ports.
+
+The last command recreates the database container so its 30-second healthcheck
+applies. Requests wait for the database restart, up to `DB_POOL_TIMEOUT`.
+
 ### Routine deploys
 
 Tag the verified commit as `api-YYYY.MM.DD.N` (from `dev`, or from the last
@@ -530,32 +560,6 @@ validated staged copy without restarting Caddy. After a failed rollout that left
 `napivo-web-next` serving, the file stays switched and the next deploy refuses the
 dirty checkout until you restore it. Do not use `compose up --build` for routine production replacement: it
 removes the serving web before the replacement is ready.
-
-#### Moving off the culinair proxy (one time)
-
-Until this runs, production traffic still enters through `culinair-caddy-1`
-(`/opt/culinair`). The first tag with `caddy/Caddyfile` needs this cutover
-before its `deploy.py`; without it `deploy.py` stops at the proxy check and
-leaves traffic unchanged. Expect a few seconds without HTTPS while the two
-proxies swap ports 80 and 443.
-
-```bash
-cd /opt/na-pivo/backend   # checked out at the new api-* tag
-C="docker compose -p na-pivo -f docker-compose.yml -f docker-compose.production.yml"
-$C create caddy
-docker run --rm -v culinair_caddy_data:/from:ro -v na-pivo_caddy_data:/to \
-  caddy:2.11.9 cp -a /from/caddy /to/
-docker network connect na-pivo_proxy napivo-web
-docker stop --time 5 culinair-caddy-1 && $C start caddy
-curl -fsS https://api.na-pivo.cz/v1/health
-python3 deploy.py
-```
-
-Copying the certificates avoids issuing new ones during the swap. The extra
-network lets the new Caddy reach the running web; `deploy.py` then recreates
-the web on the project networks only. Before `deploy.py`, roll back with
-`$C stop caddy && docker start culinair-caddy-1`. Never start the culinair
-project again: its Caddy would take ports 80 and 443 back.
 
 On failure, read the final message and `state.json` in the printed backup directory.
 Before canonical replacement, traffic remains on or returns to the previous web.
