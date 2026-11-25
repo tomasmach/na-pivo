@@ -2,7 +2,7 @@ jest.mock('@react-native-async-storage/async-storage', () =>
   require('@react-native-async-storage/async-storage/jest/async-storage-mock'),
 );
 
-import { allSessionsNewestFirst, findSessionByStart, type TallySession } from '../tallyStore';
+import { allSessionsNewestFirst, findSessionByStart, tonightSittings, type TallySession } from '../tallyStore';
 
 function session(startedAt: string, drinkCount: number, over: Partial<TallySession> = {}): TallySession {
   return {
@@ -59,5 +59,22 @@ describe('findSessionByStart', () => {
 
   it('returns null when nothing matches', () => {
     expect(findSessionByStart(current, history, 'nope')).toBeNull();
+  });
+});
+
+describe('tonightSittings', () => {
+  const at = (day: number, hour: number) => new Date(2026, 10, day, hour, 0).toISOString();
+  const ids = (sittings: TallySession[]) => sittings.map((sitting) => sitting.clientId);
+  const yesterday = session(at(23, 20), 2, { clientId: 'yesterday' });
+  const tygr = session(at(24, 19), 3, { clientId: 'tygr' });
+
+  it('keeps the earlier pubs of the live night and the live one, oldest first', () => {
+    const lokal = session(at(25, 1), 1, { clientId: 'lokal' });
+    expect(ids(tonightSittings(lokal, [tygr, yesterday], Date.parse(at(25, 1))))).toEqual(['tygr', 'lokal']);
+  });
+
+  it('keeps the night after Dopito until the day turns at 4:00', () => {
+    expect(ids(tonightSittings(null, [tygr, yesterday], Date.parse(at(25, 2))))).toEqual(['tygr']);
+    expect(tonightSittings(null, [tygr, yesterday], Date.parse(at(25, 5)))).toEqual([]);
   });
 });

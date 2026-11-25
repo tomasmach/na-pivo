@@ -14,7 +14,7 @@ import { cancelQueuedPubBroadcasts } from '@/data/friendsQueue';
 import { trackClientEvent } from '@/data/telemetryClient';
 import { normalizeBeerName } from '@/data/communityHours';
 import { trackUiInteraction } from '@/data/uxTelemetry';
-import { normalizeDrinkType } from '@/drinks/drinkTypes';
+import { isContextPubKey, normalizeDrinkType } from '@/drinks/drinkTypes';
 import { useNowTick } from '@/friends/useNowTick';
 import { beerCountLabel, formatVolume, t } from '@/i18n';
 import { useHomeTransitStore } from '@/stores/homeTransitStore';
@@ -23,7 +23,9 @@ import {
   drinkingDayKey,
   resumableSession,
   sessionCount,
+  sessionDayKey,
   sessionTotalCzk,
+  tonightSittings,
   useTallyStore,
   type TallyDrink,
   type TallySession,
@@ -53,7 +55,6 @@ import { joinNames, personInitial } from '../parta/partaModel';
 import { useTablemates } from '../parta/tablemates';
 import { DiaryView } from './DiaryView';
 import { drinkActions } from './EveningSheets';
-import { nightsOf } from './eveningData';
 import { durationLabel, nameStatesDegree, servingLine } from './stamgastFormat';
 import { OUTSIDE_ICON, currentCountPlace, useCountPlace, useCountPlaceHost, useNvPlaceStore } from './placeStore';
 
@@ -212,6 +213,42 @@ function groupDrinks(drinks: readonly TallyDrink[]): DrinkGroup[] {
   return [...groups.values()];
 }
 
+function DrinkGroupRow({ group, inPub, done = false, onPress, children }: { group: DrinkGroup; inPub: boolean; done?: boolean; onPress: () => void; children: React.ReactNode }) {
+  const priceCurrency = useSettingsStore((st) => st.priceCurrency);
+  const sub = [servingLine(group.latest, inPub), group.totalCzk !== null ? formatPrice(group.totalCzk, priceCurrency) : null].filter(Boolean).join(' · ');
+  return (
+    <Animated.View entering={fadeIn} style={[s.row, { height: 68, gap: 12 }]}>
+      <Press
+        accessibilityRole="button"
+        accessibilityLabel={t.nv.stamgast.drinkRowA11y(group.latest.beerName, group.count)}
+        onPress={onPress}
+        style={[s.row, s.fill, { gap: 12 }]}
+      >
+        <Tile icon={normalizeDrinkType(group.latest.drinkType) === 'beer' ? 'beer' : 'circle-dot'} color={done ? C.muted : undefined} />
+        <View style={[s.fill, { gap: 2 }]}>
+          <T s={15} w={600} c={done ? C.text2 : undefined} numberOfLines={1}>
+            {group.latest.beerName}
+          </T>
+          {sub ? (
+            <T s={13} c={C.muted} numberOfLines={1}>
+              {sub}
+            </T>
+          ) : null}
+        </View>
+      </Press>
+      {children}
+    </Animated.View>
+  );
+}
+
+function SittingLabel({ label }: { label: string }) {
+  return (
+    <T s={13} w={700} c={C.muted} numberOfLines={1} style={{ paddingTop: 6 }}>
+      {label}
+    </T>
+  );
+}
+
 function lastBeerOf(session: TallySession | null): TallyDrink | undefined {
   const drinks = session?.drinks ?? [];
   for (let i = drinks.length - 1; i >= 0; i--) {
@@ -333,14 +370,17 @@ function CounterView() {
   const key = place ? placeKey(place) : null;
   const session = key && current?.pubKey === key ? current : null;
   const inPub = place?.kind === 'pub';
-  const count = sessionCount(session);
-  const spent = sessionTotalCzk(session);
+  const night = useMemo(() => tonightSittings(current, history, now), [current, history, now]);
+  const earlier = useMemo(() => night.filter((sitting) => sitting !== session).reverse(), [night, session]);
+  const count = night.reduce((sum, sitting) => sum + sessionCount(sitting), 0);
+  const spent = night.reduce((sum, sitting) => sum + sessionTotalCzk(sitting), 0);
+  const hereCount = sessionCount(session);
   const groups = useMemo(() => groupDrinks(session?.drinks ?? []), [session]);
   const lastBeer = lastBeerOf(session);
   const repeat = repeatOf(lastBeer);
-  const resumable = key && count === 0 ? resumableSession(current, history, key, now) : null;
+  const resumable = key && hereCount === 0 ? resumableSession(current, history, key, now) : null;
   const sittingMinutes = session ? Math.max(0, Math.round((now - Date.parse(session.startedAt)) / 60000)) : 0;
-  const company = useTablemates(inPub && session ? key : null, count, now);
+  const company = useTablemates(inPub && session ? key : null, hereCount, now);
 
   const openPlace = () => {
     trackUiInteraction('counter_place_open');
@@ -420,7 +460,11 @@ function CounterView() {
     : place?.kind === 'outside'
       ? t.counter.outsideLabel(place.context)
       : place?.pub.name ?? copy.placeUnknown;
-  const stickerShown = !!session && nudges.stickerFor === session.clientId && count >= 3;
+  const stickerShown = !!session && nudges.stickerFor === session.clientId && hereCount >= 3;
+  const sittingLabel = (sitting: TallySession) => {
+    const name = hidePubNames && !isContextPubKey(sitting.pubKey) ? t.nv.common.secretPub : sitting.pubName;
+    return sitting === current ? name : copy.sittingDone(name);
+  };
   const tourBanner = nudges.tourBanner && run?.statuses[nudges.tourBanner.stopId] === 'visited' ? nudges.tourBanner : null;
 
   // A direct log gives its own impact; a second buzz from the button would double it.
@@ -456,7 +500,7 @@ function CounterView() {
             </D>
           </Animated.View>
           <T s={17} w={600} c={C.text2}>
-            {atFriend && friendHome ? copy.atFriend(count) : copy.tonight(count)}
+            {atFriend && friendHome && !earlier.length ? copy.atFriend(count) : copy.tonight(count)}
           </T>
           <View style={[s.row, { gap: 28, paddingTop: 8 }]}>
             {atFriend ? null : <Stat value={formatPrice(spent, priceCurrency)} label={copy.statSpent} />}
@@ -479,7 +523,7 @@ function CounterView() {
           <QuickAction icon="circle-check" label={copy.quickDone} onPress={finish} />
         </View>
         {atFriend ? <FriendEveningCard /> : null}
-        {session && count > 0 && !atFriend ? <TransitCard session={session} /> : null}
+        {session && hereCount > 0 && !atFriend ? <TransitCard session={session} /> : null}
         <View style={{ backgroundColor: C.card, borderRadius: 24, paddingTop: 4, paddingHorizontal: 16, paddingBottom: 8 }}>
           <View style={[s.row, { height: 50 }]}>
             <T s={16} w={700}>
@@ -487,28 +531,15 @@ function CounterView() {
             </T>
           </View>
           {session && groups.length ? (
-            groups.map((g) => {
-              const sub = [servingLine(g.latest, inPub), g.totalCzk !== null ? formatPrice(g.totalCzk, priceCurrency) : null].filter(Boolean).join(' · ');
-              return (
-                <Animated.View key={g.key} entering={fadeIn} style={[s.row, { height: 68, gap: 12 }]}>
-                  <Press
-                    accessibilityRole="button"
-                    accessibilityLabel={copy.drinkRowA11y(g.latest.beerName, g.count)}
-                    onPress={() => drinkActions(router, nightsOf([session])[0].day, session.startedAt, g.latest, { removeDrink: removeCountedDrink })}
-                    style={[s.row, s.fill, { gap: 12 }]}
-                  >
-                    <Tile icon={normalizeDrinkType(g.latest.drinkType) === 'beer' ? 'beer' : 'circle-dot'} />
-                    <View style={[s.fill, { gap: 2 }]}>
-                      <T s={15} w={600} numberOfLines={1}>
-                        {g.latest.beerName}
-                      </T>
-                      {sub ? (
-                        <T s={13} c={C.muted} numberOfLines={1}>
-                          {sub}
-                        </T>
-                      ) : null}
-                    </View>
-                  </Press>
+            <>
+              {earlier.length ? <SittingLabel label={placeName} /> : null}
+              {groups.map((g) => (
+                <DrinkGroupRow
+                  key={g.key}
+                  group={g}
+                  inPub={inPub}
+                  onPress={() => drinkActions(router, sessionDayKey(session), session.startedAt, g.latest, { removeDrink: removeCountedDrink })}
+                >
                   <View style={[s.row, { gap: 4 }]}>
                     <IconButton icon="minus" iconSize={20} color={C.text2} testID="counter-row-minus" label={copy.removeOneA11y(g.latest.beerName)} onPress={() => removeOne(g)} />
                     <D s={24} c={C.yellow} accessibilityElementsHidden importantForAccessibility="no" style={{ minWidth: 26, textAlign: 'center' }}>
@@ -516,10 +547,23 @@ function CounterView() {
                     </D>
                     <IconButton icon="plus" iconSize={20} color={C.text2} haptic={false} testID="counter-row-plus" label={copy.addOneA11y(g.latest.beerName)} onPress={() => addAnother(g.latest)} />
                   </View>
-                </Animated.View>
-              );
-            })
-          ) : (
+                </DrinkGroupRow>
+              ))}
+            </>
+          ) : null}
+          {earlier.map((sitting) => (
+            <View key={sitting.clientId}>
+              <SittingLabel label={sittingLabel(sitting)} />
+              {groupDrinks(sitting.drinks).map((g) => (
+                <DrinkGroupRow key={g.key} group={g} inPub={!isContextPubKey(sitting.pubKey)} done onPress={() => drinkActions(router, sessionDayKey(sitting), sitting.startedAt, g.latest)}>
+                  <D s={24} c={C.muted} accessibilityElementsHidden importantForAccessibility="no" style={{ minWidth: 26, textAlign: 'center' }}>
+                    {`${g.count}×`}
+                  </D>
+                </DrinkGroupRow>
+              ))}
+            </View>
+          ))}
+          {(session && groups.length) || earlier.length ? null : (
             <T s={14} c={C.muted} style={{ paddingVertical: 14 }}>
               {copy.tonightEmpty}
             </T>
@@ -580,7 +624,7 @@ function CounterView() {
               </T>
             </View>
             <View style={[s.fill, { gap: 2 }]}>
-              <T s={15} w={700}>{copy.stickerTitle(count)}</T>
+              <T s={15} w={700}>{copy.stickerTitle(hereCount)}</T>
               <T s={12} c={C.muted}>
                 {copy.stickerSub}
               </T>

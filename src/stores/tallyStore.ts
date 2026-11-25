@@ -237,6 +237,22 @@ export function drinkingDayKey(at: Date): string {
   return `${y}-${m}-${d}`;
 }
 
+/** Drinking day of a sitting, from its earliest drink or its start. */
+export function sessionDayKey(session: TallySession): string {
+  const startedMs = Date.parse(session.startedAt);
+  const firstMs = Math.min(...session.drinks.map((drink) => Date.parse(drink.at)).filter(Number.isFinite), startedMs);
+  return drinkingDayKey(new Date(Number.isFinite(firstMs) ? firstMs : startedMs));
+}
+
+/** Every sitting of the night still going, oldest first: the live sitting's drinking day, else today's. */
+export function tonightSittings(current: TallySession | null, history: readonly TallySession[], nowMs = Date.now()): TallySession[] {
+  const live = current && current.drinks.length > 0 ? current : null;
+  const day = live ? sessionDayKey(live) : drinkingDayKey(new Date(nowMs));
+  const sittings = history.filter((session) => session.drinks.length > 0 && sessionDayKey(session) === day);
+  if (live) sittings.push(live);
+  return sittings.sort((a, b) => Date.parse(a.startedAt) - Date.parse(b.startedAt));
+}
+
 /** True when a new drink at `at` belongs to a different session than `session`
  *  (different pub or a rolled-over drinking day). Exported for tests. */
 export function shouldStartNewSession(

@@ -39,6 +39,7 @@ export const stamgastEn: typeof stamgastCs = {
   close: 'Close',
   tonightList: "Tonight's beers",
   tonightEmpty: 'Nothing yet. Log your first beer with the button below.',
+  sittingDone: (pub: string) => `${pub} · done`,
   addOneA11y: (name: string) => `Add one: ${name}`,
   removeOneA11y: (name: string) => `Remove one: ${name}`,
   drinkRowA11y: (name: string, count: number) => `${name}, ${count}×`,

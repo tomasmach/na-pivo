@@ -22,6 +22,7 @@ import { homeTransitForCurrentEvening } from '@/transit/homeTransitSync';
 import { waitForSettingsHydration, useSettingsStore } from '@/stores/settingsStore';
 import {
   sessionPlaceContext,
+  tonightSittings,
   useTallyStore,
   type TallyDrink,
   type TallySession,
@@ -161,7 +162,9 @@ async function syncPlatformActivity(
 
 function currentPayload(): BeerEveningLiveActivityProps | null {
   const settings = useSettingsStore.getState();
-  return buildBeerEveningLiveActivityProps(useTallyStore.getState().current, {
+  const { current, history } = useTallyStore.getState();
+  return buildBeerEveningLiveActivityProps(current, {
+    night: tonightSittings(current, history),
     hidePubNames: settings.hidePubNames,
     priceCurrency: settings.priceCurrency,
     homeTransit: homeTransitForCurrentEvening(),
