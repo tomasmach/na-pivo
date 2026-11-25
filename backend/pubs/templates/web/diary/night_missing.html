@@ -1,0 +1,8 @@
+{% extends "web/app.html" %}
+{% load i18n web %}
+{% block content %}
+{% translate "Tenhle večer v deníku nemám." as empty_title %}
+{% translate "Možná se pivo smazalo, nebo je to jiný den." as empty_text %}
+{% translate "Zpátky do deníku" as empty_action %}
+{% include "web/components/empty.html" with icon="notebook-pen" title=empty_title text=empty_text action_label=empty_action action_url=diary_url %}
+{% endblock %}

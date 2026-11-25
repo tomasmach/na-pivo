@@ -1,0 +1,12 @@
+{
+  "name": "Na pivo",
+  "short_name": "Na pivo",
+  "start_url": "/",
+  "display": "browser",
+  "background_color": "#0A0A0A",
+  "theme_color": "#0A0A0A",
+  "icons": [
+    {"src": "/apple-touch-icon.png", "sizes": "180x180", "type": "image/png"},
+    {"src": "/icon-512.png", "sizes": "512x512", "type": "image/png"}
+  ]
+}

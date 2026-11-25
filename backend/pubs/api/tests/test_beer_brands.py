@@ -124,6 +124,15 @@ def test_suggest_caps_limit(client):
 
 
 @pytest.mark.django_db
+def test_suggest_lists_a_brand_named_like_its_beer_once(client):
+    resp = client.get("/v1/beer-brands/suggest", {"q": "Pils", "limit": 6})
+
+    assert resp.status_code == status.HTTP_200_OK
+    names = [item["name"] for item in resp.json()["suggestions"]]
+    assert names.count("Pilsner Urquell") == 1
+
+
+@pytest.mark.django_db
 def test_suggest_blank_query_returns_top_ranked_brands(client):
     resp = client.get("/v1/beer-brands/suggest", {"q": "", "limit": 3})
 
@@ -172,6 +181,21 @@ def test_match_cache_reuses_product_snapshot():
         assert match_beer("plzen", match_cache=match_cache).brand.key == "pilsner-urquell"
 
     assert count_beer_catalog_selects(queries.captured_queries) == (1, 0)
+
+
+@pytest.mark.django_db
+def test_cached_exact_match_agrees_with_the_full_catalogue_scan():
+    names = ["Domácí kvasnicák", "tanková Plzeň", "IPA 14°", "12", ""]
+    for entity in [*BeerProduct.objects.all(), *BeerBrand.objects.all()]:
+        names += [entity.name, *(entity.aliases or [])]
+    match_cache = BeerCatalogMatchCache()
+
+    def identity(match):
+        return None if match is None else (match.brand.pk, match.product and match.product.pk)
+
+    for name in names:
+        expected = identity(match_beer(name, fuzzy=False))
+        assert identity(match_beer(name, fuzzy=False, match_cache=match_cache)) == expected, name
 
 
 def test_beer_brand_throttle_scope_is_configured():

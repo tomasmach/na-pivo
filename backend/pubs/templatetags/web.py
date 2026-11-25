@@ -1,0 +1,77 @@
+"""Template tags of the web: ``{% load web %}``.
+
+``{% web_url "web-pubs-city" city="praha" %}``  path in the language being rendered
+``{% icon "map-pin" %}``                         inline lucide icon (``class`` adds classes)
+``{% asset "np.css" %}``                         versioned URL of a web file
+``{% stylesheet "pubs.css" %}``                  the one stylesheet link of a page: np.css with these
+``{{ area.name|place }}``                          a town as the page language names it
+``{{ stop.name|pub_name }}``                       a pub as every page names it
+``{{ day|timed }}``                                the date in ``<time datetime>`` (a format may follow)
+"""
+
+from __future__ import annotations
+
+from functools import cache
+from pathlib import Path
+
+from django import template
+from django.utils import formats
+from django.utils.html import escape
+from django.utils.safestring import SafeString, mark_safe
+
+from pubs.web.assets import asset_url, stylesheet_name
+from pubs.web.dates import time_tag
+from pubs.web.places import place_name, pub_name
+from pubs.web.routes import web_reverse
+
+register = template.Library()
+_ICONS = Path(__file__).resolve().parent.parent / "web" / "icons"
+
+
+@register.simple_tag
+def web_url(name: str, **kwargs) -> str:
+    return web_reverse(name, **kwargs)
+
+
+@cache
+def _icon_body(name: str) -> str:
+    path = _ICONS / f"{name}.svg"
+    if not name.replace("-", "").isalnum() or not path.is_file():
+        raise template.TemplateSyntaxError(f"Unknown icon {name!r}; add it to pubs/web/icons/")
+    return path.read_text().strip()
+
+
+@register.simple_tag
+def icon(name: str, cls: str = "", label: str = "") -> SafeString:
+    """Lucide icon. Decorative unless ``label`` gives it a name."""
+
+    a11y = f'role="img" aria-label="{escape(label)}"' if label else 'aria-hidden="true"'
+    classes = escape(f"np-icon {cls}".strip())
+    return mark_safe(
+        f'<svg class="{classes}" viewBox="0 0 24 24" fill="none" stroke="currentColor" '
+        f'stroke-width="2" stroke-linecap="round" stroke-linejoin="round" {a11y}>'
+        f"{_icon_body(name)}</svg>"
+    )
+
+
+@register.simple_tag
+def asset(name: str) -> str:
+    return asset_url(name)
+
+
+@register.simple_tag
+def stylesheet(*names: str) -> SafeString:
+    return mark_safe(f'<link rel="stylesheet" href="{asset_url(stylesheet_name(names))}">')
+
+
+@register.filter
+def place(name: str) -> str:
+    return place_name(name)
+
+
+register.filter("pub_name", pub_name)
+
+
+@register.filter
+def timed(day, fmt: str = "DATE_FORMAT") -> SafeString:
+    return time_tag(day, formats.date_format(day, fmt))

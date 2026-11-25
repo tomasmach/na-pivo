@@ -63,6 +63,8 @@ export interface FetchPubHoursOptions {
    * controlled pace. Batch callers keep the old bounded sync behavior.
    */
   syncBudget?: number;
+  /** Skip the answer another screen got for this pub a moment ago. */
+  fresh?: boolean;
 }
 
 interface WireBeer {
@@ -198,12 +200,43 @@ function toResult(entry: BackendResult | undefined): PubHoursResult {
   };
 }
 
+const REUSE_MS = 5 * 60_000;
+const KNOWN_LIMIT = 200;
+
+interface Known {
+  at: number;
+  etag: string | null;
+  result: PubHoursResult;
+}
+
+const known = new Map<string, Known>();
+const inFlight = new Map<string, Promise<PubHoursResult | undefined>>();
+let generation = 0;
+
+/** Forget known answers, e.g. after this device changed a pub's menu or hours. */
+export function forgetPubHours(): void {
+  generation += 1;
+  known.clear();
+  inFlight.clear();
+}
+
+/** A settled answer stands for five minutes, or until the pub opens or closes. */
+function stillCurrent(entry: Known, now: number): boolean {
+  if (entry.result.status !== 'ok' && entry.result.status !== 'unknown') return false;
+  if (now - entry.at >= REUSE_MS) return false;
+  return !(Date.parse(entry.result.nextChange ?? '') <= now);
+}
+
 /**
  * Look up opening hours for the given pubs.
  *
  * Maps the backend's response (returned IN INPUT ORDER) back onto each pub's
  * `id` BY INDEX — the backend key is a geohash, not our pub id, so we must not
  * trust it for matching.
+ *
+ * One pub is read with a GET the server can answer with 304. Screens asking at
+ * once share the request, and a settled answer is reused without asking. A
+ * pending or failed answer is asked again, so polling still reaches the server.
  *
  * @param pubs   The pubs to look up. Typically a single currently-targeted pub.
  * @param signal Optional caller AbortSignal (e.g. cancel on pub change/unmount).
@@ -215,6 +248,79 @@ export async function fetchPubHours(
   pubs: Pub[],
   signal?: AbortSignal,
   options: FetchPubHoursOptions = {},
+): Promise<Map<string, PubHoursResult>> {
+  if (pubs.length !== 1 || (options.syncBudget ?? 0) > 0 || signal?.aborted) {
+    return requestPubHours(pubs, signal, options);
+  }
+  const [pub] = pubs;
+  const key = JSON.stringify([pub.name, pub.lat, pub.lng, pub.city ?? null]);
+  const cached = known.get(key);
+  let answer: Promise<PubHoursResult | undefined>;
+  if (!options.fresh && cached && stillCurrent(cached, Date.now())) answer = Promise.resolve(cached.result);
+  else answer = (!options.fresh && inFlight.get(key)) || lookUp(key, pub, cached);
+  const result = await (signal ? Promise.race([answer, whenAborted(signal)]) : answer);
+  const out = new Map<string, PubHoursResult>();
+  if (result && !signal?.aborted) out.set(pub.id, result);
+  return out;
+}
+
+function lookUp(key: string, pub: Pub, cached: Known | undefined): Promise<PubHoursResult | undefined> {
+  const startedIn = generation;
+  const request: Promise<PubHoursResult | undefined> = readPubHours(pub, cached).then((reply) => {
+    if (inFlight.get(key) === request) inFlight.delete(key);
+    if (!reply) return undefined;
+    if (startedIn === generation) {
+      known.delete(key);
+      known.set(key, { at: Date.now(), ...reply });
+      if (known.size > KNOWN_LIMIT) known.delete(known.keys().next().value as string);
+    }
+    return reply.result;
+  });
+  inFlight.set(key, request);
+  return request;
+}
+
+async function readPubHours(pub: Pub, cached: Known | undefined): Promise<Omit<Known, 'at'> | null> {
+  const endpoint = getBackendEndpoint('/v1/pub-hours');
+  if (!endpoint) return null;
+  const query = [['name', pub.name], ['lat', String(pub.lat)], ['lng', String(pub.lng)], ['city', pub.city]]
+    .flatMap(([name, value]) => (value ? [`${name}=${encodeURIComponent(value)}`] : []))
+    .join('&');
+  const abort = chainAbortSignal(undefined, REQUEST_TIMEOUT_MS);
+  try {
+    const resp = await fetch(`${endpoint}?${query}`, {
+      method: 'GET',
+      headers: cached?.etag ? { 'If-None-Match': cached.etag } : {},
+      signal: abort.signal,
+    });
+    if (resp.status === 304 && cached) return { etag: cached.etag, result: cached.result };
+    if (resp.status === 405) {
+      const result = (await requestPubHours([pub], undefined, {})).get(pub.id);
+      return result ? { etag: null, result } : null;
+    }
+    if (!resp.ok) {
+      trackApiFailure('pub_hours', { endpoint: '/v1/pub-hours', status: resp.status });
+      return null;
+    }
+    const data = (await resp.json()) as BackendResponse;
+    if (!Array.isArray(data?.results) || data.results.length === 0) return null;
+    return { etag: resp.headers.get('ETag'), result: toResult(data.results[0]) };
+  } catch (err) {
+    trackApiFailure('pub_hours', { endpoint: '/v1/pub-hours', reason: 'exception', error: err });
+    return null;
+  } finally {
+    abort.cleanup();
+  }
+}
+
+function whenAborted(signal: AbortSignal): Promise<undefined> {
+  return new Promise((resolve) => signal.addEventListener('abort', () => resolve(undefined), { once: true }));
+}
+
+async function requestPubHours(
+  pubs: Pub[],
+  signal: AbortSignal | undefined,
+  options: FetchPubHoursOptions,
 ): Promise<Map<string, PubHoursResult>> {
   const out = new Map<string, PubHoursResult>();
 

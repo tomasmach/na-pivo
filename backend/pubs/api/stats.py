@@ -36,6 +36,8 @@ _DEFAULT_TIMEZONE_NAME = "Europe/Prague"
 _DRINKING_DAY_TZ = ZoneInfo(_DEFAULT_TIMEZONE_NAME)
 _DRINKING_DAY_CUTOFF = timedelta(hours=4)
 _TOP_PUBS_LIMIT = 8
+# The full "Tvoje hospody" list asks for every pub; this only bounds a runaway account.
+ALL_TOP_PUBS_LIMIT = 500
 
 
 def _as_utc(value: datetime) -> datetime:
@@ -373,6 +375,7 @@ def compute_my_stats(
     timezone_name: str | None = None,
     exclude_drinking_day: date | None = None,
     exclude_client_ids: Collection[uuid.UUID] = (),
+    top_pubs_limit: int = _TOP_PUBS_LIMIT,
 ) -> dict:
     """Aggregate ``account``'s drinks into the ``/v1/me/stats`` payload.
 
@@ -476,12 +479,14 @@ def compute_my_stats(
                 "beers": int(is_beer),
                 "spent_czk": price_czk or 0,
                 "last_drank_at": at,
+                "days": {day},
             }
         else:
             pub["beers"] += int(is_beer)
             pub["spent_czk"] += price_czk or 0
             pub["name"] = name  # ascending → newest name / timestamp win
             pub["last_drank_at"] = at
+            pub["days"].add(day)
 
     if first_drink_at is None:
         payload = _empty_payload()
@@ -511,7 +516,7 @@ def compute_my_stats(
         pubs.values(),
         key=lambda p: (p["beers"], p["last_drank_at"]),
         reverse=True,
-    )[:_TOP_PUBS_LIMIT]
+    )[:top_pubs_limit]
     top_pubs_payload = [
         {
             "cache_key": pub["cache_key"],
@@ -519,6 +524,8 @@ def compute_my_stats(
             "beers": pub["beers"],
             "spent_czk": pub["spent_czk"],
             "last_drank_at": pub["last_drank_at"].isoformat(),
+            # Additive: drinking days with a drink here, so Štamgast can say "12 večerů".
+            "evenings": len(pub["days"]),
         }
         for pub in top_pubs
     ]

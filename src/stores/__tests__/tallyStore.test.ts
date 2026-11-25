@@ -15,6 +15,7 @@ jest.mock('@/data/visitsSync', () => ({ deleteVisitByClientId, syncVisit: jest.f
 
 import {
   useTallyStore,
+  onTallySessionClosed,
   drinkingDayKey,
   shouldStartNewSession,
   isPastEveningBackdate,
@@ -763,5 +764,24 @@ describe('evenings restored from the server', () => {
     expect(useTallyStore.getState().history[0].drinks).toEqual([
       { id: 'server-2', beerName: 'Kozel 11', at: '2026-07-10T17:00:00.000Z', syncStatus: 'sent', restored: true },
     ]);
+  });
+});
+
+describe('onTallySessionClosed', () => {
+  it('tells the listener about the closed evening after the store has it in history', async () => {
+    const seen: { reason: string; inHistory: boolean; drinks: number }[] = [];
+    const stop = onTallySessionClosed((session, reason) => {
+      const inHistory = useTallyStore.getState().history.some((s) => s.clientId === session.clientId);
+      seen.push({ reason, inHistory, drinks: session.drinks.length });
+    });
+    useTallyStore.getState().addDrink(PUB_A, beer());
+    useTallyStore.getState().archiveCurrent('manual');
+    await Promise.resolve();
+    stop();
+    useTallyStore.getState().addDrink(PUB_A, beer());
+    useTallyStore.getState().archiveCurrent('manual');
+    await Promise.resolve();
+
+    expect(seen).toEqual([{ reason: 'manual', inHistory: true, drinks: 1 }]);
   });
 });

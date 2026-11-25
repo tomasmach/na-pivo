@@ -4,7 +4,7 @@ import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { setTimeout as delay } from 'node:timers/promises';
 import { start } from './processes.mjs';
-import { sdkPath } from './device.mjs';
+import { androidAbi, sdkPath } from './device.mjs';
 
 /** Create or reuse only an idle AVD previously created by this checkout. */
 export function startAndroid({ root, runDir, slot, id, env, onStart }) {
@@ -14,9 +14,10 @@ export function startAndroid({ root, runDir, slot, id, env, onStart }) {
   const adb = path.join(sdk, 'platform-tools/adb');
   const emulator = path.join(sdk, 'emulator/emulator');
   const avdmanager = path.join(sdk, 'cmdline-tools/latest/bin/avdmanager');
-  const systemImage = 'system-images;android-36.1;google_apis_playstore;arm64-v8a';
-  for (const required of [adb, emulator, avdmanager, path.join(sdk, 'system-images/android-36.1/google_apis_playstore/arm64-v8a/system.img')]) {
-    if (!fs.existsSync(required)) throw new Error('Android E2E requires the installed ARM64 API 36.1 image and SDK tools; nothing was downloaded.');
+  const image = androidAbi === 'arm64-v8a' ? ['android-36.1', 'google_apis_playstore', 'arm64-v8a'] : ['android-36', 'google_apis', 'x86_64'];
+  const systemImage = ['system-images', ...image].join(';');
+  for (const required of [adb, emulator, avdmanager, path.join(sdk, 'system-images', ...image, 'system.img')]) {
+    if (!fs.existsSync(required)) throw new Error(`Android E2E requires the installed ${systemImage} image and SDK tools; nothing was downloaded.`);
   }
   fs.mkdirSync(avdRoot, { recursive: true, mode: 0o700 });
   const androidEnv = { ...env, ANDROID_HOME: sdk, ANDROID_AVD_HOME: avdRoot };
@@ -65,7 +66,9 @@ export function startAndroid({ root, runDir, slot, id, env, onStart }) {
   fs.writeFileSync(path.join(runDir, 'android-process.json'), JSON.stringify({
     pid: child.pid, started: execFileSync('ps', ['-o', 'lstart=', '-p', String(child.pid)], { encoding: 'utf8' }).trim(), name, serial,
   }), { mode: 0o600 });
-  const discovery = path.join(os.homedir(), 'Library/Caches/TemporaryItems/avd/running');
+  const discovery = process.platform === 'darwin'
+    ? path.join(os.homedir(), 'Library/Caches/TemporaryItems/avd/running')
+    : path.join(process.env.XDG_RUNTIME_DIR || `/run/user/${os.userInfo().uid}`, 'avd/running');
   const owned = { child, serial, name, grpcPort, info: undefined, sdk, async boot() {
     const deadline = Date.now() + 180_000;
     while (Date.now() < deadline) {

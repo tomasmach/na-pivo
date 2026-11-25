@@ -23,6 +23,7 @@ import {
   getSessionToken,
   prepareAnonymousAccountMerge,
   revertToAnonymous,
+  runAccountMeWrite,
   setSession,
   type AccountSession,
 } from './account';
@@ -35,6 +36,7 @@ import {
 import { getBackendEndpoint } from './backendConfig';
 import { createQueueLock } from './createQueue';
 import { clearLocalPrivateAccountData } from './privateAccountData';
+import { parseServerSharing, type ServerSharing } from './sharingPrefsClient';
 import { adoptToursOwner } from '@/stores/toursStore';
 import { beginTourAccountChange, endTourAccountChange } from './toursBoundary';
 import { disableCachedPushDeviceWithBearer } from './pushDeviceClient';
@@ -142,6 +144,8 @@ export interface AccountProfile {
   avatarUrl: string | null;
   /** Public-by-default visibility. */
   isPublic: boolean;
+  /** Opt-in listing among the regulars on pub pages; absent on older backends. */
+  showAsPubRegular?: boolean;
   email: string;
   emailVerified: boolean;
   providers: AuthProvider[];
@@ -159,6 +163,8 @@ export interface AccountProfile {
   mapper?: AccountMapper;
   /** Pivař gamification snapshot — attached only when the backend returns it. */
   pivar?: AccountPivar;
+  /** Sharing defaults for nights, ratings and photos; absent on older backends. */
+  sharing?: ServerSharing;
 }
 
 /** Success carries the fresh account state; failure carries a code + message. */
@@ -181,6 +187,7 @@ interface RawAccount {
   nickname?: string | null;
   display_name?: string;
   is_public?: boolean;
+  show_as_pub_regular?: boolean;
   created?: boolean;
   avatar_url?: string | null;
   /** Defensive alias some providers/responses use instead of avatar_url. */
@@ -400,6 +407,7 @@ function parseProfile(data: RawAccount): AccountProfile {
     displayName: data.display_name ?? '',
     // Public-by-default: only an explicit false makes the profile private.
     isPublic: data.is_public !== false,
+    showAsPubRegular: data.show_as_pub_regular === true,
     // Backend guarantees an absolute, loadable URL; `picture` is a defensive alias.
     avatarUrl: (data.avatar_url ?? data.picture) || null,
     email: data.email ?? '',
@@ -423,6 +431,8 @@ function parseProfile(data: RawAccount): AccountProfile {
   if (usage) profile.usage = usage;
   if (mapper) profile.mapper = mapper;
   if (pivar) profile.pivar = pivar;
+  const sharing = parseServerSharing(data as Record<string, unknown>);
+  if (sharing) profile.sharing = sharing;
   return profile;
 }
 
@@ -463,7 +473,7 @@ interface FetchOutcome {
  */
 async function authFetch(
   path: string,
-  opts: { method?: string; body?: unknown; bearer?: 'current' | 'ensure' | 'claim' | 'none' },
+  opts: { method?: string; body?: unknown; bearer?: 'current' | 'ensure' | 'claim' | 'none'; onlyAsToken?: string | null },
 ): Promise<FetchOutcome | { networkError: true }> {
   const endpoint = getBackendEndpoint(path);
   if (!endpoint) return { networkError: true };
@@ -484,6 +494,7 @@ async function authFetch(
     }
   } else if (opts.bearer === 'current') {
     token = await getSessionToken();
+    if (opts.onlyAsToken !== undefined && token !== opts.onlyAsToken) return { networkError: true };
   }
 
   const controller = new AbortController();
@@ -881,6 +892,19 @@ export async function fetchAccountProfile(): Promise<AccountProfile | null> {
 }
 
 /**
+ * Only the badge values (GET /v1/account/me/badge-progress). Null when
+ * unavailable; 'unsupported' when the backend does not have this read yet.
+ */
+export async function fetchBadgeProgress(): Promise<{ id: string; badgeProgress: BadgeProgress } | 'unsupported' | null> {
+  const res = await authFetch('/v1/account/me/badge-progress', { method: 'GET', bearer: 'current' });
+  if ('networkError' in res) return null;
+  if (res.status === 404) return 'unsupported';
+  const { id, badge_progress: raw } = res.data as { id?: unknown; badge_progress?: RawBadgeProgress };
+  if (!res.ok || typeof id !== 'string' || !raw) return null;
+  return { id, badgeProgress: parseBadgeProgress(raw) };
+}
+
+/**
  * Validate the exact in-memory session that was active before the app went to
  * the background. Unlike `fetchAccountProfile`, this keeps a real 401 separate
  * from a timeout or server failure, so callers never turn a transient outage
@@ -990,6 +1014,8 @@ export async function reportProfileContent(params: {
    * additive). Older backends ignore the extra field.
    */
   nightId?: string;
+  /** Piva tab: pin the report to one beer review (backend field `checkin_id`, additive). */
+  checkinId?: string;
 }): Promise<AuthActionResult> {
   const res = await authFetch('/v1/content-reports', {
     method: 'POST',
@@ -1000,6 +1026,7 @@ export async function reportProfileContent(params: {
       comment: params.comment ?? '',
       ...(params.photoId ? { photo_id: params.photoId } : {}),
       ...(params.nightId ? { night_id: params.nightId } : {}),
+      ...(params.checkinId ? { checkin_id: params.checkinId } : {}),
     },
   });
   return resolveActionResult(res);
@@ -1027,13 +1054,18 @@ export async function updateProfile(params: {
   nickname?: string;
   displayName?: string;
   isPublic?: boolean;
+  showAsPubRegular?: boolean;
 }): Promise<AuthResult> {
   const body: Record<string, unknown> = {};
   if (params.nickname !== undefined) body.nickname = params.nickname;
   if (params.displayName !== undefined) body.display_name = params.displayName;
   if (params.isPublic !== undefined) body.is_public = params.isPublic;
+  if (params.showAsPubRegular !== undefined) body.show_as_pub_regular = params.showAsPubRegular;
 
-  const res = await authFetch('/v1/account/me', { method: 'PATCH', bearer: 'current', body });
+  const owner = await getSessionToken();
+  const res = await runAccountMeWrite(() =>
+    authFetch('/v1/account/me', { method: 'PATCH', bearer: 'current', onlyAsToken: owner, body }),
+  );
   return resolveProfileResult(res);
 }
 

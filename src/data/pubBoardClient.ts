@@ -11,7 +11,7 @@
 import { clearCachedAnonymousAccount, ensureAccount } from './account';
 import { chainAbortSignal } from './apiFetch';
 import { getBackendEndpoint } from './backendConfig';
-import type { LeaderboardPeriod } from './leaderboardsClient';
+import type { BoardPeriod } from './leaderboardsClient';
 import { trackApiFailure } from './telemetryClient';
 
 const ENDPOINT = '/v1/pubs/beer-board';
@@ -30,7 +30,7 @@ export interface PubBoardEntry {
 }
 
 export interface PubBoard {
-  period: LeaderboardPeriod;
+  period: BoardPeriod;
   /** First and last day of the window (YYYY-MM-DD); null for all time. */
   periodStart: string | null;
   periodEnd: string | null;
@@ -54,12 +54,12 @@ function parseEntry(raw: unknown): PubBoardEntry | null {
   return { rank, key: text(cache_key), name: text(name), city: text(city), lat, lng, beers };
 }
 
-export function parsePubBoard(data: unknown, fallback: LeaderboardPeriod): PubBoard | null {
+export function parsePubBoard(data: unknown, fallback: BoardPeriod): PubBoard | null {
   if (!data || typeof data !== 'object') return null;
   const raw = data as Record<string, unknown>;
   if (!Array.isArray(raw.entries)) return null;
   const period =
-    raw.period === 'week' || raw.period === 'year' || raw.period === 'all' ? raw.period : fallback;
+    raw.period === 'week' || raw.period === 'month' || raw.period === 'year' || raw.period === 'all' ? raw.period : fallback;
   return {
     period,
     periodStart: text(raw.period_start) || null,
@@ -79,7 +79,7 @@ export function parsePubBoard(data: unknown, fallback: LeaderboardPeriod): PubBo
 const memoryCache = new Map<string, { at: number; board: PubBoard }>();
 
 export async function fetchPubBoard(
-  period: LeaderboardPeriod,
+  period: BoardPeriod,
   city: string | null,
   options: { signal?: AbortSignal; force?: boolean } = {},
 ): Promise<PubBoard | null> {

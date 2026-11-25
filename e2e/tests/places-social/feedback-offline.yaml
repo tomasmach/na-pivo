@@ -12,9 +12,12 @@ tags: [critical, full]
 - runFlow:
     file: ../../maestro/route.yaml
     env:
-      ROUTE: /report
+      ROUTE: /nv/napis-mi
 - evalScript: ${output.local.request('/media', {})}
 - evalScript: ${output.local.offline()}
+- tapOn: { id: feedback-message }
+- inputText: E2E Test zprávy bez signálu.
+- hideKeyboard
 - tapOn: Přidat přílohu
 - tapOn: Vybrat z galerie
 - runFlow:
@@ -42,26 +45,10 @@ tags: [critical, full]
           when: {visible: Done}
           commands:
             - tapOn: Done
-- assertVisible: Příloha je připravená
-- scrollUntilVisible:
-    element: {id: feedback-message}
-    direction: UP
-- tapOn: {id: feedback-message}
-- inputText: E2E Test zprávy bez signálu.
-# The message is multiline; dismiss by its static attachment label, not Enter.
-- scrollUntilVisible:
-    element: {text: 'Fotka nebo screenshot \(nepovinné\)'}
-    direction: DOWN
-    centerElement: true
+- extendedWaitUntil:
+    visible: Odebrat přílohu
     timeout: 15000
-- tapOn: 'Fotka nebo screenshot \(nepovinné\)'
-- waitForAnimationToEnd:
-    timeout: 5000
-- scrollUntilVisible:
-    element: {text: Odeslat zpětnou vazbu}
-    direction: DOWN
-    centerElement: true
-- tapOn: Odeslat zpětnou vazbu
+- tapOn: Odeslat
 - assertVisible: Díky!
 - assertVisible: 'Zpráva dorazí, i kdyby teď zrovna nebylo připojení\. Odešlu ji, jakmile budeš online\.'
 - evalScript: ${output.local.screenshot('places-feedback-queued')}
@@ -73,7 +60,7 @@ tags: [critical, full]
 - runFlow:
     file: ../../maestro/route.yaml
     env:
-      ROUTE: /report
+      ROUTE: /nv/napis-mi
 - assertVisible: Napiš mi
 - evalScript: ${output.local.screenshot('places-feedback-delivered')}
 - evalScript: ${output.ps.check('feedback')}

@@ -36,7 +36,10 @@ from __future__ import annotations
 
 import base64
 import logging
+import os
+import time
 from collections.abc import Sequence
+from pathlib import Path
 
 from django.conf import settings
 from django.utils import translation
@@ -161,6 +164,7 @@ def send_email(
         settings, "RESEND_API_KEY", ""
     ):
         logger.info("email (dev no-op); attachments=%d", attachment_count)
+        _write_dev_outbox(to, subject, text or html)
         return True
 
     try:
@@ -188,6 +192,17 @@ def send_email(
 
     logger.info("email sent; attachments=%d", attachment_count)
     return True
+
+
+def _write_dev_outbox(to: str, subject: str, body: str) -> None:
+    """Local development only: keep the unsent e-mail in a file to click its links."""
+    outbox = os.environ.get("EMAIL_DEV_OUTBOX", "")
+    if not settings.DEBUG or not outbox:
+        return
+    folder = Path(outbox)
+    folder.mkdir(parents=True, exist_ok=True)
+    path = folder / f"{time.time_ns()}.txt"
+    path.write_text(f"To: {to}\nSubject: {subject}\n\n{body}\n", encoding="utf-8")
 
 
 def _html_to_text_fallback(subject: str) -> str:
@@ -253,6 +268,32 @@ def send_password_reset_email(to: str, *, link: str, code: str, locale: str = "c
             "    %(code)s\n\n"
             "Jestli to nebyl ty, nech to být. Kód platí jen chvíli.\n\nNa Pivo"
         ) % {"link": link, "code": code}
+        return send_email(to, subject, html, text=text)
+
+
+def send_account_deletion_link_email(to: str, *, link: str, locale: str = "cs") -> bool:
+    """Send the link that confirms deleting the account from the web."""
+    days = settings.ACCOUNT_DELETION_GRACE_DAYS
+    with translation.override(locale):
+        subject = gettext("Na Pivo: potvrď smazání účtu")
+        message = gettext(
+            "Na webu si někdo řekl o smazání tvého účtu. Snad ty. "
+            "Smazání potvrdíš tlačítkem níž. Pak má účet ještě %(days)s dní lhůtu "
+            "a když se mezitím přihlásíš, zůstane ti.<br><br>"
+            "Jestli to nebyl ty, nech to být, účtu se nic nestane."
+        ) % {"days": days}
+        html = _render(
+            gettext("Smazání účtu"),
+            message,
+            link=link,
+            link_label=gettext("Potvrdit smazání"),
+        )
+        text = gettext(
+            "Na webu si někdo řekl o smazání tvého účtu. Snad ty.\n\n"
+            "Smazání potvrdíš tady:\n\n%(link)s\n\n"
+            "Pak má účet ještě %(days)s dní lhůtu a když se mezitím přihlásíš, zůstane ti.\n\n"
+            "Jestli to nebyl ty, nech to být. Odkaz platí hodinu.\n\nNa Pivo"
+        ) % {"link": link, "days": days}
         return send_email(to, subject, html, text=text)
 
 

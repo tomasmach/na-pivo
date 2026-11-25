@@ -50,13 +50,13 @@ function inOrder<T>(operation: () => Promise<T>): Promise<T> {
  * the PUT tells the server to skip Parta. Without a token or permission there
  * is nothing to update.
  */
-async function keepDeviceWithoutParta(): Promise<boolean> {
+async function keepDeviceWithoutParta(unlessRecent = false): Promise<boolean> {
   try {
     const token = await AsyncStorage.getItem(PUSH_TOKEN_KEY);
     if (!token || !Notifications) return true;
     const { status } = await Notifications.getPermissionsAsync();
     if (status !== 'granted') return true;
-    return (await ensurePushTokenRegistered('granted')) !== null;
+    return (await ensurePushTokenRegistered('granted', undefined, { unlessRecent })) !== null;
   } catch {
     return false;
   }
@@ -64,7 +64,7 @@ async function keepDeviceWithoutParta(): Promise<boolean> {
 
 type PushRegistration = 'registered' | 'denied' | 'unavailable' | 'cancelled';
 
-/** Ask for notifications when undetermined, then register this device's token. */
+/** Ask for notifications while the system still allows asking, then register this device's token. */
 async function requestAndRegister(
   isCurrent: () => boolean,
   friendPush?: boolean,
@@ -74,7 +74,8 @@ async function requestAndRegister(
     const existing = await Notifications.getPermissionsAsync();
     if (!isCurrent()) return 'cancelled';
     let status = existing.status;
-    if (status === 'undetermined') {
+    // Android 13+ reports a never-asked permission as 'denied'; only canAskAgain tells it from a real no.
+    if (status !== 'granted' && existing.canAskAgain) {
       const requested = await Notifications.requestPermissionsAsync({
         ios: { allowAlert: true, allowBadge: false, allowSound: false },
       });
@@ -93,7 +94,7 @@ async function requestAndRegister(
 
 /**
  * Notification permission for a non-Parta feature (beer watch): prompts only
- * when undetermined and keeps the Parta choice as it is.
+ * while the system allows asking and keeps the Parta choice as it is.
  */
 export function requestPushRegistration(): Promise<Exclude<PushRegistration, 'cancelled'>> {
   return inOrder(async () => {
@@ -137,7 +138,7 @@ export function disableFriendPush(): Promise<boolean> {
   // background/termination while waiting for an older network request.
   useSettingsStore.getState().setFriendPushEnabled(false);
   useSettingsStore.getState().setFriendPushOptedOut(true);
-  return inOrder(keepDeviceWithoutParta);
+  return inOrder(() => keepDeviceWithoutParta());
 }
 
 /** Reconcile the persisted choice on launch, Parta focus and app foreground. */
@@ -147,14 +148,14 @@ export function ensureFriendPushRegisteredIfGranted(): Promise<void> {
     await waitForSettingsHydration();
     if (version !== choiceVersion) return;
     if (useSettingsStore.getState().friendPushOptedOut) {
-      await keepDeviceWithoutParta();
+      await keepDeviceWithoutParta(true);
       return;
     }
     if (!Notifications) return;
     try {
       const { status } = await Notifications.getPermissionsAsync();
       if (status !== 'granted' || version !== choiceVersion || useSettingsStore.getState().friendPushOptedOut) return;
-      const token = await ensurePushTokenRegistered('granted');
+      const token = await ensurePushTokenRegistered('granted', undefined, { unlessRecent: true });
       if (token && version === choiceVersion && !useSettingsStore.getState().friendPushOptedOut) {
         useSettingsStore.getState().setFriendPushEnabled(true);
       }

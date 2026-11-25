@@ -1,0 +1,419 @@
+#
+msgid ""
+msgstr ""
+"Language: cs\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=4; plural=(n == 1 && n % 1 == 0) ? 0 : (n >= 2 && n <= 4 && n % 1 == 0) ? 1: (n % 1 != 0 ) ? 2 : 3;\n"
+
+msgid "Select record"
+msgstr "Vybrat záznam"
+
+msgid "Select action"
+msgstr "Vybrat akci"
+
+msgid "Save"
+msgstr "Uložit"
+
+msgid "Collapse"
+msgstr "Sbalit"
+
+msgid "Name"
+msgstr "Název"
+
+msgid "Value"
+msgstr "Hodnota"
+
+msgid "All"
+msgstr "Vše"
+
+msgid " By %(filter_title)s "
+msgstr " Podle: %(filter_title)s "
+
+msgid "Yes"
+msgstr "Ano"
+
+msgid "No"
+msgstr "Ne"
+
+msgid "From"
+msgstr "Od"
+
+msgid "To"
+msgstr "Do"
+
+msgid "Date from"
+msgstr "Datum od"
+
+msgid "Time"
+msgstr "Čas"
+
+msgid "Date to"
+msgstr "Datum do"
+
+msgid "Not enough data."
+msgstr "Málo dat."
+
+msgid "Add new item"
+msgstr "Přidat položku"
+
+msgid "Group"
+msgstr "Skupina"
+
+msgid "Permissions"
+msgstr "Oprávnění"
+
+msgid "User"
+msgstr "Uživatel"
+
+msgid "Edit"
+msgstr "Upravit"
+
+msgid "Select format"
+msgstr "Vybrat formát"
+
+msgid "Submit"
+msgstr "Odeslat"
+
+msgid "Delete"
+msgstr "Smazat"
+
+msgid "%(class_name)s %(instance)s"
+msgstr "%(class_name)s %(instance)s"
+
+msgid "and"
+msgstr "a"
+
+msgid "Date/time"
+msgstr "Datum a čas"
+
+msgid "Action"
+msgstr "Akce"
+
+msgid "Comment"
+msgstr "Komentář"
+
+msgid "previous"
+msgstr "předchozí"
+
+msgid "next"
+msgstr "další"
+
+msgid "Close"
+msgstr "Zavřít"
+
+msgid "Select action to run"
+msgstr "Vyber akci"
+
+msgid "Items must be selected in order to perform actions on them. No items have been changed."
+msgstr "Nejdřív vyber záznamy, se kterými se má akce provést. Nic se nezměnilo."
+
+msgid "Select value"
+msgstr "Vybrat hodnotu"
+
+msgid "Run the selected action"
+msgstr "Provést vybranou akci"
+
+msgid "Run"
+msgstr "Provést"
+
+msgid "Click here to select the objects across all pages"
+msgstr "Klikni pro výběr záznamů na všech stránkách"
+
+msgid "Select all %(total_count)s %(module_name)s"
+msgstr "Vybrat všech %(total_count)s záznamů: %(module_name)s"
+
+msgid "Clear selection"
+msgstr "Zrušit výběr"
+
+msgid "Django site admin"
+msgstr "Na pivo admin"
+
+msgid "You don’t have permission to view or edit anything."
+msgstr "Nemáš oprávnění nic zobrazit ani upravit."
+
+msgid "Change password"
+msgstr "Změnit heslo"
+
+msgid "History"
+msgstr "Historie"
+
+msgid "View on site"
+msgstr "Zobrazit na webu"
+
+msgid "Objects"
+msgstr "Záznamy"
+
+msgid "Summary"
+msgstr "Souhrn"
+
+msgid "Welcome back to"
+msgstr "Vítej zpátky v adminu"
+
+msgid "Log in"
+msgstr "Přihlásit se"
+
+msgid "Forgotten your password or username?"
+msgstr "Zapomněl(a) jsi heslo nebo jméno?"
+
+msgid "This object doesn’t have a change history. It probably wasn’t added via this admin site."
+msgstr "Tenhle záznam nemá historii změn. Nejspíš nevznikl v adminu."
+
+msgid "Show all"
+msgstr "Zobrazit vše"
+
+msgid "Type to search"
+msgstr "Hledat…"
+
+msgid "Save and continue editing"
+msgstr "Uložit a pokračovat"
+
+msgid "Save and view"
+msgstr "Uložit a zobrazit"
+
+msgid "Save and add another"
+msgstr "Uložit a přidat další"
+
+msgid "Save as new"
+msgstr "Uložit jako nový"
+
+msgid "You have been successfully logged out from the administration"
+msgstr "Odhlášení z adminu proběhlo"
+
+msgid "Thanks for spending some quality time with the web site today."
+msgstr "Díky a na zdraví."
+
+msgid "Log in again"
+msgstr "Přihlásit se znovu"
+
+msgid "Your password was changed."
+msgstr "Heslo je změněné."
+
+msgid "No data"
+msgstr "Žádná data"
+
+msgid "View site"
+msgstr "Zobrazit web"
+
+msgid "Log out"
+msgstr "Odhlásit se"
+
+msgid "Add %(name)s"
+msgstr "Přidat: %(name)s"
+
+msgid "All applications"
+msgstr "Všechno"
+
+msgid "View"
+msgstr "Zobrazit"
+
+msgid "Change"
+msgstr "Upravit"
+
+msgid "Add"
+msgstr "Přidat"
+
+msgid "Unknown"
+msgstr "Neznámé"
+
+msgid "True"
+msgstr "Ano"
+
+msgid "False"
+msgstr "Ne"
+
+msgid "Apply Filters"
+msgstr "Použít filtry"
+
+msgid "Hide counts"
+msgstr "Skrýt počty"
+
+msgid "Show counts"
+msgstr "Ukázat počty"
+
+msgid "Clear all filters"
+msgstr "Zrušit všechny filtry"
+
+msgid "Filters"
+msgstr "Filtry"
+
+msgid "Toggle sorting"
+msgstr "Přepnout řazení"
+
+msgid "Remove from sorting"
+msgstr "Zrušit řazení"
+
+msgid "Sorting priority: %(priority_number)s"
+msgstr "Pořadí řazení: %(priority_number)s"
+
+msgid "Navigate"
+msgstr "Pohyb"
+
+msgid "Select"
+msgstr "Vybrat"
+
+msgid "Clear"
+msgstr "Vymazat"
+
+msgid "Recent searches"
+msgstr "Poslední hledání"
+
+msgid "Nothing matched your search"
+msgstr "Nic nenalezeno"
+
+msgid "No, take me back"
+msgstr "Ne, zpět"
+
+msgid "Yes, I’m sure"
+msgstr "Ano, smazat"
+
+msgid "Cancel"
+msgstr "Zrušit"
+
+msgid "Record picture"
+msgstr "Obrázek záznamu"
+
+msgid "This item will be deleted."
+msgstr "Tahle položka se smaže."
+
+msgid "Click to cancel"
+msgstr "Klikni pro zrušení"
+
+msgid "No results found"
+msgstr "Nic tu není"
+
+msgid "This page yielded into no results."
+msgstr "Žádný záznam neodpovídá hledání ani filtrům."
+
+msgid "Reset filters"
+msgstr "Zrušit filtry"
+
+msgid "Image preview"
+msgstr "Náhled obrázku"
+
+msgid "Click to download"
+msgstr "Klikni pro stažení"
+
+msgid "Go back"
+msgstr "Zpět"
+
+msgid "Recent actions"
+msgstr "Poslední akce"
+
+msgid "Unknown content"
+msgstr "Neznámý obsah"
+
+msgid "Please correct the error below."
+msgid_plural "Please correct the errors below."
+msgstr[0] "Oprav chybu níž."
+msgstr[1] "Oprav chyby níž."
+msgstr[2] "Oprav chyby níž."
+msgstr[3] "Oprav chyby níž."
+
+msgid "Previous"
+msgstr "Předchozí"
+
+msgid "Next"
+msgstr "Další"
+
+msgid "Search apps and models..."
+msgstr "Hledat v menu…"
+
+msgid "Available shortcuts"
+msgstr "Klávesové zkratky"
+
+msgid "Global shortcuts"
+msgstr "Všude"
+
+msgid "Open command tool"
+msgstr "Otevřít hledání"
+
+msgid "Open shortcuts list"
+msgstr "Ukázat zkratky"
+
+msgid "Toggle sidebar"
+msgstr "Skrýt nebo ukázat menu"
+
+msgid "Toggle dark/light mode"
+msgstr "Přepnout světlý a tmavý režim"
+
+msgid "Changelist shortcuts"
+msgstr "V seznamu"
+
+msgid "Toggle filter"
+msgstr "Ukázat filtry"
+
+msgid "Create new record"
+msgstr "Nový záznam"
+
+msgid "Command tool shortcuts"
+msgstr "V hledání"
+
+msgid "Open selection"
+msgstr "Otevřít výběr"
+
+msgid "Open selection in new tab"
+msgstr "Otevřít výběr v novém panelu"
+
+msgid "Django administration"
+msgstr "Na pivo admin"
+
+msgid "Home"
+msgstr "Nástěnka"
+
+msgid "General"
+msgstr "Obecné"
+
+msgid "Light"
+msgstr "Světlý"
+
+msgid "Dark"
+msgstr "Tmavý"
+
+msgid "System"
+msgstr "Podle systému"
+
+msgid "Return to site"
+msgstr "Zpět na web"
+
+msgid "%(counter)s result"
+msgid_plural "%(counter)s results"
+msgstr[0] "%(counter)s výsledek"
+msgstr[1] "%(counter)s výsledky"
+msgstr[2] "%(counter)s výsledku"
+msgstr[3] "%(counter)s výsledků"
+
+msgid "%(full_result_count)s total"
+msgstr "celkem %(full_result_count)s"
+
+msgid "Choose file to upload"
+msgstr "Vybrat soubor"
+
+msgid "Toggle password visibility"
+msgstr "Ukázat heslo"
+
+msgid "Change selected %(model)s"
+msgstr "Upravit vybraný záznam (%(model)s)"
+
+msgid "Add another %(model)s"
+msgstr "Přidat další (%(model)s)"
+
+msgid "View selected %(model)s"
+msgstr "Zobrazit vybraný záznam (%(model)s)"
+
+msgid "Delete selected %(model)s"
+msgstr "Smazat vybraný záznam (%(model)s)"
+
+msgid "Add row"
+msgstr "Přidat řádek"
+
+msgid "Welcome"
+msgstr "Vítej"
+
+msgid "Select all objects on this page for an action"
+msgstr "Vybrat všechny záznamy na stránce"
+
+msgid "Date"
+msgstr "Datum"
+
+msgid "Select currency"
+msgstr "Vybrat měnu"

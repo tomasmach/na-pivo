@@ -1,0 +1,154 @@
+<!doctype html>
+<html lang="cs">
+<head>
+<meta charset="utf-8">
+<style>
+@font-face { font-family: "Sofia Sans"; src: url(../sofia-sans.woff2) format("woff2"); font-weight: 400 700; }
+@font-face { font-family: "SSXC"; src: url(../sofia-sans-extra-condensed-800.woff2) format("woff2"); font-weight: 800; }
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { width: 720px; height: 740px; overflow: hidden; background: #0a0a0a; }
+body { position: relative; font-family: "Sofia Sans", sans-serif; color: #f7f7f2; -webkit-font-smoothing: antialiased; }
+.a { position: absolute; white-space: nowrap; line-height: 1; }
+.phone { position: absolute; width: 422px; height: 894px; border-radius: 54px; background: #262626; }
+.phone--l { left: 6px; top: 8px; }
+.phone--r { left: 306px; top: 158px; box-shadow: 0 0 80px rgba(0,0,0,.85), 0 0 14px rgba(0,0,0,.55); }
+.screen { position: absolute; left: 10px; top: 10px; width: 402px; height: 874px; border-radius: 44px; background: #0a0a0a; overflow: hidden; }
+.island { position: absolute; left: 140px; top: 11px; width: 122px; height: 36px; border-radius: 18px; background: #000; }
+.time { font-size: 17px; font-weight: 600; letter-spacing: .1px; }
+.sb { position: absolute; top: 27px; }
+.disp { font-family: "SSXC", sans-serif; font-weight: 800; }
+.muted { color: #8f8f8a; }
+.card { position: absolute; background: #151515; border-radius: 24px; }
+.circ { position: absolute; width: 30px; height: 30px; border-radius: 50%; background: #232323; display: grid; place-items: center; }
+.circ svg { width: 16px; height: 16px; }
+svg.i { fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.seg { position: absolute; border-radius: 999px; background: #1b1b1b; border: 1px solid #2c2c2c; }
+.seg__on { position: absolute; border-radius: 999px; background: #f7f7f2; box-shadow: 0 1px 3px rgba(0,0,0,.5); }
+.dot { font-style: normal; margin: 0 7px; }
+.segl { position: absolute; font-weight: 600; transform: translateX(-50%); }
+.wk { position: absolute; width: 30px; transform: translateX(-50%); }
+.wk__bar { position: absolute; left: 0; width: 30px; border-radius: 8px; background: #262626; }
+.wk__lab { position: absolute; left: 50%; transform: translateX(-50%); text-align: center; font-size: 11px; color: #8f8f8a; }
+.wk__day { position: absolute; left: 50%; transform: translateX(-50%); text-align: center; font-size: 13px; color: #8f8f8a; }
+.tp { position: absolute; width: 59px; border-radius: 6px; background: #4d4d4d; }
+.tpl { position: absolute; font-size: 11px; color: #8f8f8a; transform: translateX(-50%); }
+.fade { position: absolute; left: 0; right: 0; bottom: 0; }
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute">
+  <defs>
+    <symbol id="status" viewBox="0 0 70 18">
+      <rect x="1.25" y="14" width="1.5" height="1.75" rx=".5"/><rect x="5.25" y="11" width="1.5" height="4.75" rx=".5"/><rect x="9.25" y="8" width="1.5" height="7.75" rx=".5"/><rect x="12.85" y="5" width="1.5" height="10.75" rx=".5"/><rect x="16.75" y="2" width="1.5" height="13.75" rx=".5"/>
+      <g fill="none" stroke="#f7f7f2" stroke-width="1.5" stroke-linecap="round"><path d="M25.6 7.2 A11.5 11.5 0 0 1 42.4 7.2"/><path d="M28.5 10 A7.5 7.5 0 0 1 39.5 10"/><path d="M31.1 12.1 A4.2 4.2 0 0 1 36.9 12.1"/>
+      <rect x="50.2" y="4.65" width="14.2" height="8.7" rx="2.3" stroke-width="1.5"/></g>
+      <circle cx="34" cy="14.8" r="1.1"/>
+      <rect x="52.8" y="6.4" width="1.5" height="5" rx=".4"/><rect x="55.8" y="6.4" width="1.5" height="5" rx=".4"/><rect x="58.8" y="6.4" width="1.5" height="5" rx=".4"/>
+      <rect x="65.2" y="7" width="1.2" height="3.8" rx=".6"/>
+    </symbol>
+  </defs>
+</svg>
+
+<!-- Left phone: Deník, týden -->
+<div class="phone phone--l"><div class="screen">
+  <div class="island"></div>
+  <span class="a time" style="left:48px;top:26px">9:41</span>
+  <svg class="sb" style="left:301px;top:25px;width:70px;height:18px" viewBox="0 0 70 18" fill="#f7f7f2"><use href="#status"/></svg>
+
+  <div class="seg" style="left:20px;top:73px;width:306px;height:37px"></div>
+  <div class="seg__on" style="left:173px;top:77px;width:150px;height:30px"></div>
+  <span class="a segl" style="left:98px;top:86px;font-size:14px;color:#d4d4ce">Počítat</span>
+  <span class="a segl" style="left:248px;top:86px;font-size:14px;color:#0a0a0a;font-weight:700">Deník</span>
+
+  <svg style="position:absolute;left:337px;top:69px;width:44px;height:44px;overflow:visible" viewBox="0 0 44 44">
+    <circle cx="22" cy="22" r="16.5" fill="#232323"/>
+    <circle cx="22" cy="22" r="20" fill="none" stroke="#262626" stroke-width="3"/>
+    <circle cx="22" cy="22" r="20" fill="none" stroke="#e6b20a" stroke-width="3" stroke-dasharray="80.3 200" transform="rotate(-90 22 22)"/>
+    <circle cx="38" cy="6" r="6.5" fill="#0a0a0a"/>
+    <circle cx="38" cy="6" r="4.5" fill="#ffc400"/>
+    <text x="22" y="27" text-anchor="middle" font-family="Sofia Sans" font-weight="700" font-size="14" fill="#e6b20a">T</text>
+  </svg>
+
+  <div class="seg" style="left:105px;top:131px;width:192px;height:33px"></div>
+  <div class="seg__on" style="left:108px;top:135px;width:66px;height:26px"></div>
+  <span class="a segl" style="left:141px;top:141px;font-size:13px;color:#0a0a0a;font-weight:700">Týden</span>
+  <span class="a segl" style="left:208px;top:142px;font-size:13px;color:#d4d4ce">Měsíc</span>
+  <span class="a segl" style="left:267px;top:142px;font-size:13px;color:#d4d4ce">Rok</span>
+
+  <span class="a disp" style="left:201px;top:182px;font-size:88px;color:#ffc400;transform:translateX(-50%)">7</span>
+  <span class="a" style="left:201px;top:276px;font-size:17px;color:#d4d4ce;transform:translateX(-50%)">piv za týden</span>
+  <span class="a muted" style="left:108px;top:301px;font-size:13.8px">2 večery<i class="dot">·</i>3 hospody<i class="dot">·</i>382 Kč</span>
+
+  <div class="card" style="left:20px;top:333px;width:362px;height:242px"></div>
+  <div class="circ" style="left:39px;top:349px"><svg class="i" viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg></div>
+  <span class="a" style="left:76px;top:358px;font-size:15.5px;font-weight:600">19.–25. 10.</span>
+  <div class="circ" style="left:157px;top:349px"><svg class="i" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></svg></div>
+  <div class="circ" style="left:275px;top:349px"></div>
+
+  <div class="wk" style="left:55px"><span class="wk__bar" style="top:522px;height:6px"></span></div>
+  <div class="wk" style="left:104px"><span class="wk__bar" style="top:522px;height:6px"></span></div>
+  <div class="wk" style="left:152px"><span class="wk__bar" style="top:522px;height:6px"></span></div>
+  <div class="wk" style="left:201px"><span class="wk__bar" style="top:472px;height:56px;background:#ffc400"></span></div>
+  <div class="wk" style="left:249px"><span class="wk__bar" style="top:522px;height:6px"></span></div>
+  <div class="wk" style="left:298px"><span class="wk__bar" style="top:411px;height:117px;background:#ffc400"></span></div>
+  <span class="a disp" style="left:201px;top:444px;font-size:20px;transform:translateX(-50%)">2</span>
+  <span class="a wk__lab" style="left:55px;top:535px">Po</span><span class="a wk__day" style="left:55px;top:549px">19</span>
+  <span class="a wk__lab" style="left:104px;top:535px">Út</span><span class="a wk__day" style="left:104px;top:549px">20</span>
+  <span class="a wk__lab" style="left:152px;top:535px">St</span><span class="a wk__day" style="left:152px;top:549px">21</span>
+  <span class="a wk__lab" style="left:201px;top:535px">Čt</span><span class="a wk__day" style="left:201px;top:549px;color:#f7f7f2;font-weight:600">22</span>
+  <span class="a wk__lab" style="left:249px;top:535px">Pá</span><span class="a wk__day" style="left:249px;top:549px">23</span>
+
+  <div class="card" style="left:20px;top:594px;width:362px;height:300px"></div>
+  <span class="a" style="left:36px;top:599px;font-size:16px;font-weight:700">Večery</span>
+  <span class="a" style="left:36px;top:631px;font-size:15px;font-weight:500">So 24. 10.</span>
+  <span class="a muted" style="left:36px;top:650px;font-size:13px">Lokál Dlouhááá → U Pinkasů</span>
+  <div style="position:absolute;left:36px;top:675px;width:330px;height:1px;background:#ffffff14"></div>
+  <span class="a" style="left:36px;top:691px;font-size:15px;font-weight:500">Čt 22. 10.</span>
+  <span class="a muted" style="left:36px;top:711px;font-size:12px">U Medvídků</span>
+  <div class="fade" style="top:664px;background:linear-gradient(#0a0a0a00, #0a0a0a 58px)"></div>
+</div></div>
+
+<!-- Right phone: detail večera -->
+<div class="phone phone--r"><div class="screen">
+  <div class="island"></div>
+  <span class="a time" style="left:48px;top:26px">9:41</span>
+  <svg class="sb" style="left:301px;top:25px;width:70px;height:18px" viewBox="0 0 70 18" fill="#f7f7f2"><use href="#status"/></svg>
+
+  <div class="circ" style="left:20px;top:70px;width:40px;height:40px"><svg class="i" viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg></div>
+  <div class="circ" style="left:342px;top:70px;width:40px;height:40px"><svg class="i" viewBox="0 0 24 24"><path d="M12 2v13"/><path d="m16 6-4-4-4 4"/><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/></svg></div>
+
+  <span class="a disp" style="left:20px;top:131px;font-size:44px">Sobota 24. 10.</span>
+  <span class="a" style="left:20px;top:184px;font-size:16px;color:#d4d4ce">Lokál Dlouhááá → U Pinkasů</span>
+
+  <span class="a disp" style="left:20px;top:222px;font-size:40px;color:#ffc400">5</span>
+  <span class="a muted" style="left:20px;top:266px;font-size:13px">piv</span>
+  <span class="a disp" style="left:117px;top:222px;font-size:40px">274 Kč</span>
+  <span class="a muted" style="left:117px;top:266px;font-size:13px">útrata</span>
+  <span class="a disp" style="left:281px;top:222px;font-size:40px">4 h 10 m</span>
+  <span class="a muted" style="left:281px;top:266px;font-size:13px">u stolu</span>
+
+  <div class="card" style="left:20px;top:298px;width:362px;height:144px;border-radius:20px"></div>
+  <span class="a" style="left:36px;top:317px;font-size:15px;font-weight:600">Tempo po hodinách</span>
+  <span class="a muted" style="left:366px;top:316px;font-size:13px;transform:translateX(-100%)">2 piva ve 22:00</span>
+  <div class="tp" style="left:36px;top:384px;height:26px"></div>
+  <div class="tp" style="left:104px;top:384px;height:26px"></div>
+  <div class="tp" style="left:171px;top:406px;height:4px;border-radius:2px;background:#262626"></div>
+  <div class="tp" style="left:239px;top:358px;height:52px;background:#f7f7f2"></div>
+  <div class="tp" style="left:306px;top:384px;height:26px"></div>
+  <span class="a tpl" style="left:65px;top:416px">19:00</span>
+  <span class="a tpl" style="left:133px;top:416px">20:00</span>
+  <span class="a tpl" style="left:200px;top:416px">21:00</span>
+  <span class="a tpl" style="left:268px;top:416px">22:00</span>
+  <span class="a tpl" style="left:335px;top:416px">23:00</span>
+
+  <span class="a" style="left:20px;top:468px;font-size:19px;font-weight:700">Co padlo</span>
+  <div class="card" style="left:20px;top:513px;width:362px;height:200px;border-radius:20px"></div>
+  <span class="a muted" style="left:36px;top:544px;font-size:13px">19:10</span>
+  <span class="a" style="left:88px;top:533px;font-size:16px;font-weight:500">Pilsner Urquell 12°</span>
+  <span class="a muted" style="left:88px;top:554px;font-size:14px">Lokál Dlouhááá · čepované 0,5 l</span>
+  <span class="a" style="left:366px;top:544px;font-size:15px;font-weight:700;transform:translateX(-100%)">59 Kč</span>
+</div></div>
+
+<div style="position:absolute;left:0;top:735px;width:720px;height:5px;background:#151515"></div>
+</body>
+</html>

@@ -1,51 +1,50 @@
-import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { View } from 'react-native';
-import { Marker, type MapMarker, type MapMarkerProps } from 'react-native-maps';
-
-const SnapshotRefreshContext = createContext<() => void>(() => undefined);
+import { Marker, type MapMarkerProps } from 'react-native-maps';
 
 /**
- * Re-take the marker bitmap after content that does not change layout, such
- * as a remote avatar finishing its load or failing over to an initial.
+ * Lets a marker follow its view only until the view settles. `snapshot` changes whenever the
+ * marker's content does, so its picture is taken again.
  */
-export function useMarkerSnapshotRefresh(): () => void {
-  return useContext(SnapshotRefreshContext);
-}
-
-interface StaticMapMarkerProps extends Omit<MapMarkerProps, 'tracksViewChanges'> {
-  /** A new value re-takes the bitmap: after the map changes size Google can lose the one it froze. */
-  redraw?: number;
-}
-
-/** Remount with a new key whenever the marker's visual content changes. */
-export function StaticMapMarker({ children, redraw = 0, ...props }: StaticMapMarkerProps) {
+export function useMarkerSnapshot(snapshot?: string) {
   const [tracking, setTracking] = useState(true);
+  const [taken, setTaken] = useState(snapshot);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  const settleSnapshot = useCallback(() => {
-    if (timer.current) clearTimeout(timer.current);
+  if (taken !== snapshot) {
+    setTaken(snapshot);
     setTracking(true);
-    // Android snapshots before nested text/SVG finishes drawing. Freeze only
-    // after layout has settled, otherwise it keeps an empty or partial bitmap.
+  }
+
+  // Android snapshots before nested text/SVG finishes drawing. Freeze only
+  // after layout has settled, otherwise it keeps an empty or partial bitmap.
+  const settle = useCallback(() => {
+    if (timer.current) clearTimeout(timer.current);
     timer.current = setTimeout(() => setTracking(false), 160);
   }, []);
 
-  useEffect(() => () => {
-    if (timer.current) clearTimeout(timer.current);
-  }, []);
+  const onLayout = useCallback(() => {
+    setTracking(true);
+    settle();
+  }, [settle]);
 
-  const marker = useRef<MapMarker>(null);
   useEffect(() => {
-    if (redraw > 0) marker.current?.redraw();
-  }, [redraw]);
+    settle();
+    return () => {
+      if (timer.current) clearTimeout(timer.current);
+    };
+  }, [settle, snapshot]);
 
+  return { tracking, onLayout };
+}
+
+/** Remount with a new key whenever the marker's visual content changes. */
+export function StaticMapMarker({ children, ...props }: Omit<MapMarkerProps, 'tracksViewChanges'>) {
+  const { tracking, onLayout } = useMarkerSnapshot();
   return (
-    <Marker ref={marker} {...props} tracksViewChanges={tracking}>
+    <Marker {...props} tracksViewChanges={tracking}>
       {/* Fabric must measure the whole marker, not a flattened inner circle. */}
-      <View collapsable={false} onLayout={settleSnapshot}>
-        <SnapshotRefreshContext.Provider value={settleSnapshot}>
-          {children}
-        </SnapshotRefreshContext.Provider>
+      <View collapsable={false} onLayout={onLayout}>
+        {children}
       </View>
     </Marker>
   );

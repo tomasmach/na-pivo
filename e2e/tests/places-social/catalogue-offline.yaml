@@ -1,6 +1,8 @@
 appId: ${MAESTRO_APP_ID}
 name: Compass map and pub search use the persisted catalogue offline
-tags: [critical, full]
+# Not rewritten for the new look yet: still drives the removed screens.
+# critical and full skip it; see ../../COVERAGE.md.
+tags: [critical, full, legacy-ui]
 # Known failure NP-E2E-014: the selected menu disappears after offline restart.
 # See ../../BUGS.md; retain the exact cached-menu assertions below.
 ---

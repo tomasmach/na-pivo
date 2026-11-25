@@ -126,10 +126,10 @@ def fake_oauth(monkeypatch):
         _, sub, email = token.split(":")
         return {"sub": sub, "email": email, "email_verified": True}
 
-    def fake_exchange(code: str) -> dict:
+    def fake_exchange(code: str, **_kwargs) -> dict:
         return {"refresh_token": "rt_test"}
 
-    def fake_revoke(token: str, token_type_hint: str = "refresh_token") -> None:
+    def fake_revoke(token: str, token_type_hint: str = "refresh_token", **_kwargs) -> None:
         revoked.append(token)
 
     monkeypatch.setattr(oauth, "verify_google_id_token", fake_google)
@@ -1036,17 +1036,16 @@ def test_anonymous_merge_enqueues_durable_source_avatar_cleanup(tmp_media, monke
     avatar_name = source.avatar.name
     avatar_path = Path(source.avatar.path)
     storage = Account._meta.get_field("avatar").storage
-    original_delete = storage.delete
 
     def failing_delete(_name):
         raise OSError("media unavailable")
 
     # Force the post-commit cleanup to fail so the outbox row survives for the
     # worker-retry assertions below instead of vanishing on commit.
-    monkeypatch.setattr(storage, "delete", failing_delete)
-
-    with transaction.atomic():
-        accounts._merge_anonymous_account(source, target)
+    with monkeypatch.context() as patched:
+        patched.setattr(storage, "delete", failing_delete)
+        with transaction.atomic():
+            accounts._merge_anonymous_account(source, target)
 
     assert not Account.objects.filter(pk=source.pk).exists()
     assert avatar_path.exists()
@@ -1059,7 +1058,6 @@ def test_anonymous_merge_enqueues_durable_source_avatar_cleanup(tmp_media, monke
     # The row must survive the source-account CASCADE as a durable pointer.
     assert pending.account_id is None
 
-    monkeypatch.setattr(storage, "delete", original_delete)
     assert retry_beer_photo_file_deletion(pending.pk)
     assert not avatar_path.exists()
     assert not BeerPhotoFileDeletion.objects.exists()
@@ -2659,7 +2657,7 @@ def test_unlink_apple_keeps_identity_when_revocation_fails(
         **_auth(token),
     )
 
-    def fail_revoke(token: str, token_type_hint: str = "refresh_token") -> None:
+    def fail_revoke(token: str, token_type_hint: str = "refresh_token", **_kwargs) -> None:
         raise oauth.OAuthError("apple down")
 
     monkeypatch.setattr(oauth, "revoke_apple_token", fail_revoke)
@@ -2944,34 +2942,41 @@ def test_request_password_reset_known_email_sends_web_link_and_creates_token(cli
 
 
 @pytest.mark.django_db
-def test_reset_password_landing_page_opens_app(client):
+def test_reset_password_landing_page_hands_the_token_to_the_web_page(client):
+    """E-mails already sent keep working: the web page offers the browser form and the app."""
     resp = client.get("/v1/auth/reset?token=abc")
 
-    assert resp.status_code == status.HTTP_200_OK
-    html = resp.content.decode("utf-8")
-    assert 'href="napivo://auth/reset?token=abc"' in html
-    assert "Nastavit nové heslo v appce" in html
+    assert resp.status_code == status.HTTP_302_FOUND
+    assert resp["Location"] == "/nove-heslo?token=abc"
+    assert resp["Referrer-Policy"] == "no-referrer"
+    page = client.get(resp["Location"]).content.decode("utf-8")
+    assert 'href="napivo://auth/reset?token=abc"' in page
+    assert 'name="token" value="abc"' in page
 
 
 @pytest.mark.django_db
-def test_reset_password_landing_page_rejects_missing_token(client):
+def test_reset_password_landing_page_follows_the_reader_language(client):
+    resp = client.get("/v1/auth/reset?token=abc", HTTP_ACCEPT_LANGUAGE="en")
+
+    assert resp["Location"] == "/en/new-password?token=abc"
+
+
+@pytest.mark.django_db
+def test_reset_password_landing_page_without_token_explains_the_dead_link(client):
     resp = client.get("/v1/auth/reset")
 
-    assert resp.status_code == status.HTTP_400_BAD_REQUEST
-    html = resp.content.decode("utf-8")
-    assert "Tenhle odkaz nefunguje" in html
-    assert (
-        "Odkazu chybí kód. Otevři e-mail znovu a klepni na tlačítko, "
-        "nebo si v appce řekni o nový."
-    ) in html
+    assert resp["Location"] == "/nove-heslo"
+    page = client.get(resp["Location"])
+    assert page.status_code == status.HTTP_400_BAD_REQUEST
+    assert "Tenhle odkaz už neplatí." in page.content.decode("utf-8")
 
 
 @pytest.mark.django_db
 def test_reset_password_landing_page_url_encodes_token(client):
     resp = client.get("/v1/auth/reset", data={"token": "abc&next=value"})
 
-    assert resp.status_code == status.HTTP_200_OK
-    assert 'href="napivo://auth/reset?token=abc%26next%3Dvalue"' in resp.content.decode(
+    assert resp["Location"] == "/nove-heslo?token=abc%26next%3Dvalue"
+    assert 'href="napivo://auth/reset?token=abc%26next%3Dvalue"' in client.get(resp["Location"]).content.decode(
         "utf-8"
     )
 
@@ -3407,7 +3412,7 @@ def test_purge_keeps_apple_account_when_revocation_fails(
     identity = AuthIdentity.objects.get(subject="A-PURGE-FAIL")
     account_pk = identity.account_id
 
-    def fail_revoke(token: str, token_type_hint: str = "refresh_token") -> None:
+    def fail_revoke(token: str, token_type_hint: str = "refresh_token", **_kwargs) -> None:
         raise oauth.OAuthError("apple down")
 
     monkeypatch.setattr(oauth, "revoke_apple_token", fail_revoke)
@@ -3585,20 +3590,17 @@ def test_hard_delete_keeps_failed_media_cleanup_durable_after_account_is_gone(
             FeedbackReport._meta.get_field("attachment").storage,
         )
     }
-    original_deletes = {
-        storage_id: storage.delete for storage_id, storage in storages.items()
-    }
 
     assert client.delete("/v1/account/me", **_auth(token)).status_code == status.HTTP_204_NO_CONTENT
     sent_emails.clear()
-    for storage in storages.values():
-        monkeypatch.setattr(
-            storage,
-            "delete",
-            lambda _name: (_ for _ in ()).throw(OSError("media unavailable")),
-        )
-
-    call_command("purge_deleted_accounts", "--grace-days", "0")
+    with monkeypatch.context() as patched:
+        for storage in storages.values():
+            patched.setattr(
+                storage,
+                "delete",
+                lambda _name: (_ for _ in ()).throw(OSError("media unavailable")),
+            )
+        call_command("purge_deleted_accounts", "--grace-days", "0")
 
     assert not Account.objects.filter(pk=account_pk).exists()
     assert avatar_path.exists()
@@ -3626,8 +3628,6 @@ def test_hard_delete_keeps_failed_media_cleanup_durable_after_account_is_gone(
     # failed-attachment cleanup above survives.
     assert not FeedbackReport.objects.filter(pk=feedback_pk).exists()
 
-    for storage_id, storage in storages.items():
-        monkeypatch.setattr(storage, "delete", original_deletes[storage_id])
     BeerPhotoFileDeletion.objects.update(
         last_attempted_at=timezone.now() - timedelta(minutes=16)
     )

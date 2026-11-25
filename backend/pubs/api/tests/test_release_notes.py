@@ -10,6 +10,9 @@ All tests use pytest-django with APIClient.
 
 from __future__ import annotations
 
+import importlib
+import logging
+
 import pytest
 from rest_framework import status
 from rest_framework.test import APIClient
@@ -223,8 +226,26 @@ def test_note_without_items_still_serializes(client):
 
 
 @pytest.mark.django_db
-def test_version_with_ota_pager_asks_the_store_build_to_retry(client):
-    # Not 404: the 2.3.0 store build would mark the note seen before its OTA pager lands.
+def test_store_build_2_3_0_gets_its_seeded_note(client):
+    # The 2.3.0 store build bundles no note for itself and asks this endpoint on
+    # every launch after the update; anything but 200/404 makes it retry forever.
+    from django.apps import apps
+
+    importlib.import_module("pubs.migrations.0158_release_note_2_3_0").add_release_note(apps, None)
+
     resp = client.get("/v1/release-notes", {"version": "2.3.0"})
 
-    assert resp.status_code == status.HTTP_503_SERVICE_UNAVAILABLE
+    assert resp.status_code == status.HTTP_200_OK
+    body = resp.json()
+    assert body["version"] == "2.3.0"
+    assert len(body["items"]) == 4
+    assert all(item["text"] and item["text_en"] for item in body["items"])
+
+
+@pytest.mark.django_db
+def test_missing_note_is_logged_with_the_version(client, caplog):
+    with caplog.at_level(logging.INFO, logger="pubs.api.views"):
+        resp = client.get("/v1/release-notes", {"version": "2.3.0"})
+
+    assert resp.status_code == status.HTTP_404_NOT_FOUND
+    assert "no published note for version '2.3.0'" in caplog.text

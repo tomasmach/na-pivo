@@ -1,0 +1,4 @@
+<svg class="tr-route{% if small %} tr-route--small{% endif %}" viewBox="0 0 {{ map.w }} {{ map.h }}" role="img" aria-label="{% for p in map.points %}{{ p.n }}. {{ p.name }}{% if not forloop.last %}, {% endif %}{% endfor %}">
+  <polyline points="{{ map.path }}"/>
+  {% for p in map.points %}<g transform="translate({{ p.x }} {{ p.y }})"><circle r="{% if small %}9{% else %}15{% endif %}"/><text dy="{% if small %}3.5{% else %}5{% endif %}">{{ p.n }}</text>{% if not small %}<text class="tr-route__label{% if not p.right %} is-end{% endif %}" x="{% if p.right %}24{% else %}-24{% endif %}" dy="5">{{ p.name }}</text>{% endif %}</g>{% endfor %}
+</svg>

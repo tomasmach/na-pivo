@@ -821,7 +821,7 @@ def test_log_menu_full_logs_drink_but_does_not_merge(client):
 
 
 @pytest.mark.django_db
-def test_log_names_match_failure_logs_drink_but_leaves_menu_untouched(client):
+def test_log_drink_at_second_pub_in_cell_starts_its_own_menu(client):
     token = _register(client)
     # Different business sharing the same ~38 m geohash cell.
     PubCommunityData.objects.create(
@@ -835,13 +835,14 @@ def test_log_names_match_failure_logs_drink_but_leaves_menu_untouched(client):
 
     resp = client.post("/v1/drinks", data=_payload(), format="json", **_auth(token))
     assert resp.status_code == status.HTTP_201_CREATED
-    assert resp.json()["menu_updated"] is False
+    assert resp.json()["menu_updated"] is True
 
     assert DrinkLog.objects.count() == 1
-    row = PubCommunityData.objects.get()
-    # Menu of the unrelated business is untouched.
-    assert row.name == "Bistro Veganburger"
-    assert row.beers == [{"name": "Kozel 11", "price_czk": 45, "volume_ml": 330}]
+    other = PubCommunityData.objects.get(name="Bistro Veganburger")
+    assert other.beers == [{"name": "Kozel 11", "price_czk": 45, "volume_ml": 330}]
+    own = PubCommunityData.objects.get(name=_NAME)
+    assert own.cache_key == _KEY
+    assert own.beers == [{"name": "Pilsner Urquell", "price_czk": 62, "volume_ml": 500}]
 
 
 # ---------------------------------------------------------------------------

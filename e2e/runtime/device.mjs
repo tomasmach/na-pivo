@@ -6,7 +6,9 @@ import { execFileSync } from 'node:child_process';
 export const platform = process.env.NA_PIVO_E2E_PLATFORM || 'ios';
 export const appId = platform === 'android' ? 'com.tomasmach.na_pivo' : 'com.tomasmach.na-pivo';
 const device = () => process.env.NA_PIVO_E2E_DEVICE;
-export const sdkPath = () => process.env.ANDROID_HOME || path.join(os.homedir(), 'Library/Android/sdk');
+export const sdkPath = () => process.env.ANDROID_HOME || path.join(os.homedir(), process.platform === 'darwin' ? 'Library/Android/sdk' : 'Android/Sdk');
+// macOS uses the ARM64 Play image; a Linux host runs the x86_64 Google APIs image under KVM.
+export const androidAbi = os.arch() === 'arm64' ? 'arm64-v8a' : 'x86_64';
 const execute = (command, args, options = {}) => execFileSync(command, args, {
   encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], timeout: 30_000, ...options,
 });

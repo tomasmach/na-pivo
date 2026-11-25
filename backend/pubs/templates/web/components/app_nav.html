@@ -1,0 +1,7 @@
+{% load i18n web %}<a href="{% web_url "web-diary" %}"{% if page.section == "diary" %} aria-current="page"{% endif %}>{% icon "notebook-pen" %}<span>{% translate "Deník" %}</span></a>
+<a href="{% web_url "web-beers" %}"{% if page.section == "beers" %} aria-current="page"{% endif %}>{% icon "beer" %}<span>{% translate "Piva" %}</span></a>
+{% if tabbar %}<a class="np-tabbar__log" href="{% web_url "web-log-beer" %}">{% icon "plus" %}<span>{% translate "Zapsat" %}</span></a>
+{% endif %}<a href="{% web_url "web-my-pubs" %}"{% if page.section == "pubs" %} aria-current="page"{% endif %}>{% icon "map-pin" %}<span>{% translate "Hospody" %}</span></a>
+<a href="{% web_url "web-taproom" %}"{% if page.section == "taproom" %} aria-current="page"{% endif %}>{% icon "hop" %}<span>{% translate "Výčep" %}</span></a>
+{% if not tabbar %}<a href="{% web_url "web-crew" %}"{% if page.section == "crew" %} aria-current="page"{% endif %}>{% icon "users" %}<span>{% translate "Parta" %}</span></a>
+{% endif %}

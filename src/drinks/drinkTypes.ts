@@ -20,7 +20,7 @@ export type PlaceContext = (typeof PLACE_CONTEXTS)[number];
 /** The non-pub contexts, i.e. the "Mimo hospodu" choices. */
 export type OutsidePlaceContext = Exclude<PlaceContext, 'pub'>;
 
-export const OUTSIDE_PLACE_CONTEXTS = ['private', 'outdoors', 'other'] as const satisfies readonly OutsidePlaceContext[];
+const OUTSIDE_PLACE_CONTEXTS = ['private', 'outdoors', 'other'] as const satisfies readonly OutsidePlaceContext[];
 
 export function isOutsidePlaceContext(value: unknown): value is OutsidePlaceContext {
   return typeof value === 'string' && (OUTSIDE_PLACE_CONTEXTS as readonly string[]).includes(value);

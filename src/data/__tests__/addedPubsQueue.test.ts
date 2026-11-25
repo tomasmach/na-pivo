@@ -5,6 +5,7 @@ import {
   enqueueAddedPub,
   flushAddedPubsQueue,
   loadAddedPubSubmissions,
+  onAddedPubSubmissionsChanged,
   retryAddedPub,
   restoreQueuedAddedPubs,
   syncOwnAddedPubs,
@@ -156,6 +157,55 @@ describe('added pub state registry', () => {
 
     await expect(loadAddedPubSubmissions()).resolves.toEqual([
       expect.objectContaining({ syncState: 'synced', pendingOperation: null }),
+    ]);
+  });
+
+  it('tells an open list when a queued addition is delivered', async () => {
+    (submitAddedPub as jest.Mock).mockResolvedValueOnce('retry');
+    await enqueueAddedPub(ENTRY);
+    const seen: string[] = [];
+    const stop = onAddedPubSubmissionsChanged(() => {
+      void loadAddedPubSubmissions().then((rows) => seen.push(rows[0]?.syncState ?? 'none'));
+    });
+
+    (submitAddedPub as jest.Mock).mockResolvedValueOnce({
+      clientId: ENTRY.client_id,
+      cacheKey: 'u2fkbnvy',
+      name: ENTRY.name,
+      lat: ENTRY.lat,
+      lng: ENTRY.lng,
+      city: ENTRY.city,
+      address: ENTRY.address,
+    });
+    await flushAddedPubsQueue();
+    await loadAddedPubSubmissions();
+    stop();
+    await enqueueAddedPub({ ...ENTRY, client_id: 'after-stop' });
+
+    expect(seen).toEqual(['synced']);
+  });
+
+  it('folds an offline rename of an unsent addition into its single create', async () => {
+    (submitAddedPub as jest.Mock).mockResolvedValue('retry');
+    await enqueueAddedPub(ENTRY);
+    await expect(
+      enqueueAddedPubEdit({ client_id: ENTRY.client_id, name: 'U Opravené fronty' }),
+    ).resolves.toBe('pending');
+
+    (submitAddedPub as jest.Mock).mockImplementation(async (entry: typeof ENTRY) => ({
+      clientId: entry.client_id, cacheKey: 'renamed', name: entry.name,
+      lat: entry.lat, lng: entry.lng, city: entry.city, address: entry.address,
+    }));
+    await flushAddedPubsQueue();
+    await flushAddedPubsQueue();
+
+    expect(submitAddedPub).toHaveBeenCalledTimes(3);
+    expect(submitAddedPub).toHaveBeenLastCalledWith(expect.objectContaining({
+      client_id: ENTRY.client_id, name: 'U Opravené fronty', lat: ENTRY.lat, lng: ENTRY.lng,
+    }));
+    expect(submitAddedPubEdit).not.toHaveBeenCalled();
+    await expect(loadAddedPubSubmissions()).resolves.toEqual([
+      expect.objectContaining({ name: 'U Opravené fronty', syncState: 'synced', pendingOperation: null }),
     ]);
   });
 

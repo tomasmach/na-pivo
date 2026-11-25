@@ -25,6 +25,10 @@ _PARTY_WEB_PATH_RE = re.compile(
 _INVITE_PATH_RE = re.compile(
     rf"({_SLASH}p{_SLASH})[A-Za-z0-9_-]{{8,}}(?=[^A-Za-z0-9_-]|$)",
 )
+_PLAN_INVITE_PATH_RE = re.compile(
+    rf"({_SLASH}(?:pozvanka|en{_SLASH}invite){_SLASH})[A-Za-z0-9_-]+",
+    re.IGNORECASE,
+)
 _TOUR_PATH_RE = re.compile(
     rf"({_SLASH}(?:v1{_SLASH}tour-shares|t){_SLASH})[A-Za-z0-9_-]+",
     re.IGNORECASE,
@@ -48,5 +52,6 @@ def redact_party_codes(value: str) -> str:
     redacted = _PARTY_PATH_RE.sub(r"\1[redacted-party-code]", value)
     redacted = _PARTY_WEB_PATH_RE.sub(r"\1[redacted-party-code]", redacted)
     redacted = _INVITE_PATH_RE.sub(r"\1[redacted-invite-token]", redacted)
+    redacted = _PLAN_INVITE_PATH_RE.sub(r"\1[redacted-invite-token]", redacted)
     redacted = _PARTY_FIELD_RE.sub(r"\g<prefix>[redacted-party-code]", redacted)
     return _QUERY_SECRET_RE.sub(r"\g<prefix>[redacted]", redacted)

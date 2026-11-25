@@ -23,6 +23,7 @@ export interface CommunityOverride {
   beers?: CommunityBeer[];
   historicalBeers?: CommunityBeer[];
   beerMenuRotates?: boolean;
+  hoursOverrideUpdatedAt?: number;
   /** Epoch ms of the latest local beer-list/history edit. */
   beersOverrideUpdatedAt?: number;
   /** Epoch ms of the latest explicit fixed/rotating selection. */
@@ -33,7 +34,7 @@ export interface CommunityOverride {
 
 type CommunityOverridePatch = Omit<
   CommunityOverride,
-  'updatedAt' | 'beersOverrideUpdatedAt' | 'beerMenuRotatesOverrideUpdatedAt'
+  'updatedAt' | 'hoursOverrideUpdatedAt' | 'beersOverrideUpdatedAt' | 'beerMenuRotatesOverrideUpdatedAt'
 >;
 
 function isOverrideNewer(
@@ -58,6 +59,14 @@ export function isBeerListOverrideCurrent(
     override.beersOverrideUpdatedAt ?? override.updatedAt,
     backendUpdatedAt,
   );
+}
+
+export function isHoursOverrideCurrent(
+  override: CommunityOverride | undefined,
+  backendUpdatedAt: string | null | undefined,
+): boolean {
+  if (!override?.hours) return false;
+  return isOverrideNewer(override.hoursOverrideUpdatedAt ?? override.updatedAt, backendUpdatedAt);
 }
 
 export function isBeerMenuTypeOverrideCurrent(
@@ -109,6 +118,10 @@ export const useCommunityStore = create<CommunityState>()(
             beers: patch.beers ?? prev?.beers,
             historicalBeers: patch.historicalBeers ?? prev?.historicalBeers,
             beerMenuRotates: patch.beerMenuRotates ?? prev?.beerMenuRotates,
+            hoursOverrideUpdatedAt:
+              patch.hours !== undefined
+                ? now
+                : (prev?.hoursOverrideUpdatedAt ?? (prev?.hours !== undefined ? prev.updatedAt : undefined)),
             beersOverrideUpdatedAt: touchesBeerList ? now : previousBeerListUpdatedAt,
             beerMenuRotatesOverrideUpdatedAt: touchesMenuType
               ? now

@@ -1,0 +1,27 @@
+{% extends "web/account/base.html" %}
+{% load i18n web %}
+{% block page %}
+<section class="np-card npa-claim" aria-labelledby="npa-claim-title" data-scope>
+  {% if inviter %}{% include "web/components/avatar.html" with name=initial src=inviter.avatar_url size="l" %}{% else %}<span class="npa-claim__icon">{% icon "users" %}</span>{% endif %}
+  {% if state == "valid" or state == "pending" or state == "friends" %}
+    <h1 class="npa-dialog__title" id="npa-claim-title">{% blocktranslate %}{{ name }} tě zve do party{% endblocktranslate %}</h1>
+    {% if mutual %}<p class="np-small np-muted">{{ mutual }}</p>{% endif %}
+  {% endif %}
+  {% if state == "valid" %}
+    <p class="npa-dialog__text">{% translate "Přidáš se? Uvidíte, kdo z vás je zrovna na pivu." %}</p>
+    <p class="np-alert" role="alert" data-error hidden></p>
+    {% web_url "web-crew" as crew_url %}
+    <button class="np-btn np-btn--primary np-btn--l npa-claim__cta" type="button" data-api="/v1/friends/requests" data-body="{{ body_json }}" data-done="{{ crew_url }}">{% icon "user-plus" "np-icon--s" %}{% translate "Přidat do party" %}</button>
+  {% elif state == "pending" %}
+    <p class="npa-dialog__text">{% translate "Žádost už ti visí v partě a čeká na potvrzení." %}</p>
+    <a class="np-btn np-btn--l npa-claim__cta" href="{% web_url "web-crew" %}">{% translate "Do party" %}</a>
+  {% elif state == "friends" %}
+    <p class="npa-dialog__text">{% translate "Už jste parta." %}</p>
+    <a class="np-btn np-btn--l npa-claim__cta" href="{% web_url "web-crew" %}">{% translate "Do party" %}</a>
+  {% else %}
+    <h1 class="npa-dialog__title" id="npa-claim-title">{% if state == "self" %}{% translate "To je tvůj vlastní kód." %}{% elif state == "expired" %}{% translate "Pozvánka už vypršela. Ať ti kámoš pošle novou." %}{% else %}{% translate "Tuhle pozvánku neznám." %}{% endif %}</h1>
+    <a class="np-btn np-btn--l npa-claim__cta" href="{% web_url "web-crew" %}">{% translate "Do party" %}</a>
+  {% endif %}
+  {% if state == "valid" %}<a class="np-link np-small" href="{{ deep_link }}">{% translate "Otevřít v appce" %} ›</a>{% endif %}
+</section>
+{% endblock %}

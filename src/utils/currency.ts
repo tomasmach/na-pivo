@@ -1,4 +1,4 @@
-import { t } from '@/i18n';
+
 import { numberFormat } from '@/utils/intlFormat';
 
 export type PriceCurrency = string;
@@ -27,25 +27,8 @@ export function getCurrencyRate(currency: PriceCurrency): number | null {
   return czkPerUnit[currency.toUpperCase()] ?? null;
 }
 
-export function currencyFractionDigits(currency: PriceCurrency): number {
+function currencyFractionDigits(currency: PriceCurrency): number {
   return ZERO_DECIMAL_CURRENCIES.has(currency.toUpperCase()) ? 0 : 2;
-}
-
-export function currencySuffix(currency: PriceCurrency): string {
-  try {
-    const parts = numberFormat({
-      style: 'currency',
-      currency,
-      currencyDisplay: 'narrowSymbol',
-    }).formatToParts(0);
-    return parts.find((part) => part.type === 'currency')?.value ?? currency;
-  } catch {
-    return currency;
-  }
-}
-
-export function pricePlaceholder(currency: PriceCurrency): string {
-  return t.common.pricePlaceholder(currencySuffix(currency));
 }
 
 function formatDecimal(value: number, maxFractionDigits: number): string {
@@ -70,24 +53,6 @@ export function formatPrice(czk: number, currency: PriceCurrency): string {
   } catch {
     return `${formatDecimal(amount, currencyFractionDigits(currency))} ${currency}`;
   }
-}
-
-export function formatPriceInputFromCzk(czk: number, currency: PriceCurrency): string {
-  const rate = getCurrencyRate(currency) ?? 1;
-  return formatDecimal(czk / rate, currencyFractionDigits(currency));
-}
-
-export function sanitizePriceInput(raw: string, currency: PriceCurrency): string {
-  const fractionDigits = currencyFractionDigits(currency);
-  if (fractionDigits === 0) return raw.replace(/\D/g, '').slice(0, 7);
-
-  const normalized = raw.replace('.', ',').replace(/[^\d,]/g, '');
-  const [integer = '', ...fractionParts] = normalized.split(',');
-  const intPart = integer.slice(0, 7);
-  if (!normalized.includes(',')) return intPart;
-
-  const fraction = fractionParts.join('').slice(0, fractionDigits);
-  return `${intPart || '0'},${fraction}`;
 }
 
 export function parsePriceInputToCzk(text: string, currency: PriceCurrency): number | null {

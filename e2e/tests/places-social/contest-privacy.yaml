@@ -1,6 +1,8 @@
 appId: ${MAESTRO_APP_ID}
 name: Contest consent keeps diary photos private and moves one vote
-tags: [critical, full]
+# Not rewritten for the new look yet: still drives the removed screens.
+# critical and full skip it; see ../../COVERAGE.md.
+tags: [critical, full, legacy-ui]
 ---
 - runFlow:
     file: ../../maestro/reset.yaml

@@ -12,6 +12,7 @@ import {
   type ScrollViewInstance,
 } from 'react-native';
 
+
 import { useKeyboardHeight } from '@/utils/useKeyboardHeight';
 import { Spacing } from '@/theme/layout';
 
@@ -22,6 +23,10 @@ interface KeyboardAwareScrollViewProps extends ScrollViewProps {
    * keyboard inset is injected.
    */
   keyboardAvoidedExternally?: boolean;
+  /** Also keep this much below the focused field in view, so the next field is not cut off. */
+  revealBelow?: number;
+  /** Keep the focused field this far below the top edge, under a header that floats over the content. */
+  revealAbove?: number;
 }
 
 function focusedTextInputHandle(): number | null {
@@ -44,6 +49,8 @@ export const KeyboardAwareScrollView = forwardRef<ScrollViewInstance, KeyboardAw
     automaticallyAdjustKeyboardInsets,
     contentContainerStyle,
     keyboardAvoidedExternally = false,
+    revealBelow = 0,
+    revealAbove = 0,
     onContentSizeChange,
     onFocus,
     onLayout,
@@ -59,6 +66,7 @@ export const KeyboardAwareScrollView = forwardRef<ScrollViewInstance, KeyboardAw
   const contentHeightRef = useRef(0);
   const scrollFrameRef = useRef<number | null>(null);
   const scrollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const scrollFocusedIntoViewRef = useRef<((onlyBelow: boolean) => void) | null>(null);
   const keyboardHeight = useKeyboardHeight();
   const keyboardHeightRef = useRef(keyboardHeight);
   keyboardHeightRef.current = keyboardHeight;
@@ -82,11 +90,12 @@ export const KeyboardAwareScrollView = forwardRef<ScrollViewInstance, KeyboardAw
     (event: NativeSyntheticEvent<TargetedEvent>) => {
       onFocus?.(event);
       cancelScheduledScroll();
-      const target = event.target;
+      // On the new architecture event.target is an element; the native tag is on nativeEvent.
+      const target = event.nativeEvent.target;
       const scrollView = scrollRef.current;
       if (!scrollView || typeof target !== 'number') return;
 
-      const scrollIntoView = () => {
+      const scrollIntoView = (onlyBelow = false) => {
         const current = scrollRef.current;
         const scrollNode = current ? findNodeHandle(current) : null;
         const currentInputHandle = focusedTextInputHandle();
@@ -95,7 +104,7 @@ export const KeyboardAwareScrollView = forwardRef<ScrollViewInstance, KeyboardAw
           target,
           scrollNode,
           () => undefined,
-          (_x, fieldY, _fieldWidth, fieldHeight) => {
+          (_x, contentY, _fieldWidth, fieldHeight) => {
             const latestInputHandle = focusedTextInputHandle();
             if (latestInputHandle !== target) return;
             const viewportHeight = viewportHeightRef.current;
@@ -107,15 +116,21 @@ export const KeyboardAwareScrollView = forwardRef<ScrollViewInstance, KeyboardAw
               Spacing.lg,
               viewportHeight - effectiveKeyboardHeight - Spacing.lg,
             );
-            const fieldBottom = fieldY + fieldHeight;
+            // The new architecture measures against the scroll content, not the visible part.
+            const fieldY = contentY - scrollYRef.current;
+            const fieldBottom = fieldY + fieldHeight + revealBelow;
+            const visibleTop = revealAbove + Spacing.sm;
             let deltaY = 0;
-            if (fieldY < Spacing.sm) {
-              deltaY = fieldY - Spacing.sm;
+            if (fieldY < visibleTop && !onlyBelow) {
+              deltaY = fieldY - visibleTop;
             } else if (fieldBottom > keyboardTop) {
-              deltaY = fieldBottom - keyboardTop;
+              // A parent may already have lifted the view, so the keyboard top can sit
+              // too high; never scroll the top of the field out of sight.
+              deltaY = Math.min(fieldBottom - keyboardTop, Math.max(0, fieldY - visibleTop));
             } else {
               return;
             }
+            if (deltaY === 0) return;
 
             const requestedY = Math.max(0, scrollYRef.current + deltaY);
             const contentHeight = contentHeightRef.current;
@@ -136,6 +151,7 @@ export const KeyboardAwareScrollView = forwardRef<ScrollViewInstance, KeyboardAw
           },
         );
       };
+      scrollFocusedIntoViewRef.current = scrollIntoView;
 
       // Keyboard events and focus arrive in either order across platforms.
       // Run after layout, then once again after the native keyboard animation.
@@ -148,8 +164,19 @@ export const KeyboardAwareScrollView = forwardRef<ScrollViewInstance, KeyboardAw
         scrollIntoView();
       }, 300);
     },
-    [cancelScheduledScroll, keyboardAvoidedExternally, onFocus],
+    [cancelScheduledScroll, keyboardAvoidedExternally, onFocus, revealAbove, revealBelow],
   );
+
+  // A parent that lifts this view shrinks the viewport after focus, and a
+  // multiline field grows while typing; both push the focused field below the visible part.
+  const followFocusedInput = useCallback(() => {
+    const scrollIntoView = scrollFocusedIntoViewRef.current;
+    if (!keyboardAvoidedExternally || !scrollIntoView || scrollFrameRef.current !== null) return;
+    scrollFrameRef.current = requestAnimationFrame(() => {
+      scrollFrameRef.current = null;
+      scrollIntoView(true);
+    });
+  }, [keyboardAvoidedExternally]);
 
   const handleScroll = useCallback(
     (event: NativeSyntheticEvent<NativeScrollEvent>) => {
@@ -162,17 +189,19 @@ export const KeyboardAwareScrollView = forwardRef<ScrollViewInstance, KeyboardAw
   const handleLayout = useCallback(
     (event: LayoutChangeEvent) => {
       viewportHeightRef.current = event.nativeEvent.layout.height;
+      followFocusedInput();
       onLayout?.(event);
     },
-    [onLayout],
+    [followFocusedInput, onLayout],
   );
 
   const handleContentSizeChange = useCallback(
     (width: number, height: number) => {
       contentHeightRef.current = height;
+      followFocusedInput();
       onContentSizeChange?.(width, height);
     },
-    [onContentSizeChange],
+    [followFocusedInput, onContentSizeChange],
   );
 
   return (

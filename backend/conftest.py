@@ -1,6 +1,7 @@
 import subprocess
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 from django.core.cache import cache
@@ -47,3 +48,18 @@ def _isolate_django_cache_between_tests():
     cache.clear()
     yield
     cache.clear()
+
+
+@pytest.fixture(autouse=True)
+def _freeze_throttle_window(monkeypatch):
+    """Keep each test's requests in one rate-limit window.
+
+    SharedScopedRateThrottle counts per wall-clock window, so a burst that crosses
+    a minute boundary on slow CI starts a fresh count and the expected 429 never comes.
+    """
+    from django.utils import timezone
+
+    from pubs.api import throttling
+
+    now = timezone.now()
+    monkeypatch.setattr(throttling, "timezone", SimpleNamespace(now=lambda: now))

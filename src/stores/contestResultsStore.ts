@@ -13,6 +13,10 @@
  * Non-podium users never get a modal — for them the contest screen's podium
  * is the reveal, so `markResultsSeen` (called on a successful screen load)
  * advances the baseline instead and the teaser stops nudging.
+ *
+ * `counterNudgeDismissal` remembers the × on the counter's FotoPivař nudge for
+ * one round. A dismissal from before the round's last day still lets the
+ * nudge come back once on that day.
  */
 
 import { create } from 'zustand';
@@ -32,15 +36,23 @@ export interface PendingContestResult {
   imageUrl: string | null;
 }
 
+export interface CounterNudgeDismissal {
+  contestId: string;
+  onLastDay: boolean;
+}
+
 interface ContestResultsState {
   /** Last closed round the user has already seen results for. Persisted. */
   lastSeenResultsContestId: string | null;
   /** Celebration waiting to be shown, or null. In-memory. */
   pendingResult: PendingContestResult | null;
+  /** Last × on the counter nudge. Persisted. */
+  counterNudgeDismissal: CounterNudgeDismissal | null;
 
   ingestSnapshot: (snapshot: PhotoContestSnapshot) => Promise<void>;
   markResultsSeen: (contestId: string) => void;
   dismissResult: () => void;
+  dismissCounterNudge: (dismissal: CounterNudgeDismissal) => void;
 }
 
 export const useContestResultsStore = create<ContestResultsState>()(
@@ -48,6 +60,7 @@ export const useContestResultsStore = create<ContestResultsState>()(
     (set, get) => ({
       lastSeenResultsContestId: null,
       pendingResult: null,
+      counterNudgeDismissal: null,
 
       ingestSnapshot: async (snapshot) => {
         const last = snapshot.lastResults;
@@ -89,11 +102,16 @@ export const useContestResultsStore = create<ContestResultsState>()(
           lastSeenResultsContestId: pending?.contestId ?? get().lastSeenResultsContestId,
         });
       },
+
+      dismissCounterNudge: (dismissal) => set({ counterNudgeDismissal: dismissal }),
     }),
     {
       name: 'na-pivo-contest-results',
       storage: createJSONStorage(() => AsyncStorage),
-      partialize: (state) => ({ lastSeenResultsContestId: state.lastSeenResultsContestId }),
+      partialize: (state) => ({
+        lastSeenResultsContestId: state.lastSeenResultsContestId,
+        counterNudgeDismissal: state.counterNudgeDismissal,
+      }),
     },
   ),
 );

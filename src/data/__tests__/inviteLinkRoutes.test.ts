@@ -10,7 +10,7 @@ describe('restored app invitation routes', () => {
     expect(parseInviteCodeFromUrl(path)).toBeNull();
     expect(isLegacyTableInviteUrl(path)).toBe(true);
     for (const initial of [true, false]) {
-      expect(redirectSystemPath({ path, initial })).toBe('/party-live');
+      expect(redirectSystemPath({ path, initial })).toBe('/nv');
     }
   });
 
@@ -22,7 +22,7 @@ describe('restored app invitation routes', () => {
     expect(parseInviteCodeFromUrl(path)).toBe('Ab3xK9_pQ2sT');
     expect(isLegacyTableInviteUrl(path)).toBe(false);
     for (const initial of [true, false]) {
-      expect(redirectSystemPath({ path, initial })).toBe('/parta/pozvanka?code=Ab3xK9_pQ2sT');
+      expect(redirectSystemPath({ path, initial })).toBe('/nv/pozvanka-do-party?code=Ab3xK9_pQ2sT');
     }
   });
 
@@ -63,7 +63,7 @@ describe('tour invitation routes', () => {
   it.each([true, false])('routes cold/warm start with the same token (initial=%s)', (initial) => {
     for (const path of [`napivo://t/${tourToken}`, `https://na-pivo.cz/t/${tourToken}`]) {
       expect(parseTourTokenFromUrl(path)).toBe(tourToken);
-      expect(redirectSystemPath({ path, initial })).toBe(`/t/${tourToken}`);
+      expect(redirectSystemPath({ path, initial })).toBe(`/nv/tour-verejna?token=${tourToken}`);
       expect(parseInviteCodeFromUrl(path)).toBeNull();
     }
   });
@@ -79,9 +79,9 @@ describe('tour invitation routes', () => {
     const run = '6f1c2d3e-4a5b-4c6d-8e7f-0123456789ab';
     const url = `https://na-pivo.cz/t/dScKWxNag_XfiHiQcx2BTA?r=${run}`;
     expect(parseTourRunFromUrl(url)).toBe(run);
-    expect(redirectSystemPath({ path: url, initial: true })).toBe(`/t/dScKWxNag_XfiHiQcx2BTA?r=${run}`);
+    expect(redirectSystemPath({ path: url, initial: true })).toBe(`/nv/tour-verejna?token=dScKWxNag_XfiHiQcx2BTA&r=${run}`);
     expect(parseTourRunFromUrl('https://na-pivo.cz/t/dScKWxNag_XfiHiQcx2BTA?r=not-a-run')).toBeNull();
-    expect(redirectSystemPath({ path: 'napivo://t/dScKWxNag_XfiHiQcx2BTA', initial: false })).toBe('/t/dScKWxNag_XfiHiQcx2BTA');
+    expect(redirectSystemPath({ path: 'napivo://t/dScKWxNag_XfiHiQcx2BTA', initial: false })).toBe('/nv/tour-verejna?token=dScKWxNag_XfiHiQcx2BTA');
     expect(parseTourRunFromUrl(`https://example.com/t/dScKWxNag_XfiHiQcx2BTA?r=${run}`)).toBeNull();
   });
 });

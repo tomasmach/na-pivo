@@ -5,8 +5,9 @@ import { clearLocalPrivateAccountData } from '../privateAccountData';
 import { pulledRecently, trackForegroundPull } from '../foregroundPulls';
 import { loadBeerPhotos, useBeerPhotosStore } from '@/stores/beerPhotosStore';
 import { useBeerWatchStore } from '@/stores/beerWatchStore';
-import { useBookStore } from '@/stores/bookStore';
 import { useCommunityStore } from '@/stores/communityStore';
+import { useContestResultsStore } from '@/stores/contestResultsStore';
+import { useHomeEveningStore } from '@/stores/homeEveningStore';
 import { usePubAmenitiesStore } from '@/stores/pubAmenitiesStore';
 import { usePubRatingsStore } from '@/stores/pubRatingsStore';
 import { usePubStore } from '@/stores/pubStore';
@@ -31,6 +32,7 @@ jest.mock('../telemetryClient', () => ({
 
 const PRIVATE_KEYS = [
   'na-pivo-tally',
+  'na-pivo-diary-copy-v1',
   'na-pivo-pub-ratings',
   'na-pivo-pub-amenities',
   'na-pivo-visits-seeded',
@@ -87,6 +89,11 @@ beforeEach(async () => {
 });
 
 it('clears local private stores and private sync queue storage', async () => {
+  useHomeEveningStore.setState({ evening: { activityId: 'plan-1', hostName: '@klara', startedAt: '2026-06-14T19:00:00.000Z' } });
+  useContestResultsStore.setState({
+    lastSeenResultsContestId: 'round-0',
+    counterNudgeDismissal: { contestId: 'round-1', onLastDay: false },
+  });
   useTallyStore.setState({
     current: session(),
     history: [session({ clientId: 'visit-2' })],
@@ -135,8 +142,6 @@ it('clears local private stores and private sync queue storage', async () => {
     loaded: true,
   });
   // A friend's profile left open in a right half of the open iPhone Duo.
-  useBookStore.getState().show('parta', { kind: 'friend', id: 'acc-friend' });
-  useBookStore.getState().show('stamgast', { kind: 'evening', startedAt: '2026-06-14T19:00:00.000Z' });
 
   for (const key of PRIVATE_KEYS) {
     await AsyncStorage.setItem(key, JSON.stringify({ private: true }));
@@ -155,6 +160,8 @@ it('clears local private stores and private sync queue storage', async () => {
 
   await clearLocalPrivateAccountData();
 
+  expect(useHomeEveningStore.getState().evening).toBeNull();
+
   expect(useTallyStore.getState().current).toBeNull();
   expect(useTallyStore.getState().history).toEqual([]);
   expect(useTallyStore.getState().restoredAccountId).toBeNull();
@@ -171,9 +178,12 @@ it('clears local private stores and private sync queue storage', async () => {
     locationSet: false,
     loaded: false,
   });
-  expect(useBookStore.getState().pages).toEqual(useBookStore.getInitialState().pages);
   expect(useSettingsStore.getState().homePoint).toBeNull();
   expect(useSettingsStore.getState().navigationProvider).toBe('mapy');
+  expect(useContestResultsStore.getState()).toMatchObject({
+    lastSeenResultsContestId: null,
+    counterNudgeDismissal: null,
+  });
 
   const settings = JSON.parse(
     await AsyncStorage.getItem('na-pivo-settings') as string,
@@ -205,6 +215,7 @@ it('removes retired 2.0 private data and settings while retaining public caches 
     'na-pivo-pub-reminder-geofences', 'na-pivo-handled-notification-responses-v1',
     'na-pivo-night-feed-v1:old-account:night-1',
     'na-pivo-night-feed-v1:old-account:night-2',
+    'nv-my-ratings:old-account',
   ];
   // Cleanup must also remove malformed data; it cannot rely on the retired schema.
   for (const key of retiredKeys) await AsyncStorage.setItem(key, '{malformed private data');
@@ -236,6 +247,14 @@ it('removes retired 2.0 private data and settings while retaining public caches 
   });
 });
 
+it('forgets a settings change still waiting for the outgoing account', async () => {
+  await AsyncStorage.setItem('na-pivo-account-settings-queue', JSON.stringify([{ ownerId: 'old-account', patch: { hidePubNames: true } }]));
+
+  await clearLocalPrivateAccountData();
+
+  expect(await AsyncStorage.getItem('na-pivo-account-settings-queue')).toBeNull();
+});
+
 it('forgets recent server pulls so a re-login restores the wiped data', async () => {
   await trackForegroundPull('ratings', async () => true, () => 'acc-1');
   expect(pulledRecently('ratings', 'acc-1')).toBe(true);
@@ -258,6 +277,7 @@ it('drops a photo list that was still loading for the outgoing account', async (
       id: 'photo-a',
       clientId: 'client-a',
       imageUrl: 'https://api.test/media/a.jpg',
+      thumbUrl: 'https://api.test/media/a.thumb.webp',
       caption: 'Účet A',
       pubCacheKey: '',
       pubName: '',

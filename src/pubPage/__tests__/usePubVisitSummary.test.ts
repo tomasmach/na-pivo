@@ -24,15 +24,15 @@ const pub = { id: '', name: 'U Anděla', lat: 50.07, lng: 14.4 };
 
 it('shows the next account its own visits after the previous one was cleared', async () => {
   useAccountStore.setState({ session: { accountId: 'account-a' } as never });
-  const { result } = renderHook(() => usePubVisitSummary(pub, 'u2fkbn7s'));
+  const { result } = await renderHook(() => usePubVisitSummary(pub, 'u2fkbn7s'));
   await waitFor(() => expect(result.current).not.toBeNull());
 
-  act(() => {
+  await act(() => {
     mockGeneration += 1;
     for (const listener of mockBoundary) listener();
   });
   expect(result.current).toBeNull();
 
-  act(() => useAccountStore.setState({ session: { accountId: 'account-b' } as never }));
+  await act(() => useAccountStore.setState({ session: { accountId: 'account-b' } as never }));
   await waitFor(() => expect(result.current).not.toBeNull());
 });

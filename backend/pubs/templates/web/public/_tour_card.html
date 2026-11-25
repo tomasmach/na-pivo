@@ -1,0 +1,14 @@
+{% load i18n %}<a class="tr-card" href="{{ card.url }}">
+  {% include "web/public/_route.html" with map=card.map small=True %}
+  <span class="tr-card__body">
+    <span class="tr-card__title">{{ card.title }}</span>
+    <span class="tr-card__area">{{ card.area }} · @{{ card.author }}</span>
+    <span class="tr-card__names">{{ card.names }}</span>
+    <span class="tr-card__stats">
+      <span><b>{{ card.km }}</b><small>{% translate "pěšky" %}</small></span>
+      <span><b>{{ card.stops }}</b><small>{{ card.stops_label }}</small></span>
+      {% if card.avg_label %}<span><b>{{ card.avg_label }}</b><small>{% translate "průměr za pivo" %}</small></span>{% endif %}
+      {% if card.people %}<span><b>{{ card.people_label }}</b><small>{% translate "prošlo" %}</small></span>{% endif %}
+    </span>
+  </span>
+</a>

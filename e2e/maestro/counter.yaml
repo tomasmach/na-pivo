@@ -1,0 +1,12 @@
+appId: ${MAESTRO_APP_ID}
+---
+# Opens Štamgast with the seeded pub detected at the fixed fixture location.
+- runFlow:
+    file: route.yaml
+    env:
+      ROUTE: /nv/stamgast
+- extendedWaitUntil:
+    visible:
+      id: counter-place
+      text: E2E U Testera
+    timeout: 30000

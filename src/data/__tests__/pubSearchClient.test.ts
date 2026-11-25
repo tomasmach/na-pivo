@@ -85,6 +85,20 @@ describe('pubSearchClient', () => {
     );
   });
 
+  it('keeps the restaurant mark of a server result through opening it', async () => {
+    global.fetch = jest.fn(async () => ({
+      ok: true,
+      json: async () => ({
+        items: [{ id: 'directory-2', name: 'Restaurace Na Rohu', position: { lat: 49.3, lon: 16.7 }, placeKind: 'restaurant' }],
+      }),
+    })) as unknown as typeof fetch;
+
+    const [result] = (await searchPubNames('na rohu')).pubs;
+
+    expect(result.placeKind).toBe('restaurant');
+    expect((await resolvePubSearchResult(result))?.placeKind).toBe('restaurant');
+  });
+
   it('returns local matches and failed true for HTTP, network and abort failures', async () => {
     loadedPubs.push({ id: 'local-1', name: 'U Jelena', lat: 49.2, lng: 16.6 });
 

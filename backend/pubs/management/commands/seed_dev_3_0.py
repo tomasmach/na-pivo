@@ -289,6 +289,7 @@ class Command(BaseCommand):
 
             PubCommunityData.objects.get_or_create(
                 cache_key=cache_key,
+                name_key=normalize_pub_name(pub.name),
                 defaults={
                     "name": pub.name,
                     "lat": pub.lat,

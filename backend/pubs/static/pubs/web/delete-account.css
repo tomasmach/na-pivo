@@ -1,0 +1,34 @@
+/* Account deletion without signing in (/smazat-ucet). */
+
+.da { display: grid; gap: 32px; max-width: 680px; margin: 0 auto; padding-top: 24px; }
+.da__head { display: grid; gap: 20px; }
+.da__lead { color: var(--np-text-2); font-size: 17px; line-height: 1.55; }
+.da__cta { justify-self: start; }
+.da__email { margin-top: -8px; color: var(--np-yellow); font-size: 17px; font-weight: 700; overflow-wrap: anywhere; }
+.da__fine { color: var(--np-muted); font-size: 13px; line-height: 1.5; }
+.da__actions { display: flex; flex-wrap: wrap; gap: 12px; }
+
+.da-steps { display: grid; padding: 8px 24px; margin: 0; list-style: none; }
+.da-steps__item { display: flex; align-items: center; gap: 16px; min-height: 76px; }
+.da-steps__item + .da-steps__item { border-top: 1px solid var(--np-hairline); }
+.da-steps__item > span:last-child { display: grid; gap: 2px; }
+.da-steps__item strong { font-size: 16px; }
+.da-steps__item > span:last-child > span { color: var(--np-muted); font-size: 13px; }
+.da-steps__n {
+  display: grid; place-items: center; width: 36px; height: 36px; flex: none; border-radius: 50%;
+  background: var(--np-control); color: var(--np-yellow); font-size: 14px; font-weight: 700;
+}
+
+.da-mail { display: grid; gap: 16px; padding-top: 32px; border-top: 1px solid var(--np-hairline); }
+.da-mail__title { font-size: 22px; font-weight: 700; }
+.da-mail__text { color: var(--np-text-2); font-size: 15px; }
+.da-mail__form { display: flex; gap: 12px; }
+.da-mail__field { flex: 1; min-width: 0; }
+.da-mail__field .np-input { min-height: 52px; border-radius: var(--np-radius); background: var(--np-field); }
+
+@media (max-width: 960px) {
+  .da { gap: 24px; padding-top: 8px; }
+  .da-steps { padding: 4px 16px; }
+  .da-mail__form { flex-direction: column; }
+  .da__cta { justify-self: stretch; }
+}

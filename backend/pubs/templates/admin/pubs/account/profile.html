@@ -1,0 +1,39 @@
+{% load static %}
+{% if profile %}
+<link rel="stylesheet" href="{% static "pubs/admin/workbench.css" %}">
+<div class="wb wb-profile">
+  <div>
+    <div class="wb-name">{{ profile.name }}</div>
+    <div class="wb-muted">
+      od {{ profile.since|date:"j. n. Y" }} · naposledy v appce {{ profile.last_seen|date:"j. n. Y H:i" }}{% if profile.device %} · {{ profile.device }}{% endif %}
+    </div>
+  </div>
+
+  {% if profile.open_reports %}
+    <div class="wb-alert">Na tenhle účet čeká {{ profile.open_reports }} nahlášení. <a href="{% url 'admin_queue' %}?typ=report">Otevřít frontu</a></div>
+  {% endif %}
+
+  <div class="wb-stats">
+    {% for label, value, url in profile.stats %}
+      {% if url %}<a class="wb-stat" href="{{ url }}">{% else %}<div class="wb-stat">{% endif %}
+        <span>{{ label }}</span><strong>{{ value }}</strong>
+      {% if url %}</a>{% else %}</div>{% endif %}
+    {% endfor %}
+  </div>
+
+  <h2>Poslední aktivita</h2>
+  <div class="wb-list">
+    {% for row in profile.activity %}
+      <a class="wb-row" href="{{ row.url }}">
+        <span><span class="wb-tag {{ row.tone }}">{{ row.tag }}</span></span>
+        <span class="wb-text">{{ row.text }}</span>
+        <span class="wb-when">{{ row.when|date:"j. n. Y" }}</span>
+      </a>
+    {% empty %}
+      <div class="wb-empty"><strong>Zatím nic</strong>Žádný večer, zpětná vazba ani nahlášení.</div>
+    {% endfor %}
+  </div>
+
+  <h2>Údaje</h2>
+</div>
+{% endif %}

@@ -1,9 +1,9 @@
 /**
  * Menu photo picker — lets the user EITHER snap the pub's beer menu with the
- * camera OR pick an existing photo from the library, then pre-downscales it to a
- * tall-friendly ~1600px-wide JPEG before handing the local URI to the scan
- * uploader. The wider edge (vs the 512px avatar) keeps small menu text legible
- * for OCR, while the 0.7 JPEG compression keeps the multipart upload small.
+ * camera OR pick an existing photo from the library, then pre-downscales its
+ * longer edge to 1600px, the size the backend keeps, before handing the local
+ * URI to the scan uploader. The 0.7 JPEG compression keeps the multipart upload
+ * small.
  *
  * A menu is TALL, so unlike the avatar picker we never force a square crop /
  * aspect — that would chop off half the beers.
@@ -26,8 +26,8 @@ import { manipulateAsync, SaveFormat } from 'expo-image-manipulator';
 /** Which capture path the caller's action sheet picked. */
 export type MenuPhotoSource = 'camera' | 'library';
 
-/** Target width we downscale to before upload — wide enough for OCR detail. */
-const MAX_WIDTH = 1600;
+/** Longer edge the backend keeps (BEER_PHOTO_MAX_EDGE_PX, MENU_SCAN_IMAGE_PX); more is uploaded for nothing. */
+const MAX_EDGE = 1600;
 /** JPEG quality for the pre-upload downscale (smaller than avatar; OCR-friendly). */
 const JPEG_QUALITY = 0.7;
 
@@ -70,7 +70,8 @@ export async function pickAndPrepareMenuPhoto(
       return { status: 'cancelled' };
     }
 
-    const uri = await downscale(result.assets[0].uri);
+    const asset = result.assets[0];
+    const uri = await downscale(asset.uri, asset.width, asset.height);
     return { status: 'picked', uri };
   } catch {
     return { status: 'error' };
@@ -78,13 +79,15 @@ export async function pickAndPrepareMenuPhoto(
 }
 
 /**
- * Resize the width to MAX_WIDTH (preserving aspect, so tall menus stay tall) and
+ * Shrink the longer edge to MAX_EDGE (preserving aspect, never enlarging) and
  * re-encode to JPEG. Falls back to the original URI if manipulation fails — the
  * backend can still accept and re-encode it.
  */
-async function downscale(uri: string): Promise<string> {
+async function downscale(uri: string, width: number, height: number): Promise<string> {
+  const resize =
+    Math.max(width, height) <= MAX_EDGE ? [] : [{ resize: width >= height ? { width: MAX_EDGE } : { height: MAX_EDGE } }];
   try {
-    const out = await manipulateAsync(uri, [{ resize: { width: MAX_WIDTH } }], {
+    const out = await manipulateAsync(uri, resize, {
       compress: JPEG_QUALITY,
       format: SaveFormat.JPEG,
     });

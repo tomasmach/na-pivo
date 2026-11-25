@@ -23,6 +23,8 @@ const CACHE_TTL_MS = 5 * 60 * 1000;
 
 export type LeaderboardCategory = 'beers' | 'pubs' | 'mapper';
 export type LeaderboardPeriod = 'week' | 'year' | 'all';
+/** The new look's Žebříčky also rank the calendar month so far. */
+export type BoardPeriod = LeaderboardPeriod | 'month';
 
 export interface BoardProfile {
   id: string;
@@ -52,7 +54,7 @@ export interface BoardMe {
 
 export interface Leaderboard {
   category: LeaderboardCategory;
-  period: LeaderboardPeriod;
+  period: BoardPeriod;
   periodStart: string | null;
   totalRanked: number;
   entries: BoardEntry[];
@@ -104,7 +106,7 @@ function parseEntry(raw: RawBoardEntry): BoardEntry {
 export function parseLeaderboard(
   raw: RawLeaderboard,
   fallbackCategory: LeaderboardCategory,
-  fallbackPeriod: LeaderboardPeriod,
+  fallbackPeriod: BoardPeriod,
 ): Leaderboard {
   const category =
     raw.category === 'beers' || raw.category === 'pubs' || raw.category === 'mapper'
@@ -112,7 +114,7 @@ export function parseLeaderboard(
       : fallbackCategory;
   // The server coerces unsupported combos (mapper × week) to 'all' — trust its echo.
   const period =
-    raw.period === 'week' || raw.period === 'year' || raw.period === 'all'
+    raw.period === 'week' || raw.period === 'month' || raw.period === 'year' || raw.period === 'all'
       ? raw.period
       : fallbackPeriod;
   return {
@@ -139,11 +141,11 @@ export function clearLeaderboardsCache(): void {
 
 export async function fetchLeaderboard(
   category: LeaderboardCategory,
-  period: LeaderboardPeriod,
+  period: BoardPeriod,
   options: { signal?: AbortSignal; force?: boolean } = {},
 ): Promise<Leaderboard | null> {
   // Mapér has a single all-time window; normalise before hitting cache/server.
-  const effectivePeriod: LeaderboardPeriod = category === 'mapper' ? 'all' : period;
+  const effectivePeriod: BoardPeriod = category === 'mapper' ? 'all' : period;
   const cacheKey = `${category}:${effectivePeriod}`;
 
   if (!options.force) {

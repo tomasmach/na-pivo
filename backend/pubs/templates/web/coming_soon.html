@@ -1,0 +1,11 @@
+{% extends "web/public.html" %}
+{% load i18n web %}
+{% block content %}
+{% translate "Tuhle stránku ještě čepujeme" as empty_title %}
+{% translate "Brzy tu bude. Zatím mrkni, kolik stojí pivo, nebo si stáhni appku." as empty_text %}
+{% translate "Ceny piva" as action_label %}
+{% translate "Stáhnout appku" as secondary_label %}
+{% web_url "beer-prices" as prices_url %}
+{% web_url "home" as home_url %}
+{% include "web/components/empty.html" with icon="beer" title=empty_title text=empty_text action_label=action_label action_url=prices_url secondary_label=secondary_label secondary_url=home_url %}
+{% endblock %}

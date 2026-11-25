@@ -13,6 +13,7 @@ from pubs.models import (
     ContentReport,
     FeedbackReport,
     PubGeocodingMiss,
+    PubReachVisitor,
     TourShare,
 )
 
@@ -57,6 +58,15 @@ class Command(BaseCommand):
         miss_ids = list(misses.order_by("pk").values_list("pk", flat=True)[:batch_size])
         deleted_misses, _ = misses.filter(pk__in=miss_ids).delete()
         self.stdout.write(f"pub_geocoding_misses={deleted_misses}")
+
+        # The daily counts stay; only who reached a pub goes after the retention.
+        # Map pins add a row per person, pub and day, so this table gets a bigger batch.
+        reach_cutoff = timezone.localdate(now) - timedelta(days=settings.PUB_REACH_VISITOR_RETENTION_DAYS)
+        reach_visitors = self._delete_batch(
+            PubReachVisitor.objects.filter(day__lt=reach_cutoff),
+            batch_size=batch_size * 10,
+        )
+        self.stdout.write(f"pub_reach_visitors={reach_visitors}")
 
         proof_cutoff = now - timedelta(
             days=settings.ACCOUNT_OPERATION_PROOF_RETENTION_DAYS

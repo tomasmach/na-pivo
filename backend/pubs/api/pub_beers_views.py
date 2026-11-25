@@ -31,7 +31,7 @@ TOP_CITIES = 30
 # A count never shows one person's drinking: with two, either could subtract
 # their own beers. Nobody puts their own place on the board alone either.
 MIN_DRINKERS = 3
-PERIODS = ("week", "year", "all")
+PERIODS = ("week", "month", "year", "all")
 # Cities split into numbered or named districts in the pub catalogue.
 CITIES_WITH_DISTRICTS = ("Praha", "Brno", "Ostrava", "Plzeň")
 # Official names some catalogue rows use instead of the city's own.
@@ -200,9 +200,9 @@ def _period_bounds(period: str, now: datetime | None = None):
     if period == "week":
         monday, start, end = last_week_bounds(now)
         return monday, monday + timedelta(days=6), start, end
-    if period == "year":
+    if period in ("month", "year"):
         local_now = timezone.localtime(now or timezone.now(), PRAGUE_TZ)
-        first = date(local_now.year, 1, 1)
+        first = local_now.date().replace(day=1) if period == "month" else date(local_now.year, 1, 1)
         start = datetime.combine(first, datetime.min.time(), tzinfo=PRAGUE_TZ)
         return first, local_now.date(), start, None
     return None, None, None, None
@@ -278,10 +278,10 @@ class PubBeersLastWeekView(APIView):
 
 
 class PubBeerBoardView(APIView):
-    """GET /v1/pubs/beer-board?period=week|year|all&city=<name> — top pubs by beers.
+    """GET /v1/pubs/beer-board?period=week|month|year|all&city=<name> — top pubs by beers.
 
     ``week`` is the previous Monday–Sunday week (the one the map shows), ``year``
-    this calendar year so far. Only pubs where at least two people drank rank.
+    this calendar year so far, ``month`` this calendar month so far. Only pubs where at least two people drank rank.
 
     Response 200:
         {"period", "period_start", "period_end", "city",

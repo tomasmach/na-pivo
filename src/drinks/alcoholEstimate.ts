@@ -3,11 +3,11 @@
  * body numbers the user typed in. It is a guess and every surface says so.
  *
  * Model: Watson total body water from sex, age, height and weight, Widmark
- * distribution into that water, each drink absorbed evenly over 45 minutes,
- * linear elimination. Three runs give the shown range; the cautious run (slow
- * elimination, 20 % more alcohol than logged) decides when you are at zero, so
- * the morning answer errs late rather than early. While a drink is still being
- * absorbed the level is low on purpose, so the estimate also says where it peaks.
+ * distribution into that water, 90 % of each drink absorbed evenly over 45
+ * minutes (the usual forensic absorption deficit), linear elimination. Three
+ * runs give the shown range; the middle run, an average person, decides when
+ * you are at zero. While a drink is still being absorbed the level is low on
+ * purpose, so the estimate also says where it peaks.
  */
 
 import { normalizeDrinkType, type DrinkType } from './drinkTypes';
@@ -61,6 +61,22 @@ const NON_ALCOHOLIC =
   /nealko|birell|bernard free|(^|\s)0[,.]0(\s|%|$)|alkoholfrei|non[- ]?alc|alcohol[- ]?free|clear mind|krystus|svěží pomelo/i;
 const RADLER = /radler|shandy/i;
 const DEGREES = /(\d{1,2}(?:[,.]\d)?)\s*°/;
+const BARE_DEGREES = /(?:^|\s)(\d{1,2}(?:[,.]\d)?)(?=\s|$)(?!\s*(?:%|[cdm]?l(?!\p{L})))/giu;
+const TWELVE_DEGREE_LAGER_ABV = 5;
+
+function platoOf(name: string): number | null {
+  const marked = name.match(DEGREES);
+  if (marked) {
+    const plato = Number(marked[1].replace(',', '.'));
+    return plato >= 3 && plato <= 30 ? plato : null;
+  }
+  let plato: number | null = null;
+  for (const [, bare] of name.matchAll(BARE_DEGREES)) {
+    const value = Number(bare.replace(',', '.'));
+    if (value >= 7 && value <= 30) plato = value;
+  }
+  return plato;
+}
 
 /** Alcohol by volume in percent, inferred from the drink type and the name. */
 export function drinkAbv(drink: Pick<EstimateDrink, 'beerName' | 'drinkType'>): number {
@@ -71,16 +87,11 @@ export function drinkAbv(drink: Pick<EstimateDrink, 'beerName' | 'drinkType'>): 
   const name = drink.beerName;
   if (NON_ALCOHOLIC.test(name)) return 0;
   if (RADLER.test(name)) return 2.5;
-  const degrees = name.match(DEGREES);
-  if (degrees) {
-    const plato = Number(degrees[1].replace(',', '.'));
-    if (plato >= 3 && plato <= 30) return Math.round(plato * 0.42 * 10) / 10;
-  }
-  // Unknown strength: assume a strong-ish beer so the guess errs high.
-  return 6;
+  const plato = platoOf(name);
+  return plato === null ? TWELVE_DEGREE_LAGER_ABV : Math.round(plato * 0.42 * 10) / 10;
 }
 
-export function drinkVolumeMl(drink: Pick<EstimateDrink, 'drinkType' | 'volumeMl'>): number {
+function drinkVolumeMl(drink: Pick<EstimateDrink, 'drinkType' | 'volumeMl'>): number {
   if (typeof drink.volumeMl === 'number' && drink.volumeMl > 0) return drink.volumeMl;
   const type = normalizeDrinkType(drink.drinkType);
   if (type === 'shot') return 40;
@@ -89,10 +100,11 @@ export function drinkVolumeMl(drink: Pick<EstimateDrink, 'drinkType' | 'volumeMl
 }
 
 const ETHANOL_DENSITY = 0.789;
+const ABSORBED_SHARE = 0.9;
 const BLOOD_WATER = 0.8;
 const BLOOD_DENSITY = 1.055;
 const ABSORPTION_MIN = 45;
-// Long enough that a heavy night is never cut off before the cautious run ends.
+// Long enough that a heavy night is never cut off before it is back at zero.
 export const ESTIMATE_WINDOW_MS = 72 * 60 * 60 * 1000;
 const STEP_MS = 60 * 1000;
 const HALF_HOUR_MS = 30 * 60 * 1000;
@@ -110,7 +122,7 @@ interface Scenario {
 
 const MID: Scenario = { alcohol: 1, eliminationPerHour: 0.15 };
 const LOW: Scenario = { alcohol: 0.9, eliminationPerHour: 0.2 };
-const CAUTIOUS: Scenario = { alcohol: 1.2, eliminationPerHour: 0.1 };
+const HIGH: Scenario = { alcohol: 1.2, eliminationPerHour: 0.1 };
 
 interface Dose {
   startMs: number;
@@ -119,6 +131,8 @@ interface Dose {
 
 interface Run {
   at: number;
+  /** The last time the level was at zero with nothing left to absorb; drinks after it make the current bout. */
+  lastZeroMs: number;
   peak: number;
   peakAt: number;
   zeroAt: number;
@@ -133,20 +147,29 @@ function simulate(doses: Dose[], scenario: Scenario, untilMs: number): Run {
   let at = 0;
   let peak = 0;
   let peakAt = untilMs;
+  let lastZeroMs = -Infinity;
+  let wasAbsorbing = false;
   for (let ms = firstMs; ; ms += STEP_MS) {
     let absorbed = 0;
+    let starting = false;
+    let carried = false;
     for (const dose of doses) {
       if (ms >= dose.startMs && ms < dose.startMs + ABSORPTION_MIN * STEP_MS) {
         absorbed += (dose.promile * scenario.alcohol) / ABSORPTION_MIN;
+        if (ms - dose.startMs < STEP_MS) starting = true;
+        else carried = true;
       }
     }
+    // A weak drink can absorb slower than the level falls, so zero alone does not end a bout.
+    if (starting && !carried && !wasAbsorbing && level <= 0) lastZeroMs = ms - STEP_MS;
+    wasAbsorbing = absorbed > 0;
     level = Math.max(0, level + absorbed - (level > 0 ? eliminationPerStep : 0));
     if (ms <= untilMs) at = level;
     else if (level > peak) {
       peak = level;
       peakAt = ms;
     }
-    if (ms >= lastAbsorbedMs && level <= 0) return { at, peak, peakAt, zeroAt: ms };
+    if (ms >= lastAbsorbedMs && level <= 0) return { at, lastZeroMs, peak, peakAt, zeroAt: ms };
   }
 }
 
@@ -155,18 +178,18 @@ export interface AlcoholEstimate {
   now: number;
   low: number;
   high: number;
-  /** When the cautious run reaches zero, rounded up to the half hour. */
+  /** When the middle run reaches zero, rounded up to the half hour. */
   zeroAt: Date;
   /** The last drink is still being absorbed, so the level is not falling yet. */
   absorbing: boolean;
   /** While absorbing and still rising: the middle guess's coming peak. */
   rising: { promile: number; at: Date } | null;
-  /** The drinks that went into the guess, alcoholic only. */
+  /** The alcoholic drinks since the level was last at zero; older ones are long gone. */
   drinks: EstimateDrink[];
 }
 
 /**
- * Null when nothing alcoholic was logged in the window or the cautious run is
+ * Null when nothing alcoholic was logged in the window or the middle run is
  * already back at zero.
  */
 export function estimateAlcohol(
@@ -186,22 +209,25 @@ export function estimateAlcohol(
   const doses = counted.map((drink) => ({
     startMs: Date.parse(drink.at),
     promile:
-      drinkVolumeMl(drink) * (drinkAbv(drink) / 100) * ETHANOL_DENSITY * promilePerGram,
+      drinkVolumeMl(drink) * (drinkAbv(drink) / 100) * ETHANOL_DENSITY * ABSORBED_SHARE * promilePerGram,
   }));
 
-  const cautious = simulate(doses, CAUTIOUS, nowMs);
-  const zeroAtMs = Math.ceil(cautious.zeroAt / HALF_HOUR_MS) * HALF_HOUR_MS;
+  const mid = simulate(doses, MID, nowMs);
+  const zeroAtMs = Math.ceil(mid.zeroAt / HALF_HOUR_MS) * HALF_HOUR_MS;
   if (zeroAtMs <= nowMs) return null;
 
-  const mid = simulate(doses, MID, nowMs);
+  // The app already said zero once the middle run got there, so what came before is a closed night for every run.
+  const bout = doses.filter((dose) => dose.startMs > mid.lastZeroMs);
+  const low = simulate(bout, LOW, nowMs);
+  const high = simulate(bout, HIGH, nowMs);
   const absorbing = nowMs < doses[doses.length - 1].startMs + ABSORPTION_MIN * STEP_MS;
   return {
     now: mid.at,
-    low: simulate(doses, LOW, nowMs).at,
-    high: cautious.at,
+    low: low.at,
+    high: high.at,
     zeroAt: new Date(zeroAtMs),
     absorbing,
     rising: absorbing && mid.peak > mid.at ? { promile: mid.peak, at: new Date(mid.peakAt) } : null,
-    drinks: counted,
+    drinks: counted.filter((drink) => Date.parse(drink.at) > mid.lastZeroMs),
   };
 }

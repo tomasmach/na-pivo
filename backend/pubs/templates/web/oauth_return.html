@@ -1,0 +1,13 @@
+{% extends "web/base.html" %}
+{% load i18n web %}
+{% block shell %}
+<main class="np-oauth" id="obsah">
+  <form method="post" action="{{ action }}" data-autosubmit>
+    {% csrf_token %}
+    {% for key, value in fields.items %}<input type="hidden" name="{{ key }}" value="{{ value }}">{% endfor %}
+    <p class="np-lead">{% translate "Ještě moment, přihlašuju tě." %}</p>
+    <button class="np-btn np-btn--primary" type="submit">{% translate "Pokračovat" %}</button>
+  </form>
+</main>
+{% endblock %}
+{% block scripts %}<script src="{% asset "web.js" %}" defer></script>{% endblock %}

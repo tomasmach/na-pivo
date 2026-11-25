@@ -2,7 +2,7 @@ jest.mock('@react-native-async-storage/async-storage', () =>
   require('@react-native-async-storage/async-storage/jest/async-storage-mock'),
 );
 
-import { buildNightSummary, nightHours, sessionsOfNight, tallyGroups } from '../nightModel';
+import { buildNightSummary, nightHours, sessionsOfNight } from '../nightModel';
 import type { TallySession } from '@/stores/tallyStore';
 
 let idSeq = 0;
@@ -22,20 +22,6 @@ function session(over: Partial<TallySession>): TallySession {
     ...over,
   };
 }
-
-describe('tallyGroups', () => {
-  it('splits into groups of five with a remainder', () => {
-    expect(tallyGroups(12)).toEqual({ groups: [5, 5, 2], overflow: 0 });
-  });
-
-  it('caps drawn marks and reports overflow', () => {
-    expect(tallyGroups(40, 25)).toEqual({ groups: [5, 5, 5, 5, 5], overflow: 15 });
-  });
-
-  it('handles zero', () => {
-    expect(tallyGroups(0)).toEqual({ groups: [], overflow: 0 });
-  });
-});
 
 describe('nightHours', () => {
   it('rounds to whole hours with a floor of one past thirty minutes', () => {

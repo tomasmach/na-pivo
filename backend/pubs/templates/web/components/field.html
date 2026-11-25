@@ -1,0 +1,8 @@
+{% comment %}
+Labelled input. name, label, type (default text), value, placeholder, autocomplete,
+hint, error, required, autofocus, minlength, maxlength. The input id is "f-<name>".
+{% endcomment %}<div class="np-field">
+  <label class="np-field__label" for="f-{{ name }}">{{ label }}</label>
+  <input class="np-input" id="f-{{ name }}" name="{{ name }}" type="{{ type|default:"text" }}"{% if value %} value="{{ value }}"{% endif %}{% if placeholder %} placeholder="{{ placeholder }}"{% endif %}{% if autocomplete %} autocomplete="{{ autocomplete }}"{% endif %}{% if required %} required{% endif %}{% if autofocus %} autofocus{% endif %}{% if minlength %} minlength="{{ minlength }}"{% endif %}{% if maxlength %} maxlength="{{ maxlength }}"{% endif %}{% if error %} aria-invalid="true" aria-describedby="f-{{ name }}-error"{% elif hint %} aria-describedby="f-{{ name }}-hint"{% endif %}>
+  {% if error %}<p class="np-field__error" id="f-{{ name }}-error">{{ error }}</p>{% elif hint %}<p class="np-field__hint" id="f-{{ name }}-hint">{{ hint }}</p>{% endif %}
+</div>

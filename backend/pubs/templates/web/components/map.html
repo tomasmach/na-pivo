@@ -1,0 +1,9 @@
+{% comment %}
+Street map (OpenFreeMap tiles, MapLibre served by us) over a fallback drawn on the server.
+live: JSON from pubs.web.pub_map.live_map(); fallback: template shown until the map loads and kept
+without JS or tiles; label: accessible name. The page renders with render_page(..., with_map=True),
+otherwise its CSP blocks the tiles and the fallback stays.
+{% endcomment %}{% load i18n web %}<div class="np-map__frame" role="region" aria-label="{{ label }}" data-map="{{ live }}" data-lib="{% asset "maplibre-gl.mjs" %}" data-worker="{% asset "maplibre-gl-worker.mjs" %}" data-css="{% asset "maplibre-gl.css" %}" data-label="{{ label }}" data-zoom-in="{% translate "Přiblížit" %}" data-zoom-out="{% translate "Oddálit" %}">
+{% if fallback %}{% include fallback %}{% endif %}
+<template data-icon="beer">{% icon "beer" %}</template><template data-icon="plus">{% icon "plus" %}</template><template data-icon="minus">{% icon "minus" %}</template>
+</div><script type="module" src="{% asset "map.js" %}"></script>

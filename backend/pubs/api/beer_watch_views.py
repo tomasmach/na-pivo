@@ -12,6 +12,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from pubs.beer_catalog import match_beer
+from pubs.beer_ranking import pouring_pubs
 from pubs.beer_watch import MAX_WATCHES, RADIUS_CHOICES_M, snap_location
 from pubs.models import Account, BeerTapEvent, BeerWatch
 
@@ -55,8 +56,26 @@ def _location_set(account: Account) -> bool:
     )
 
 
+def _nearest_within_radius(account: Account, watches: list[BeerWatch]) -> dict[int, dict]:
+    """Where each watched beer pours nearest, within the radius around the rounded watch location."""
+
+    if not watches or not _location_set(account):
+        return {}
+    pubs = pouring_pubs(
+        [watch.product_id for watch in watches], account.beer_watch_lat, account.beer_watch_lng
+    )
+    return {
+        product_id: {"pub_name": row["nearest"]["name"], "distance_m": row["nearest"]["distance_m"]}
+        for product_id, row in pubs.items()
+        if row["nearest"] and row["nearest"]["distance_m"] <= account.beer_watch_radius_m
+    }
+
+
 def _state(account: Account) -> dict:
-    watches = BeerWatch.objects.filter(account=account).select_related("product").order_by("-created_at", "-id")
+    watches = list(
+        BeerWatch.objects.filter(account=account).select_related("product").order_by("-created_at", "-id")
+    )
+    nearest = _nearest_within_radius(account, watches)
     helped = (
         BeerTapEvent.objects.filter(contributor=account, observed_at__gte=timezone.now() - HELPED_WINDOW)
         .annotate(helped_count=Count("pushes"))
@@ -67,7 +86,10 @@ def _state(account: Account) -> dict:
     return {
         "radius_m": account.beer_watch_radius_m,
         "location_set": _location_set(account),
-        "watches": [_watch_item(watch.product) for watch in watches],
+        # Additive (Piva tab): "nearest" says where the beer pours within the radius, or null.
+        "watches": [
+            {**_watch_item(watch.product), "nearest": nearest.get(watch.product_id)} for watch in watches
+        ],
         "helped": [
             {
                 "cache_key": event.cache_key,

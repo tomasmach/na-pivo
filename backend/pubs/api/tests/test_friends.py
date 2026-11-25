@@ -209,6 +209,57 @@ def test_friends_dashboard_keeps_released_request_keys(client):
 
 
 @pytest.mark.django_db
+def test_compact_dashboard_sends_only_what_the_app_reads(client):
+    token, owner = _register(client, "janek")
+    friend_token, friend = _register(client, "petr")
+    asker_token, asker = _register(client, "karel")
+    for other_token in (friend_token, asker_token):
+        sent = client.post(
+            "/v1/friends/requests",
+            data={"target_account_id": str(owner.public_id)},
+            format="json",
+            **_auth(other_token),
+        )
+        assert sent.status_code == status.HTTP_201_CREATED
+    from_friend = Friendship.objects.get(requester=friend)
+    accepted = client.post(f"/v1/friends/requests/{from_friend.public_id}/accept", **_auth(token))
+    assert accepted.status_code == status.HTTP_200_OK
+    seen = FriendNotification.objects.get(recipient=owner, actor=friend)
+    client.post("/v1/friends/notifications/read", data={"ids": [str(seen.public_id)]}, format="json", **_auth(token))
+    for day in ("2026-06-12", "2026-06-13"):
+        _visit(owner, day=day)
+        _visit(friend, day=day)
+
+    with CaptureQueriesContext(connection) as full_queries:
+        full = client.get("/v1/friends", **_auth(token))
+    with CaptureQueriesContext(connection) as compact_queries:
+        compact = client.get("/v1/friends?view=compact", **_auth(token))
+
+    assert compact.status_code == status.HTTP_200_OK
+    body = compact.json()
+    assert set(body) == {
+        "friends",
+        "friend_stats",
+        "incoming_requests",
+        "outgoing_requests",
+        "active_friends",
+        "my_active_activity",
+        "presence",
+        "my_presence",
+        "home_presence",
+        "notifications",
+        "settings",
+    }
+    assert [row["nickname"] for row in body["friends"]] == ["petr"]
+    assert body["friend_stats"] == full.json()["friend_stats"]
+    assert [row["requester"]["nickname"] for row in body["incoming_requests"]] == ["karel"]
+    assert [row["actor"]["nickname"] for row in body["notifications"]] == ["karel"]
+    assert len(full.json()["notifications"]) == 2
+    assert {"leaderboard", "streak", "following", "blocked_ids", "unread_count", "plans"} <= set(full.json())
+    assert len(compact_queries) <= len(full_queries) - 7
+
+
+@pytest.mark.django_db
 def test_friends_dashboard_paginates_relationships_and_follows(client):
     token, owner = _register(client, "janek")
     others = [_register(client, f"friend{index}")[1] for index in range(3)]
@@ -2058,7 +2109,8 @@ def test_friends_live_slice(client, monkeypatch):
     assert body["plans"] == []
     assert body["incoming_count"] == 0
     assert body["unread_count"] >= 1
-    assert body["server_time"]
+    unchanged = client.get("/v1/friends/live", HTTP_IF_NONE_MATCH=live["ETag"], **_auth(token_owner))
+    assert unchanged.status_code == status.HTTP_304_NOT_MODIFIED
 
 
 @pytest.mark.django_db
@@ -3037,3 +3089,131 @@ def test_tour_ping_names_the_tour_and_old_payload_keeps_its_wording(client, monk
     # A retry of that ping from the offline queue stays quiet; a new walk of the same tour does not.
     assert post(client_id=replay, message="Tour de pub: Okruh", tour_title="Okruh") == counted + 1
     assert post(message="Tour de pub: Okruh", tour_title="Okruh") == counted + 2
+
+
+def _ping(client, token, *, recipients=None, add=None, message="", client_id=None):
+    body = {
+        "client_id": client_id or str(uuid.uuid4()),
+        "name": _PUB_NAME,
+        "lat": _LAT,
+        "lng": _LNG,
+        "city": "Praha",
+        "message": message,
+        "started_at": timezone.now().isoformat(),
+        "expires_at": (timezone.now() + timezone.timedelta(hours=4)).isoformat(),
+    }
+    if recipients is not None:
+        body["recipient_ids"] = [str(account.public_id) for account in recipients]
+    if add is not None:
+        body["add_recipients"] = add
+    return client.post("/v1/friends/pub-activity", data=body, format="json", **_auth(token))
+
+
+@pytest.mark.django_db
+def test_ping_to_one_friend_joins_my_live_ping_and_tells_only_them(client, monkeypatch):
+    token_owner, owner = _register(client, "janek")
+    token_petr, petr = _register(client, "petr")
+    token_karel, karel = _register(client, "karel")
+    for friend, push in ((petr, "petr_join"), (karel, "karel_join")):
+        _make_friends(owner, friend)
+        _no_quiet(friend)
+        _grant_push(friend, f"ExponentPushToken[{push}]")
+    sent_payloads: list[list[dict]] = []
+    monkeypatch.setattr("pubs.api.views.requests.post", _push_recorder(sent_payloads))
+
+    first = _ping(client, token_owner, recipients=[petr], message="Držím stůl.")
+    assert first.status_code == status.HTTP_201_CREATED
+
+    joined = _ping(client, token_owner, recipients=[karel], add=True)
+    assert joined.status_code == status.HTTP_201_CREATED
+    assert joined.json()["id"] == first.json()["id"]
+    assert joined.json()["notified_count"] == 1
+    assert joined.json()["message"] == "Držím stůl."
+    assert [item["to"] for item in _flatten_push(sent_payloads)] == [
+        "ExponentPushToken[petr_join]",
+        "ExponentPushToken[karel_join]",
+    ]
+    for token in (token_petr, token_karel):
+        dash = client.get("/v1/friends", **_auth(token)).json()
+        assert [row["id"] for row in dash["active_friends"]] == [first.json()["id"]]
+
+    # Karel is in already: a second tap (or a retry) tells nobody again.
+    again = _ping(client, token_owner, recipients=[karel], add=True)
+    assert again.status_code == status.HTTP_200_OK
+    assert again.json()["notified_count"] == 0
+    assert len(_flatten_push(sent_payloads)) == 2
+    assert FriendNotification.objects.filter(recipient=petr).count() == 1
+
+
+@pytest.mark.django_db
+def test_ping_to_one_friend_keeps_a_whole_party_ping_whole(client, monkeypatch):
+    token_owner, owner = _register(client, "janek")
+    token_petr, petr = _register(client, "petr")
+    token_karel, karel = _register(client, "karel")
+    for friend in (petr, karel):
+        _make_friends(owner, friend)
+        _no_quiet(friend)
+    monkeypatch.setattr("pubs.api.views.requests.post", _push_recorder([]))
+
+    assert _ping(client, token_owner).status_code == status.HTTP_201_CREATED
+    joined = _ping(client, token_owner, recipients=[karel], add=True)
+
+    assert joined.status_code == status.HTTP_200_OK
+    assert joined.json()["notified_count"] == 0
+    assert FriendNotification.objects.filter(recipient=karel).count() == 1
+    petr_dash = client.get("/v1/friends", **_auth(token_petr)).json()
+    assert len(petr_dash["active_friends"]) == 1
+
+
+@pytest.mark.django_db
+def test_ping_to_one_friend_without_a_live_ping_starts_one_for_them(client, monkeypatch):
+    token_owner, owner = _register(client, "janek")
+    _token_petr, petr = _register(client, "petr")
+    token_karel, karel = _register(client, "karel")
+    for friend in (petr, karel):
+        _make_friends(owner, friend)
+        _no_quiet(friend)
+    monkeypatch.setattr("pubs.api.views.requests.post", _push_recorder([]))
+
+    resp = _ping(client, token_owner, recipients=[karel], add=True)
+
+    assert resp.status_code == status.HTTP_201_CREATED
+    assert resp.json()["notified_count"] == 1
+    assert not FriendNotification.objects.filter(recipient=petr).exists()
+    karel_dash = client.get("/v1/friends", **_auth(token_karel)).json()
+    assert [row["id"] for row in karel_dash["active_friends"]] == [resp.json()["id"]]
+
+
+@pytest.mark.django_db
+def test_released_app_ping_without_add_flag_still_replaces_the_audience(client, monkeypatch):
+    token_owner, owner = _register(client, "janek")
+    token_petr, petr = _register(client, "petr")
+    _token_karel, karel = _register(client, "karel")
+    for friend in (petr, karel):
+        _make_friends(owner, friend)
+        _no_quiet(friend)
+    monkeypatch.setattr("pubs.api.views.requests.post", _push_recorder([]))
+
+    first = _ping(client, token_owner, recipients=[petr])
+    second = _ping(client, token_owner, recipients=[karel])
+
+    assert second.json()["id"] == first.json()["id"]
+    petr_dash = client.get("/v1/friends", **_auth(token_petr)).json()
+    assert petr_dash["active_friends"] == []
+
+
+@pytest.mark.django_db
+def test_ping_to_one_friend_leaves_the_message_of_my_live_ping_alone(client, monkeypatch):
+    token_owner, owner = _register(client, "janek")
+    _token_petr, petr = _register(client, "petr")
+    _token_karel, karel = _register(client, "karel")
+    for friend in (petr, karel):
+        _make_friends(owner, friend)
+        _no_quiet(friend)
+    monkeypatch.setattr("pubs.api.views.requests.post", _push_recorder([]))
+
+    first = _ping(client, token_owner, recipients=[petr])
+    joined = _ping(client, token_owner, recipients=[karel], add=True, message="Jen pro Karla.")
+
+    assert joined.json()["id"] == first.json()["id"]
+    assert joined.json()["message"] == ""

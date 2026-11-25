@@ -4,6 +4,8 @@ import uuid
 
 from django.db import models
 
+from .display import account_label, czech_day
+
 COMMUNITY_EVENT_TEAM_MAX_MEMBERS = 4
 
 
@@ -11,40 +13,44 @@ class CommunityEvent(models.Model):
     """Small, adult-only hosted gathering with privacy-gated exact location."""
 
     class Status(models.TextChoices):
-        ACTIVE = "active", "Active"
-        CANCELLED = "cancelled", "Cancelled"
+        ACTIVE = "active", "Aktivní"
+        CANCELLED = "cancelled", "Zrušená"
 
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False, verbose_name="ID (technické)")
     host = models.ForeignKey(
         "pubs.Account",
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
         related_name="hosted_community_events",
+        verbose_name="Pořadatel",
     )
-    client_id = models.UUIDField()
-    title = models.CharField(max_length=120)
-    description = models.CharField(max_length=800, blank=True, default="")
-    city = models.CharField(max_length=120)
-    area_label = models.CharField(max_length=120, blank=True, default="")
-    exact_address = models.CharField(max_length=300)
-    lat = models.FloatField()
-    lng = models.FloatField()
-    starts_at = models.DateTimeField(db_index=True)
-    ends_at = models.DateTimeField(db_index=True)
-    capacity = models.PositiveSmallIntegerField()
-    adults_only = models.BooleanField(default=True)
+    client_id = models.UUIDField(verbose_name="ID z appky (technické)")
+    title = models.CharField(max_length=120, verbose_name="Název")
+    description = models.CharField(max_length=800, blank=True, default="", verbose_name="Popis")
+    city = models.CharField(max_length=120, verbose_name="Město")
+    area_label = models.CharField(max_length=120, blank=True, default="", verbose_name="Oblast")
+    exact_address = models.CharField(max_length=300, verbose_name="Přesná adresa")
+    lat = models.FloatField(verbose_name="Zeměpisná šířka")
+    lng = models.FloatField(verbose_name="Zeměpisná délka")
+    starts_at = models.DateTimeField(db_index=True, verbose_name="Začátek")
+    ends_at = models.DateTimeField(db_index=True, verbose_name="Konec")
+    capacity = models.PositiveSmallIntegerField(verbose_name="Kapacita")
+    adults_only = models.BooleanField(default=True, verbose_name="Jen 18+")
     status = models.CharField(
         max_length=16,
         choices=Status.choices,
         default=Status.ACTIVE,
         db_index=True,
+        verbose_name="Stav",
     )
-    cancelled_at = models.DateTimeField(null=True, blank=True)
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
+    cancelled_at = models.DateTimeField(null=True, blank=True, verbose_name="Zrušeno")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="Vytvořeno")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="Upraveno")
 
     class Meta:
+        verbose_name = "komunitní akce"
+        verbose_name_plural = "komunitní akce"
         ordering = ["starts_at", "created_at"]
         constraints = [
             models.UniqueConstraint(
@@ -75,40 +81,48 @@ class CommunityEvent(models.Model):
             ),
         ]
 
+    def __str__(self) -> str:
+        return f"{self.title}, {czech_day(self.starts_at)}"
+
 
 class CommunityEventMembership(models.Model):
     """Join request and its lifecycle; approval unlocks the exact address."""
 
     class Status(models.TextChoices):
-        PENDING = "pending", "Pending"
-        APPROVED = "approved", "Approved"
-        REJECTED = "rejected", "Rejected"
-        CANCELLED = "cancelled", "Cancelled"
-        LEFT = "left", "Left"
+        PENDING = "pending", "Čeká"
+        APPROVED = "approved", "Schváleno"
+        REJECTED = "rejected", "Zamítnuto"
+        CANCELLED = "cancelled", "Zrušeno"
+        LEFT = "left", "Odešel"
 
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False, verbose_name="ID (technické)")
     event = models.ForeignKey(
         CommunityEvent,
         on_delete=models.CASCADE,
         related_name="memberships",
+        verbose_name="Akce",
     )
     account = models.ForeignKey(
         "pubs.Account",
         on_delete=models.CASCADE,
         related_name="community_event_memberships",
+        verbose_name="Účet",
     )
-    message = models.CharField(max_length=240, blank=True, default="")
+    message = models.CharField(max_length=240, blank=True, default="", verbose_name="Zpráva")
     status = models.CharField(
         max_length=16,
         choices=Status.choices,
         default=Status.PENDING,
         db_index=True,
+        verbose_name="Stav",
     )
-    requested_at = models.DateTimeField(auto_now_add=True)
-    decided_at = models.DateTimeField(null=True, blank=True)
-    updated_at = models.DateTimeField(auto_now=True)
+    requested_at = models.DateTimeField(auto_now_add=True, verbose_name="Požádáno")
+    decided_at = models.DateTimeField(null=True, blank=True, verbose_name="Rozhodnuto")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="Upraveno")
 
     class Meta:
+        verbose_name = "účast na akci"
+        verbose_name_plural = "účasti na akci"
         ordering = ["requested_at"]
         constraints = [
             models.UniqueConstraint(
@@ -122,6 +136,9 @@ class CommunityEventMembership(models.Model):
                 name="community_event_request_lookup",
             )
         ]
+
+    def __str__(self) -> str:
+        return f"{account_label(self)}, {self.event.title}"
 
 
 class CommunityEventTeam(models.Model):

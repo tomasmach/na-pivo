@@ -37,6 +37,7 @@ from __future__ import annotations
 
 import re
 import uuid
+from datetime import timedelta
 
 from django.conf import settings
 from django.core.exceptions import ValidationError as DjangoValidationError
@@ -50,10 +51,10 @@ from rest_framework import serializers
 from pubs import accounts
 from pubs.accounts import AccountError
 from pubs.beer_catalog import (
-    ALLOWED_BEER_VOLUMES_ML,
     BEER_PRICE_MAX_CZK,
     BEER_PRICE_MIN_CZK,
-    dedupe_beer_menu,
+    BEER_VOLUME_MAX_ML,
+    BEER_VOLUME_MIN_ML,
     normalize_beer_payload,
     normalize_beer_text,
 )
@@ -391,13 +392,19 @@ class ContentReportRequestSerializer(serializers.Serializer):
     # view re-checks the full comment-list visibility contract and snapshots
     # the comment body with its author for moderation.
     comment_id = serializers.UUIDField(required=False, allow_null=True)
+    # Additive (Piva tab): report one beer review (a check-in the reporter can see).
+    checkin_id = serializers.UUIDField(required=False, allow_null=True)
 
     def validate(self, attrs: dict) -> dict:
         targets = [
-            key for key in ("photo_id", "night_id", "comment_id") if attrs.get(key) is not None
+            key
+            for key in ("photo_id", "night_id", "comment_id", "checkin_id")
+            if attrs.get(key) is not None
         ]
         if len(targets) > 1:
-            raise serializers.ValidationError("Report only one target: photo, night or comment.")
+            raise serializers.ValidationError(
+                "Report only one target: photo, night, comment or review."
+            )
         return attrs
 
 
@@ -491,6 +498,15 @@ _CLIENT_EVENT_SCREEN_NAMES = {
     "my_added_pubs",
     "profile_photos",
     "pub_page",
+    # New-look screens without an older equivalent.
+    "beer_rankings",
+    "search",
+    "stats",
+    "receipt",
+    "watched_beers",
+    "plan_detail",
+    "new_invite",
+    "tour",
 }
 # Mirror of UI_INTERACTION_TARGETS in src/data/uxTelemetry.ts. A target missing
 # here is silently dropped, which is how a week of 3.0 taps landed as an unknown
@@ -614,6 +630,8 @@ _CLIENT_EVENT_INTERACTION_TARGETS = {
     "parta_reaction_add",
     "photo_contest_enter",
     "photo_contest_vote",
+    "counter_contest_nudge_open",
+    "counter_contest_nudge_dismiss",
     "night_publish",
     "night_unpublish",
     "night_react",
@@ -993,7 +1011,7 @@ class LeaderboardQuerySerializer(serializers.Serializer):
     """Query params for GET /v1/leaderboards."""
 
     VALID_CATEGORIES = {"beers", "pubs", "mapper"}
-    VALID_PERIODS = {"week", "year", "all"}
+    VALID_PERIODS = {"week", "month", "year", "all"}
 
     category = serializers.CharField(required=False, default="beers")
     period = serializers.CharField(required=False, default="week")
@@ -1009,7 +1027,7 @@ class LeaderboardQuerySerializer(serializers.Serializer):
     def validate_period(self, value: str) -> str:
         value = value.strip().lower()
         if value not in self.VALID_PERIODS:
-            raise serializers.ValidationError("period must be week, year or all.")
+            raise serializers.ValidationError("period must be week, month, year or all.")
         return value
 
     def validate(self, attrs: dict) -> dict:
@@ -1093,6 +1111,9 @@ class FriendActivityRequestSerializer(_Pub200NameValidationMixin, PubInputSerial
     )
     # True while the crew is still walking to the stop rather than sitting in it.
     tour_heading = serializers.BooleanField(required=False, default=False)
+    # Cinknutí to one friend from their profile: join my live ping at the same pub instead of
+    # replacing its audience, and tell only the friends who were not in it yet.
+    add_recipients = serializers.BooleanField(required=False, default=False)
 
 
 class FriendshipSerializer(serializers.ModelSerializer):
@@ -1427,6 +1448,103 @@ class PublishedNightFeedQuerySerializer(serializers.Serializer):
         return attrs
 
 
+class PublishedNightPage:
+    """Story rows for a whole page of nights, loaded in a fixed number of queries."""
+
+    def __init__(self, nights: list[PublishedNight], viewer: Account | None):
+        author_ids = {night.account_id for night in nights}
+        participant_refs = {str(value) for night in nights for value in night.participant_ids or ()}
+        self.participants = (
+            {
+                str(row.public_id): row
+                for row in Account.objects.filter(
+                    public_id__in=participant_refs,
+                    status=Account.Status.ACTIVE,
+                    ghost_mode=False,
+                    share_drinks_with_parta=True,
+                )
+            }
+            if participant_refs
+            else {}
+        )
+        self.people: set[int] = set()
+        self.accepted: set[tuple[int, int]] = set()
+        self.blocked: set[tuple[int, int]] = set()
+        if self.participants:
+            self.people = author_ids | {row.pk for row in self.participants.values()}
+            if viewer is not None:
+                self.people.add(viewer.pk)
+            self.accepted = {
+                tuple(sorted(pair))
+                for pair in Friendship.objects.filter(
+                    status=Friendship.Status.ACCEPTED,
+                    requester_id__in=self.people,
+                    recipient_id__in=self.people,
+                ).values_list("requester_id", "recipient_id")
+            }
+            self.blocked = {
+                tuple(sorted(pair))
+                for pair in FriendBlock.objects.filter(
+                    blocker_id__in=self.people,
+                    blocked_id__in=self.people,
+                ).values_list("blocker_id", "blocked_id")
+            }
+
+        shared = BeerPhoto.objects.filter(
+            account_id__in=author_ids,
+            visibility__in=(BeerPhoto.Visibility.FRIENDS, BeerPhoto.Visibility.PUBLIC),
+        )
+        photo_refs = {str(value) for night in nights for value in night.photo_ids or ()}
+        self.photos_by_reference: dict[tuple[int, str], BeerPhoto] = {}
+        if photo_refs:
+            for row in shared.filter(Q(public_id__in=photo_refs) | Q(client_id__in=photo_refs)):
+                self.photos_by_reference[(row.account_id, str(row.public_id))] = row
+                self.photos_by_reference[(row.account_id, str(row.client_id))] = row
+        windows = Q()
+        for night in nights:
+            if not night.photo_ids and not night.hide_photos:
+                windows |= Q(account_id=night.account_id, taken_at__range=_hero_photo_window(night))
+        self.window_photos = (
+            list(shared.filter(windows).order_by("-taken_at", "-pk")) if windows else []
+        )
+
+        game_refs = {str(value) for night in nights for value in night.game_ids or ()}
+        self.games = (
+            {
+                (row.started_by_id, str(row.public_id)): row
+                for row in PartyGame.objects.filter(
+                    public_id__in=game_refs, started_by_id__in=author_ids
+                )
+            }
+            if game_refs
+            else {}
+        )
+
+    def knows(self, pair: tuple[int, int]) -> bool:
+        return pair[0] in self.people and pair[1] in self.people
+
+    def window_photo_rows(self, night: PublishedNight) -> list[BeerPhoto]:
+        start, end = _hero_photo_window(night)
+        return [
+            row
+            for row in self.window_photos
+            if row.account_id == night.account_id and start <= row.taken_at <= end
+        ][:6]
+
+
+def _hero_photo_window(night: PublishedNight):
+    # Same window as the app's photo pick: a photo is often taken just
+    # before the first logged beer or while rating after the last one.
+    return (night.started_at - timedelta(hours=1), night.ended_at + timedelta(hours=3))
+
+
+class PublishedNightListSerializer(serializers.ListSerializer):
+    def to_representation(self, data):
+        nights = list(data.all() if hasattr(data, "all") else data)
+        self.context["night_page"] = PublishedNightPage(nights, self.context.get("account"))
+        return super().to_representation(nights)
+
+
 class PublishedNightSerializer(serializers.ModelSerializer):
     """Published-night wire shape with viewer-specific reaction state."""
 
@@ -1470,6 +1588,7 @@ class PublishedNightSerializer(serializers.ModelSerializer):
             "comment_count",
         ]
         read_only_fields = fields
+        list_serializer_class = PublishedNightListSerializer
 
     def _is_mine(self, obj: PublishedNight) -> bool:
         account = self.context.get("account")
@@ -1495,6 +1614,9 @@ class PublishedNightSerializer(serializers.ModelSerializer):
         if viewer_id in pair and "viewer_blocked_ids" in self.context:
             other_id = pair[0] if pair[1] == viewer_id else pair[1]
             return other_id in self.context["viewer_blocked_ids"]
+        page = self.context.get("night_page")
+        if page is not None and page.knows(pair):
+            return pair in page.blocked
         memo = getattr(self, "_blocked_between_memo", None)
         if memo is None:
             memo = self._blocked_between_memo = {}
@@ -1516,6 +1638,9 @@ class PublishedNightSerializer(serializers.ModelSerializer):
         if viewer_id in pair and "viewer_accepted_friend_ids" in self.context:
             other_id = pair[0] if pair[1] == viewer_id else pair[1]
             return other_id in self.context["viewer_accepted_friend_ids"]
+        page = self.context.get("night_page")
+        if page is not None and page.knows(pair):
+            return pair in page.accepted
         memo = getattr(self, "_accepted_between_memo", None)
         if memo is None:
             memo = self._accepted_between_memo = {}
@@ -1543,12 +1668,16 @@ class PublishedNightSerializer(serializers.ModelSerializer):
             return []
         viewer = self._viewer()
         requested = [str(value) for value in obj.participant_ids]
-        rows = Account.objects.filter(
-            public_id__in=requested,
-            status=Account.Status.ACTIVE,
-            ghost_mode=False,
-            share_drinks_with_parta=True,
-        )
+        page = self.context.get("night_page")
+        if page is not None:
+            rows = [page.participants[value] for value in requested if value in page.participants]
+        else:
+            rows = Account.objects.filter(
+                public_id__in=requested,
+                status=Account.Status.ACTIVE,
+                ghost_mode=False,
+                share_drinks_with_parta=True,
+            )
         visible = {
             str(row.public_id): row
             for row in rows
@@ -1564,24 +1693,38 @@ class PublishedNightSerializer(serializers.ModelSerializer):
         ordered = [visible[value] for value in requested if value in visible]
         return FriendProfileSerializer(ordered, many=True, context=self.context).data
 
-    def get_hero_photos(self, obj: PublishedNight) -> list[dict]:
-        if not obj.photo_ids or not self._may_see_social_snapshot(obj):
-            return []
-        requested = [str(value) for value in obj.photo_ids]
-        rows = BeerPhoto.objects.filter(
-            Q(public_id__in=requested) | Q(client_id__in=requested),
-            account=obj.account,
-            visibility=BeerPhoto.Visibility.FRIENDS,
+    def _hero_photo_rows(self, obj: PublishedNight) -> list[BeerPhoto]:
+        page = self.context.get("night_page")
+        if page is not None:
+            if not obj.photo_ids:
+                return page.window_photo_rows(obj)
+            return [
+                page.photos_by_reference[(obj.account_id, str(value))]
+                for value in obj.photo_ids
+                if (obj.account_id, str(value)) in page.photos_by_reference
+            ]
+        shared = BeerPhoto.objects.filter(
+            account_id=obj.account_id,
+            visibility__in=(BeerPhoto.Visibility.FRIENDS, BeerPhoto.Visibility.PUBLIC),
         )
+        if not obj.photo_ids:
+            return list(
+                shared.filter(taken_at__range=_hero_photo_window(obj)).order_by("-taken_at", "-pk")[:6]
+            )
+        requested = [str(value) for value in obj.photo_ids]
         by_reference = {}
-        for row in rows:
+        for row in shared.filter(Q(public_id__in=requested) | Q(client_id__in=requested)):
             by_reference[str(row.public_id)] = row
             by_reference[str(row.client_id)] = row
+        return [by_reference[value] for value in requested if value in by_reference]
+
+    def get_hero_photos(self, obj: PublishedNight) -> list[dict]:
+        if obj.hide_photos or not self._may_see_social_snapshot(obj):
+            return []
         result = []
         seen = set()
-        for value in requested:
-            row = by_reference.get(value)
-            if row is None or row.pk in seen:
+        for row in self._hero_photo_rows(obj):
+            if row.pk in seen:
                 continue
             image_url = _photo_image_url(row.image, self.context.get("request"))
             if not image_url:
@@ -1600,8 +1743,16 @@ class PublishedNightSerializer(serializers.ModelSerializer):
         if not obj.game_ids:
             return []
         requested = [str(value) for value in obj.game_ids]
-        rows = PartyGame.objects.filter(public_id__in=requested, started_by=obj.account)
-        by_id = {str(row.public_id): row for row in rows}
+        page = self.context.get("night_page")
+        if page is not None:
+            by_id = {
+                value: page.games[(obj.account_id, value)]
+                for value in requested
+                if (obj.account_id, value) in page.games
+            }
+        else:
+            rows = PartyGame.objects.filter(public_id__in=requested, started_by=obj.account)
+            by_id = {str(row.public_id): row for row in rows}
         return [
             {
                 "id": value,
@@ -1718,6 +1869,13 @@ class BeerPhotoUploadSerializer(serializers.Serializer):
         choices=BeerPhoto.Visibility.choices,
         default=BeerPhoto.Visibility.FRIENDS,
     )
+    beer_name = serializers.CharField(
+        max_length=200,
+        required=False,
+        allow_blank=True,
+        default="",
+        trim_whitespace=True,
+    )
     taken_at = serializers.DateTimeField(required=False, allow_null=True)
     # Best-effort association only. An ended/foreign table must never reject
     # the photo itself when an offline upload finally reaches the server.
@@ -1744,10 +1902,13 @@ class BeerPhotoSerializer(serializers.ModelSerializer):
 
     id = serializers.UUIDField(source="public_id", read_only=True)
     image_url = serializers.SerializerMethodField()
+    thumb_url = serializers.SerializerMethodField()
     pub_cache_key = serializers.SerializerMethodField()
     pub_name = serializers.SerializerMethodField()
     pub_city = serializers.SerializerMethodField()
     in_contest = serializers.SerializerMethodField()
+    beer_name = serializers.SerializerMethodField()
+    beer_key = serializers.SerializerMethodField()
 
     class Meta:
         model = BeerPhoto
@@ -1755,6 +1916,7 @@ class BeerPhotoSerializer(serializers.ModelSerializer):
             "id",
             "client_id",
             "image_url",
+            "thumb_url",
             "caption",
             "pub_cache_key",
             "pub_name",
@@ -1763,11 +1925,22 @@ class BeerPhotoSerializer(serializers.ModelSerializer):
             "taken_at",
             "created_at",
             "in_contest",
+            "beer_name",
+            "beer_key",
         ]
         read_only_fields = fields
 
+    def get_beer_name(self, obj: BeerPhoto) -> str | None:
+        return obj.beer_name or None
+
+    def get_beer_key(self, obj: BeerPhoto) -> str | None:
+        return obj.beer_key or None
+
     def get_image_url(self, obj: BeerPhoto) -> str | None:
         return _photo_image_url(obj.image, self.context.get("request"))
+
+    def get_thumb_url(self, obj: BeerPhoto) -> str | None:
+        return _photo_image_url(obj.thumbnail, self.context.get("request"))
 
     def get_pub_cache_key(self, obj: BeerPhoto) -> str | None:
         return obj.pub_cache_key or None
@@ -1837,9 +2010,11 @@ class PhotoContestEntrySerializer(serializers.ModelSerializer):
     account = PhotoContestAccountSerializer(read_only=True)
     photo_id = serializers.UUIDField(source="photo.public_id", read_only=True)
     image_url = serializers.SerializerMethodField()
+    thumb_url = serializers.SerializerMethodField()
     caption = serializers.CharField(source="photo.caption", read_only=True)
     pub_name = serializers.SerializerMethodField()
     pub_city = serializers.SerializerMethodField()
+    beer_name = serializers.SerializerMethodField()
     votes = serializers.SerializerMethodField()
     my_vote = serializers.SerializerMethodField()
     is_mine = serializers.SerializerMethodField()
@@ -1851,9 +2026,11 @@ class PhotoContestEntrySerializer(serializers.ModelSerializer):
             "account",
             "photo_id",
             "image_url",
+            "thumb_url",
             "caption",
             "pub_name",
             "pub_city",
+            "beer_name",
             "votes",
             "my_vote",
             "is_mine",
@@ -1861,8 +2038,14 @@ class PhotoContestEntrySerializer(serializers.ModelSerializer):
         ]
         read_only_fields = fields
 
+    def get_beer_name(self, obj: PhotoContestEntry) -> str | None:
+        return obj.photo.beer_name or None
+
     def get_image_url(self, obj: PhotoContestEntry) -> str | None:
         return _photo_image_url(obj.photo.image, self.context.get("request"))
+
+    def get_thumb_url(self, obj: PhotoContestEntry) -> str | None:
+        return _photo_image_url(obj.photo.thumbnail, self.context.get("request"))
 
     def get_pub_name(self, obj: PhotoContestEntry) -> str | None:
         return obj.photo.pub_name or None
@@ -1874,6 +2057,9 @@ class PhotoContestEntrySerializer(serializers.ModelSerializer):
         return int(getattr(obj, "vote_count", 0) or 0)
 
     def get_my_vote(self, obj: PhotoContestEntry) -> bool:
+        voted = self.context.get("my_vote_entry_pks")
+        if voted is not None:
+            return obj.pk in voted
         return self.context.get("my_vote_entry_pk") == obj.pk
 
     def get_is_mine(self, obj: PhotoContestEntry) -> bool:
@@ -1887,22 +2073,31 @@ class PhotoContestWinnerSerializer(serializers.ModelSerializer):
     rank = serializers.IntegerField(source="final_rank", read_only=True)
     account = PhotoContestAccountSerializer(read_only=True)
     image_url = serializers.SerializerMethodField()
+    thumb_url = serializers.SerializerMethodField()
     caption = serializers.CharField(source="photo.caption", read_only=True)
     votes = serializers.IntegerField(source="final_votes", read_only=True)
 
     class Meta:
         model = PhotoContestEntry
-        fields = ["rank", "account", "image_url", "caption", "votes"]
+        fields = ["rank", "account", "image_url", "thumb_url", "caption", "votes"]
         read_only_fields = fields
 
     def get_image_url(self, obj: PhotoContestEntry) -> str | None:
         return _photo_image_url(obj.photo.image, self.context.get("request"))
 
+    def get_thumb_url(self, obj: PhotoContestEntry) -> str | None:
+        return _photo_image_url(obj.photo.thumbnail, self.context.get("request"))
+
 
 class PhotoContestEnterSerializer(serializers.Serializer):
-    """Request body for POST /v1/photo-contest/entries."""
+    """Request body for POST /v1/photo-contest/entries.
+
+    Released clients omit ``add`` and keep the replace semantics (one entry per
+    round). ``add=true`` keeps the caller's other entries in the round.
+    """
 
     photo_id = serializers.UUIDField()
+    add = serializers.BooleanField(required=False, default=False)
 
 
 class PhotoContestVoteSerializer(serializers.Serializer):
@@ -2103,9 +2298,6 @@ class FriendInviteSerializer(serializers.ModelSerializer):
 
 # The 7 weekday keys the structured community hours dict must contain, in order.
 _COMMUNITY_DAY_KEYS = ("mo", "tu", "we", "th", "fr", "sa", "su")
-# Allowed beer glass volumes (ml). None is also allowed (unknown). Sourced from
-# the domain layer so the menu-scan canonicalizer and this write contract agree.
-_ALLOWED_VOLUMES_ML = ALLOWED_BEER_VOLUMES_ML
 _MAX_INTERVALS_PER_DAY = 3
 _MAX_BEERS = 12
 
@@ -2134,16 +2326,12 @@ class CommunityBeerSerializer(serializers.Serializer):
         min_value=BEER_PRICE_MIN_CZK,
         max_value=BEER_PRICE_MAX_CZK,
     )
-    volume_ml = serializers.IntegerField(required=False, allow_null=True)
-
-    def validate_volume_ml(self, value: int | None) -> int | None:
-        if value is None:
-            return None
-        if value not in _ALLOWED_VOLUMES_ML:
-            raise serializers.ValidationError(
-                f"volume_ml must be one of {sorted(_ALLOWED_VOLUMES_ML)}."
-            )
-        return value
+    volume_ml = serializers.IntegerField(
+        required=False,
+        allow_null=True,
+        min_value=BEER_VOLUME_MIN_ML,
+        max_value=BEER_VOLUME_MAX_ML,
+    )
 
     def to_representation(self, instance: dict) -> dict:
         # Always emit the canonical shape with all three keys present.
@@ -2174,14 +2362,12 @@ class CommunityBeerChangeSerializer(serializers.Serializer):
         min_value=BEER_PRICE_MIN_CZK,
         max_value=BEER_PRICE_MAX_CZK,
     )
-    new_volume_ml = serializers.IntegerField(required=False, allow_null=True)
-
-    def validate_new_volume_ml(self, value: int | None) -> int | None:
-        if value is not None and value not in _ALLOWED_VOLUMES_ML:
-            raise serializers.ValidationError(
-                f"new_volume_ml must be one of {sorted(_ALLOWED_VOLUMES_ML)}."
-            )
-        return value
+    new_volume_ml = serializers.IntegerField(
+        required=False,
+        allow_null=True,
+        min_value=BEER_VOLUME_MIN_ML,
+        max_value=BEER_VOLUME_MAX_ML,
+    )
 
     def validate(self, attrs: dict) -> dict:
         if attrs["action"] == "update" and attrs.get("price_czk") is None:
@@ -2275,6 +2461,9 @@ class PubCommunityRequestSerializer(PubInputSerializer):
     # Optional: the one beer this write changes. When present the server applies
     # it to the current menu and `beers` is only what older servers store.
     beer_change = CommunityBeerChangeSerializer(required=False)
+    # Sent by apps that keep every size in `beers`; released ones leave out
+    # sizes they cannot show, and the server puts those back.
+    beer_sizes_complete = serializers.BooleanField(required=False)
 
     def validate_hours(self, value: dict | None) -> dict | None:
         if value is None:
@@ -2322,12 +2511,9 @@ class PubCommunityRequestSerializer(PubInputSerializer):
         # Canonicalise every entry to all three keys so the stored JSON (and the
         # /v1/pub-hours read path) has a stable shape regardless of which
         # optional fields the client sent.
+        # The view dedupes rows once a released app's left-out sizes are back.
         match_cache = self.context.get("beer_match_cache")
-        # Two spellings of one beer at one volume ("Primátor 11" and
-        # "Primátor 11°") are one menu row; the first one wins.
-        return dedupe_beer_menu(
-            [normalize_beer_payload(beer, match_cache=match_cache) for beer in value]
-        )
+        return [normalize_beer_payload(beer, match_cache=match_cache) for beer in value]
 
     def validate(self, attrs: dict) -> dict:
         has_hours = attrs.get("hours") is not None
@@ -2688,6 +2874,9 @@ class PubsNearQuerySerializer(_LatLngBoundsValidationMixin, serializers.Serializ
         max_length=80,
         trim_whitespace=True,
     )
+    # Additive: pubs with at least one beer of this kind on their menu.
+    # Released clients never send it.
+    beer_kind = serializers.ChoiceField(choices=["craft"], required=False, allow_blank=True)
 
     def validate_radius_km(self, value: float | None) -> float:
         # Default when omitted/null; otherwise clamp into (0, 100]. A value <= 0
@@ -2716,6 +2905,13 @@ class PubsNearQuerySerializer(_LatLngBoundsValidationMixin, serializers.Serializ
                     {"beer_name": [gettext("Název piva nejde kombinovat se značkami piva.")]}
                 )
             attrs["beer_name"] = beer_name
+        if attrs.get("beer_kind"):
+            if beer_name or attrs.get("beer_brand") or attrs.get("beer_brands"):
+                raise serializers.ValidationError(
+                    {"beer_kind": [gettext("Druh piva nejde kombinovat s konkrétním pivem.")]}
+                )
+        else:
+            attrs.pop("beer_kind", None)
         raw_beer_brands = attrs.get("beer_brands", "")
         if raw_beer_brands:
             keys = []
@@ -3189,6 +3385,9 @@ class AccountMeSerializer(serializers.ModelSerializer):
             "usage",
             "created_at",
             "last_seen_at",
+            "share_default",
+            "night_autopublish",
+            "show_as_pub_regular",
         ]
 
     def _auth_snapshot(self, obj: Account) -> dict:
@@ -3410,6 +3609,9 @@ class AccountUpdateSerializer(serializers.ModelSerializer):
             "sound_enabled",
             "hide_closed_pubs",
             "marketing_emails_enabled",
+            "share_default",
+            "night_autopublish",
+            "show_as_pub_regular",
         ]
 
     def validate_nickname(self, value: str | None) -> str | None:

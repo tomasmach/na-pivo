@@ -29,7 +29,20 @@ describe('drinkAbv', () => {
     ['Plzeň 12°', 'beer', 5],
     ['Kozel 10°', 'beer', 4.2],
     ['Porter 18°', 'beer', 7.6],
-    ['IPA', 'beer', 6],
+    ['Klášter 10', 'beer', 4.2],
+    ['Kozel 11 0,5 l', 'beer', 4.6],
+    ['Kozel 3 × 11°', 'beer', 4.6],
+    ['Plzeň 30 cl', 'beer', 5],
+    ['Kozel 4 %', 'beer', 5],
+    ['Pivo 1', 'beer', 5],
+    ['Únětice 10,7', 'beer', 4.5],
+    ['13 Years Of Innovation 18', 'beer', 7.6],
+    ['Kozel 10 mlíko', 'beer', 4.2],
+    ['Pilsner Urquell', 'beer', 5],
+    ['Budweiser Budvar 33', 'beer', 5],
+    ['Svijany 450', 'beer', 5],
+    ['Strongbow', 'beer', 5],
+    ['IPA', 'beer', 5],
     ['Birell', 'beer', 0],
     ['Radegast nealko', 'beer', 0],
     ['Bernard Free', 'beer', 0],
@@ -48,26 +61,25 @@ describe('drinkAbv', () => {
 });
 
 describe('estimateAlcohol', () => {
-  it('matches the reference evening: ~0.9 ‰ at 22:40, cautious zero at 13:00 next day', () => {
+  it('matches the reference evening: ~0.8 ‰ at 22:40, an average person at zero by 4:00', () => {
     const estimate = estimateAlcohol(EVENING, PROFILE, Date.parse(at('22:40')));
 
     expect(estimate).not.toBeNull();
-    expect(estimate!.now).toBeCloseTo(0.92, 1);
-    expect(estimate!.low).toBeCloseTo(0.6, 1);
-    expect(estimate!.high).toBeCloseTo(1.39, 1);
-    expect(estimate!.zeroAt.getTime()).toBe(Date.parse(at('13:00', 18)));
+    expect(estimate!.now).toBeCloseTo(0.76, 1);
+    expect(estimate!.low).toBeCloseTo(0.46, 1);
+    expect(estimate!.high).toBeCloseTo(1.19, 1);
+    expect(estimate!.zeroAt.getTime()).toBe(Date.parse(at('04:00', 18)));
   });
 
   it('keeps counting overnight while nothing new is logged', () => {
-    const morning = estimateAlcohol(EVENING, PROFILE, Date.parse(at('07:30', 18)));
+    const night = estimateAlcohol(EVENING, PROFILE, Date.parse(at('03:00', 18)));
 
-    expect(morning!.now).toBe(0);
-    expect(morning!.high).toBeGreaterThan(0.4);
-    expect(morning!.zeroAt.getTime()).toBe(Date.parse(at('13:00', 18)));
+    expect(night!.now).toBeCloseTo(0.15, 1);
+    expect(night!.zeroAt.getTime()).toBe(Date.parse(at('04:00', 18)));
   });
 
-  it('is gone once the cautious run reaches zero', () => {
-    expect(estimateAlcohol(EVENING, PROFILE, Date.parse(at('13:00', 18)))).toBeNull();
+  it('is gone once the average run reaches zero', () => {
+    expect(estimateAlcohol(EVENING, PROFILE, Date.parse(at('04:00', 18)))).toBeNull();
   });
 
   it('ignores soft drinks, alcohol-free beer and drinks older than three days', () => {
@@ -80,13 +92,13 @@ describe('estimateAlcohol', () => {
     expect(estimateAlcohol(drinks, PROFILE, Date.parse(at('21:00')))).toBeNull();
   });
 
-  it('keeps a heavy night until the cautious run is at zero, even past 24 hours', () => {
+  it('keeps a heavy night until it is at zero the next day', () => {
     const small: BodyProfile = { sex: 'female', age: 30, heightCm: 165, weightKg: 58 };
     const night = ['18:00', '19:00', '20:00', '21:00', '22:00'].map((time, i) => beer(`h${i}`, time));
     const evening = estimateAlcohol(night, small, Date.parse(at('23:00')));
-    const nextEvening = estimateAlcohol(night, small, Date.parse(at('18:30', 18)));
+    const nextMorning = estimateAlcohol(night, small, Date.parse(at('08:30', 18)));
 
-    expect(nextEvening?.zeroAt.getTime()).toBe(evening!.zeroAt.getTime());
+    expect(nextMorning?.zeroAt.getTime()).toBe(evening!.zeroAt.getTime());
   });
 
   it('flags the first minutes after a drink as still absorbing', () => {
@@ -102,10 +114,93 @@ describe('estimateAlcohol', () => {
     const absorbed = estimateAlcohol(nine, PROFILE, Date.parse(at('20:45')))!;
 
     expect(justLogged.now).toBeLessThan(0.2);
-    expect(justLogged.rising!.promile).toBeGreaterThan(2.5);
+    expect(justLogged.rising!.promile).toBeGreaterThan(2.2);
     expect(justLogged.rising!.promile).toBeCloseTo(absorbed.now, 2);
     expect(justLogged.rising!.at.getTime()).toBe(Date.parse(at('20:44')));
     expect(absorbed.rising).toBeNull();
+  });
+
+  it('lists only the drinks since the level was last at zero', () => {
+    const yesterday = { ...beer('y', '19:39', 'Primátor 11°'), at: at('19:39', 16) };
+    const tonight = ['20:03', '20:04', '20:42', '21:16', '23:11'].map((time, i) => beer(`t${i}`, time, 'Radegast 10°'));
+    // Logged mid-minute, between two steps of the simulation.
+    tonight[0].at = new Date(Date.parse(at('20:03')) + 30_000).toISOString();
+    const now = Date.parse(at('23:30'));
+    const estimate = estimateAlcohol([yesterday, ...tonight], PROFILE, now)!;
+
+    expect(estimate.drinks.map((drink) => drink.id)).toEqual(tonight.map((drink) => drink.id));
+    expect(estimate.now).toBeCloseTo(estimateAlcohol(tonight, PROFILE, now)!.now, 1);
+    expect(estimateAlcohol(EVENING, PROFILE, Date.parse(at('03:00', 18)))!.drinks).toHaveLength(EVENING.length);
+  });
+
+  it('lists only tonight when the last three nights each had Radegast', () => {
+    const name = 'Radegast Ryze Hořká 12°';
+    const logged = [
+      '2026-10-19T20:46:01Z',
+      '2026-10-19T20:46:04Z',
+      '2026-10-19T20:46:06Z',
+      '2026-10-19T21:06:27Z',
+      '2026-10-20T21:52:51Z',
+      '2026-10-20T21:52:55Z',
+      '2026-10-21T16:06:30Z',
+      '2026-10-21T22:19:51Z',
+      '2026-10-21T22:46:50Z',
+      '2026-10-21T22:54:22Z',
+    ].map((time, i): EstimateDrink => ({ id: `r${i}`, beerName: name, drinkType: 'beer', volumeMl: 500, at: time }));
+    const tonight = logged.slice(-3);
+    const now = Date.parse('2026-10-21T23:06:00Z');
+    const estimate = estimateAlcohol(logged, PROFILE, now)!;
+
+    expect(estimate.drinks.map((drink) => drink.id)).toEqual(tonight.map((drink) => drink.id));
+    const threeBeers = estimateAlcohol(tonight, PROFILE, now)!;
+    expect(estimate.now).toBeCloseTo(threeBeers.now, 1);
+    expect(estimate.rising!.promile).toBeCloseTo(threeBeers.rising!.promile, 1);
+    expect(estimate.zeroAt).toEqual(threeBeers.zeroAt);
+  });
+
+  it('drops yesterday from the list the moment a new drink lands mid-minute', () => {
+    const yesterday = { ...beer('old', '20:00'), at: at('20:00', 16) };
+    const fresh = { ...beer('new', '20:00'), at: new Date(Date.parse(at('20:00')) + 30_000).toISOString() };
+
+    expect(estimateAlcohol([yesterday, fresh], PROFILE, Date.parse(fresh.at))!.drinks.map((drink) => drink.id)).toEqual([
+      'new',
+    ]);
+  });
+
+  it('keeps a weak drink listed while it is still being absorbed', () => {
+    const big: BodyProfile = { sex: 'male', age: 32, heightCm: 182, weightKg: 170 };
+    const radler: EstimateDrink = { ...beer('r', '20:00', 'Radler'), volumeMl: 300 };
+
+    expect(estimateAlcohol([radler], big, Date.parse(at('20:20')))!.drinks.map((drink) => drink.id)).toEqual(['r']);
+    const withPils = estimateAlcohol([radler, beer('p', '20:20')], big, Date.parse(at('20:30')))!;
+    expect(withPils.drinks.map((drink) => drink.id)).toEqual(['r', 'p']);
+  });
+
+  it('keeps a drink listed while any run still counts it', () => {
+    const huge: BodyProfile = { sex: 'male', age: 32, heightCm: 182, weightKg: 173 };
+    const radler: EstimateDrink = { ...beer('r', '20:00', 'Radler'), volumeMl: 300 };
+    const pils = { ...beer('p', '20:44'), at: new Date(Date.parse(at('20:44')) + 30_000).toISOString() };
+
+    expect(estimateAlcohol([radler, pils], huge, Date.parse(pils.at))!.drinks.map((drink) => drink.id)).toEqual([
+      'r',
+      'p',
+    ]);
+  });
+
+  it('starts a new night once the shown estimate was at zero, even while the slow run is not', () => {
+    const lastNight = ['18:00', '18:40', '19:20', '20:00', '20:40', '21:20', '22:00', '22:40'].map((time, i) => ({
+      ...beer(`y${i}`, time),
+      at: at(time, 16),
+    }));
+    expect(estimateAlcohol(lastNight, PROFILE, Date.parse(at('11:00')))).toBeNull();
+
+    const fresh = beer('new', '15:00');
+    const estimate = estimateAlcohol([...lastNight, fresh], PROFILE, Date.parse(at('15:30')))!;
+    const alone = estimateAlcohol([fresh], PROFILE, Date.parse(at('15:30')))!;
+
+    expect(estimate.drinks.map((drink) => drink.id)).toEqual(['new']);
+    expect(estimate.high).toBeCloseTo(alone.high, 2);
+    expect(estimate.low).toBeCloseTo(alone.low, 2);
   });
 
   it('ignores drinks timed in the future', () => {

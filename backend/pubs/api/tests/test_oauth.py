@@ -22,7 +22,7 @@ class _FakeAppleResponse:
 @pytest.fixture
 def apple_settings(settings, monkeypatch):
     settings.APPLE_CLIENT_ID = "cz.test.na-pivo"
-    monkeypatch.setattr(oauth, "_apple_client_secret", lambda: "client-secret")
+    monkeypatch.setattr(oauth, "_apple_client_secret", lambda client_id: "client-secret")
 
 
 def test_apple_auth_code_failure_log_omits_response_body(

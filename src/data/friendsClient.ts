@@ -86,7 +86,8 @@ export type FriendNotificationKind =
   | 'friend_at_pub'
   | 'friend_rsvp'
   | 'friend_cheers'
-  | 'friend_plan';
+  | 'friend_plan'
+  | 'friend_ping';
 
 export interface FriendNotification {
   id: string;
@@ -103,21 +104,6 @@ export interface FriendNotification {
   pubName: string;
   readAt: string | null;
   createdAt: string;
-}
-
-export interface FriendStreak {
-  currentWeeks: number;
-  thisWeekLit: boolean;
-}
-
-export interface LeaderboardEntry {
-  account: FriendProfile;
-  /** Null means private or unavailable, never zero. */
-  visits30d: number | null;
-  /** Undefined on older backends; null when the member does not share. */
-  beers30d?: number | null;
-  sharedCount: number;
-  isMe: boolean;
 }
 
 export interface FriendSocialSettings {
@@ -162,11 +148,24 @@ export interface FriendPresence {
   lastDrinkName: string;
   /** Set when they ALSO broadcast, which is what makes an RSVP possible. */
   activityId: string | null;
+  /** "Na zdraví" to this sitting. Missing in snapshots saved by older builds. */
+  reactions?: { cheers: number };
+  myReaction?: ReactionKind | null;
 }
 
 /** My own row in the same shape, plus whether the party can actually see it. */
 export interface MyPresence extends FriendPresence {
   visibleToParta: boolean;
+}
+
+/**
+ * A friend at a home evening right now. Outsiders get no host and no place;
+ * `activityId` is set only when I am invited to that evening.
+ */
+export interface FriendHomePresence {
+  account: FriendProfile;
+  since: string;
+  activityId: string | null;
 }
 
 export interface FriendsDashboard {
@@ -176,21 +175,15 @@ export interface FriendsDashboard {
   outgoingRequests: Friendship[];
   activeFriends: FriendPubActivity[];
   myActiveActivity: FriendPubActivity | null;
-  /** Friends' plans for today (kind=plan). Empty on older backends. */
-  plans: FriendPubActivity[];
-  /** My own plan for today, or null. */
-  myPlan: FriendPubActivity | null;
   /** Who from the party is sitting right now, broadcast or not. */
   presence: FriendPresence[];
   /** Where the server thinks I am sitting, or null. */
   myPresence: MyPresence | null;
-  /** Account ids I've blocked, for client-side filtering. */
-  blockedIds: string[];
+  /** Friends at somebody's home now. Missing in snapshots saved by older builds. */
+  homePresence?: FriendHomePresence[];
   settings: FriendSocialSettings;
-  streak: FriendStreak;
-  leaderboard: LeaderboardEntry[];
+  /** Only the unread ones: opening Parta marks them read. */
   notifications: FriendNotification[];
-  unreadCount: number;
 }
 
 /**
@@ -204,6 +197,7 @@ export interface FriendsLiveSlice {
   myPlan: FriendPubActivity | null;
   presence: FriendPresence[];
   myPresence: MyPresence | null;
+  homePresence: FriendHomePresence[];
   incomingCount: number;
   unreadCount: number;
   serverTime: string | null;
@@ -229,6 +223,18 @@ export interface InviteResolveResult {
   valid: boolean;
   expired: boolean;
   inviter: FriendProfile | null;
+  /** Only for a public inviter, and only what their public profile shows. Absent on older backends. */
+  publicStats?: InvitePublicStats | null;
+  /** Friends we already share; absent on older backends. */
+  mutualFriends?: { count: number; profiles: FriendProfile[] };
+}
+
+export interface InvitePublicStats {
+  totalBeers: number;
+  distinctPubs: number;
+  mapperLevel: number;
+  mapperTitle: string;
+  badgeProgress: BadgeProgress;
 }
 
 export interface FriendProfileStats {
@@ -244,6 +250,8 @@ export interface RecentTogether {
   pubName: string;
   cacheKey: string;
   at: string;
+  /** My beers that evening there. Null on older backends. */
+  beers: number | null;
 }
 
 /**
@@ -302,7 +310,7 @@ export interface FriendActionError {
 
 export type FriendActionResult = { ok: true } | FriendActionError;
 
-interface RawFriendProfile {
+export interface RawFriendProfile {
   id?: string;
   nickname?: string | null;
   display_name?: string;
@@ -331,7 +339,7 @@ interface RawActivityReactions {
   cheers?: number;
 }
 
-interface RawFriendActivity {
+export interface RawFriendActivity {
   id?: string;
   account?: RawFriendProfile;
   cache_key?: string;
@@ -350,19 +358,6 @@ interface RawFriendActivity {
   scheduled_for?: string | null;
   reactions?: RawActivityReactions;
   my_reaction?: string | null;
-}
-
-interface RawFriendStreak {
-  current_weeks?: number;
-  this_week_lit?: boolean;
-}
-
-interface RawLeaderboardEntry {
-  account?: RawFriendProfile;
-  visits_30d?: number | null;
-  beers_30d?: number | null;
-  shared_count?: number;
-  is_me?: boolean;
 }
 
 interface RawFriendSocialSettings {
@@ -386,6 +381,8 @@ interface RawFriendPresence {
   last_drink_name?: string;
   activity_id?: string | null;
   visible_to_parta?: boolean;
+  reactions?: RawActivityReactions;
+  my_reaction?: string | null;
 }
 
 interface RawFriendNotification {
@@ -422,6 +419,7 @@ interface RawRecentTogether {
   pub_name?: string;
   cache_key?: string;
   at?: string;
+  beers?: number;
 }
 
 interface RawPublicProfileStats {
@@ -460,18 +458,33 @@ interface RawInviteResolve {
   valid?: boolean;
   expired?: boolean;
   inviter?: RawFriendProfile | null;
+  public_stats?: {
+    total_beers?: unknown;
+    distinct_pubs?: unknown;
+    mapper_level?: unknown;
+    mapper_title?: unknown;
+    badge_progress?: RawBadgeProgress;
+  } | null;
+  mutual_friends?: { count?: unknown; profiles?: RawFriendProfile[] } | null;
 }
 
 async function handleUnauthorized(session: AccountSession, endpoint: string): Promise<void> {
   await clearCachedAnonymousAccount(session, { source: 'friends_request', endpoint });
 }
 
-function parseProfile(raw: RawFriendProfile | undefined | null): FriendProfile {
+// Some serializer call sites lack the request context and send a bare /media/ path.
+function avatarUrlFromWire(raw: string | null | undefined): string | null {
+  if (!raw) return null;
+  if (/^https?:\/\//i.test(raw)) return raw;
+  return getBackendEndpoint(raw);
+}
+
+export function parseProfile(raw: RawFriendProfile | undefined | null): FriendProfile {
   return {
     id: raw?.id ?? '',
     nickname: typeof raw?.nickname === 'string' && raw.nickname.length > 0 ? raw.nickname : null,
     displayName: raw?.display_name ?? '',
-    avatarUrl: raw?.avatar_url ?? null,
+    avatarUrl: avatarUrlFromWire(raw?.avatar_url),
     isPublic: raw?.is_public !== false,
   };
 }
@@ -530,7 +543,7 @@ function parseReactions(raw: RawActivityReactions | undefined): FriendPubActivit
   return { cheers: typeof raw?.cheers === 'number' ? raw.cheers : 0 };
 }
 
-function parseActivity(raw: RawFriendActivity): FriendPubActivity {
+export function parseActivity(raw: RawFriendActivity): FriendPubActivity {
   return {
     id: raw.id ?? '',
     account: parseProfile(raw.account),
@@ -550,13 +563,6 @@ function parseActivity(raw: RawFriendActivity): FriendPubActivity {
     scheduledFor: raw.scheduled_for ?? null,
     reactions: parseReactions(raw.reactions),
     myReaction: parseReactionKind(raw.my_reaction),
-  };
-}
-
-function parseStreak(raw: RawFriendStreak | undefined | null): FriendStreak {
-  return {
-    currentWeeks: typeof raw?.current_weeks === 'number' ? raw.current_weeks : 0,
-    thisWeekLit: raw?.this_week_lit === true,
   };
 }
 
@@ -583,6 +589,8 @@ function parsePresence(raw: RawFriendPresence): FriendPresence {
     beers: typeof raw.beers === 'number' ? raw.beers : 0,
     lastDrinkName: raw.last_drink_name ?? '',
     activityId: typeof raw.activity_id === 'string' ? raw.activity_id : null,
+    reactions: parseReactions(raw.reactions),
+    myReaction: parseReactionKind(raw.my_reaction),
   };
 }
 
@@ -596,16 +604,18 @@ function parseMyPresence(raw: unknown): MyPresence | null {
   return { ...parsePresence(row), visibleToParta: row.visible_to_parta !== false };
 }
 
-function parseLeaderboardEntry(raw: RawLeaderboardEntry): LeaderboardEntry {
-  return {
-    account: parseProfile(raw.account),
-    visits30d: typeof raw.visits_30d === 'number' ? raw.visits_30d : null,
-    beers30d: raw.beers_30d === undefined
-      ? undefined
-      : typeof raw.beers_30d === 'number' ? raw.beers_30d : null,
-    sharedCount: typeof raw.shared_count === 'number' ? raw.shared_count : 0,
-    isMe: raw.is_me === true,
-  };
+function parseHomePresence(raw: unknown): FriendHomePresence[] {
+  if (!Array.isArray(raw)) return [];
+  return raw.flatMap((item) => {
+    const row = item as { account?: RawFriendProfile; since?: unknown; activity_id?: unknown };
+    const account = parseProfile(row?.account);
+    if (!account.id) return [];
+    return [{
+      account,
+      since: typeof row.since === 'string' ? row.since : '',
+      activityId: typeof row.activity_id === 'string' ? row.activity_id : null,
+    }];
+  });
 }
 
 function parseNotification(raw: RawFriendNotification): FriendNotification {
@@ -650,6 +660,7 @@ function parseRecentTogether(raw: RawRecentTogether): RecentTogether {
     pubName: raw.pub_name ?? '',
     cacheKey: raw.cache_key ?? '',
     at: raw.at ?? '',
+    beers: typeof raw.beers === 'number' ? raw.beers : null,
   };
 }
 
@@ -729,10 +740,17 @@ function extractError(data: unknown, status: number): FriendActionError {
   return { ok: false, code: `http_${status}`, detail: t.clientErrors.save };
 }
 
-async function requestJson(
+/**
+ * `etag` makes a conditional GET: an unchanged answer comes back as `notModified`
+ * with empty `data`, and the caller keeps the copy it holds for that tag.
+ */
+export async function requestJson(
   path: string,
-  options: { method?: string; body?: unknown; signal?: AbortSignal; session?: AccountSession } = {},
-): Promise<{ ok: true; data: Record<string, unknown> } | { ok: false; result: FriendActionError }> {
+  options: { method?: string; body?: unknown; signal?: AbortSignal; session?: AccountSession; etag?: string } = {},
+): Promise<
+  | { ok: true; data: Record<string, unknown>; etag: string | null; notModified: boolean }
+  | { ok: false; result: FriendActionError }
+> {
   const endpoint = getBackendEndpoint(path);
   if (!endpoint || options.signal?.aborted) {
     return { ok: false, result: { ok: false, code: 'offline', detail: t.clientErrors.offline } };
@@ -750,10 +768,13 @@ async function requestJson(
       headers: {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${session.token}`,
+        ...(options.etag ? { 'If-None-Match': options.etag } : {}),
       },
       body: options.body !== undefined ? JSON.stringify(options.body) : undefined,
       signal: abort.signal,
     });
+    const etag = resp.headers?.get('etag') ?? null;
+    if (resp.status === 304 && options.etag) return { ok: true, data: {}, etag: options.etag, notModified: true };
     let data: Record<string, unknown> = {};
     try {
       const text = await resp.text();
@@ -766,7 +787,7 @@ async function requestJson(
       return { ok: false, result: { ok: false, code: 'auth', detail: t.clientErrors.auth } };
     }
     if (!resp.ok) return { ok: false, result: extractError(data, resp.status) };
-    return { ok: true, data };
+    return { ok: true, data, etag, notModified: false };
   } catch (err) {
     const isAbort = err instanceof Error && err.name === 'AbortError';
     if (!options.signal?.aborted && !isAbort) {
@@ -812,7 +833,7 @@ export async function fetchFriendsDashboard(signal?: AbortSignal): Promise<Frien
   // the snapshot while this fetch is in flight, the write below is dropped instead
   // of re-persisting the previous account's graph under the next account.
   const generation = snapshotGeneration();
-  const res = await requestJson('/v1/friends', { signal });
+  const res = await requestJson('/v1/friends?view=compact', { signal });
   if (!res.ok) return null;
   const rawStats = (res.data.friend_stats ?? {}) as Record<string, RawFriendStats>;
   const friendStats: Record<string, FriendStats> = {};
@@ -836,24 +857,13 @@ export async function fetchFriendsDashboard(signal?: AbortSignal): Promise<Frien
     myActiveActivity: res.data.my_active_activity
       ? parseActivity(res.data.my_active_activity as RawFriendActivity)
       : null,
-    plans: Array.isArray(res.data.plans)
-      ? (res.data.plans as RawFriendActivity[]).map(parseActivity)
-      : [],
-    myPlan: res.data.my_plan ? parseActivity(res.data.my_plan as RawFriendActivity) : null,
     presence: parsePresenceList(res.data.presence),
     myPresence: parseMyPresence(res.data.my_presence),
-    blockedIds: Array.isArray(res.data.blocked_ids)
-      ? (res.data.blocked_ids as unknown[]).filter((id): id is string => typeof id === 'string')
-      : [],
+    homePresence: parseHomePresence(res.data.home_presence),
     settings: parseSocialSettings(res.data.settings as RawFriendSocialSettings | undefined),
-    streak: parseStreak(res.data.streak as RawFriendStreak | undefined),
-    leaderboard: Array.isArray(res.data.leaderboard)
-      ? (res.data.leaderboard as RawLeaderboardEntry[]).map(parseLeaderboardEntry)
-      : [],
     notifications: Array.isArray(res.data.notifications)
       ? (res.data.notifications as RawFriendNotification[]).map(parseNotification)
       : [],
-    unreadCount: typeof res.data.unread_count === 'number' ? res.data.unread_count : 0,
   };
   // Persist the freshly-loaded graph so an offline cold start can hydrate it
   // behind the OfflineBanner (§H2). Fire-and-forget; never blocks the return. The
@@ -876,33 +886,39 @@ export async function fetchFriendsLive(signal?: AbortSignal): Promise<FriendsLiv
       return {
         activeFriends: dashboard.activeFriends,
         myActiveActivity: dashboard.myActiveActivity,
-        plans: dashboard.plans,
-        myPlan: dashboard.myPlan,
+        plans: [],
+        myPlan: null,
         presence: dashboard.presence,
         myPresence: dashboard.myPresence,
+        homePresence: dashboard.homePresence ?? [],
         incomingCount: dashboard.incomingRequests.length,
-        unreadCount: dashboard.unreadCount,
+        unreadCount: dashboard.notifications.length,
         serverTime: null,
       };
     }
     return null;
   }
+  return parseFriendsLive(res.data);
+}
+
+export function parseFriendsLive(data: Record<string, unknown>): FriendsLiveSlice {
   return {
-    activeFriends: Array.isArray(res.data.active_friends)
-      ? (res.data.active_friends as RawFriendActivity[]).map(parseActivity)
+    activeFriends: Array.isArray(data.active_friends)
+      ? (data.active_friends as RawFriendActivity[]).map(parseActivity)
       : [],
-    myActiveActivity: res.data.my_active_activity
-      ? parseActivity(res.data.my_active_activity as RawFriendActivity)
+    myActiveActivity: data.my_active_activity
+      ? parseActivity(data.my_active_activity as RawFriendActivity)
       : null,
-    plans: Array.isArray(res.data.plans)
-      ? (res.data.plans as RawFriendActivity[]).map(parseActivity)
+    plans: Array.isArray(data.plans)
+      ? (data.plans as RawFriendActivity[]).map(parseActivity)
       : [],
-    myPlan: res.data.my_plan ? parseActivity(res.data.my_plan as RawFriendActivity) : null,
-    presence: parsePresenceList(res.data.presence),
-    myPresence: parseMyPresence(res.data.my_presence),
-    incomingCount: typeof res.data.incoming_count === 'number' ? res.data.incoming_count : 0,
-    unreadCount: typeof res.data.unread_count === 'number' ? res.data.unread_count : 0,
-    serverTime: typeof res.data.server_time === 'string' ? res.data.server_time : null,
+    myPlan: data.my_plan ? parseActivity(data.my_plan as RawFriendActivity) : null,
+    presence: parsePresenceList(data.presence),
+    myPresence: parseMyPresence(data.my_presence),
+    homePresence: parseHomePresence(data.home_presence),
+    incomingCount: typeof data.incoming_count === 'number' ? data.incoming_count : 0,
+    unreadCount: typeof data.unread_count === 'number' ? data.unread_count : 0,
+    serverTime: typeof data.server_time === 'string' ? data.server_time : null,
   };
 }
 
@@ -1069,10 +1085,30 @@ export async function resolveInviteCode(
     return { valid: false, expired, inviter: null };
   }
   const raw = res.data as RawInviteResolve;
+  const stats = raw.public_stats;
+  const mutual = raw.mutual_friends;
+  const num = (value: unknown) => (typeof value === 'number' && Number.isFinite(value) ? value : 0);
   return {
     valid: raw.valid !== false,
     expired: raw.expired === true,
     inviter: raw.inviter ? parseProfile(raw.inviter) : null,
+    publicStats: stats
+      ? {
+          totalBeers: num(stats.total_beers),
+          distinctPubs: num(stats.distinct_pubs),
+          mapperLevel: num(stats.mapper_level),
+          mapperTitle: typeof stats.mapper_title === 'string' ? stats.mapper_title : '',
+          badgeProgress: parseBadgeProgress(stats.badge_progress ?? {}),
+        }
+      : null,
+    ...(mutual
+      ? {
+          mutualFriends: {
+            count: num(mutual.count),
+            profiles: Array.isArray(mutual.profiles) ? mutual.profiles.map(parseProfile) : [],
+          },
+        }
+      : {}),
   };
 }
 
@@ -1126,6 +1162,23 @@ export async function clearActivityReaction(activityId: string): Promise<FriendA
   return res.ok ? { ok: true } : res.result;
 }
 
+/** "Na zdraví" to a friend sitting out now, broadcast or not. Idempotent upsert. */
+export async function cheerFriend(accountId: string): Promise<{ ok: true; reactions: { cheers: number } } | FriendActionError> {
+  const res = await requestJson(`/v1/friends/${encodeURIComponent(accountId)}/cheer`, {
+    method: 'POST',
+    body: { reaction: 'cheers' },
+  });
+  if (!res.ok) return res.result;
+  return { ok: true, reactions: parseReactions((res.data as { reactions?: RawActivityReactions })?.reactions) };
+}
+
+/** Take back my "Na zdraví" to a friend's current sitting. Idempotent. */
+export async function clearFriendCheer(accountId: string): Promise<{ ok: true; reactions: { cheers: number } } | FriendActionError> {
+  const res = await requestJson(`/v1/friends/${encodeURIComponent(accountId)}/cheer`, { method: 'DELETE' });
+  if (!res.ok) return res.result;
+  return { ok: true, reactions: parseReactions((res.data as { reactions?: RawActivityReactions })?.reactions) };
+}
+
 /** Full friend profile (stats, live/plan, recent-together) for the pushed route (§F1). */
 export async function fetchFriendProfile(
   accountId: string,
@@ -1143,6 +1196,14 @@ export async function blockFriend(accountId: string): Promise<FriendActionResult
     body: { account_id: accountId },
   });
   return res.ok ? { ok: true } : res.result;
+}
+
+/** Accounts I blocked; null when the list could not load. */
+export async function fetchBlockedAccounts(signal?: AbortSignal): Promise<FriendProfile[] | null> {
+  const res = await requestJson('/v1/friends/blocks', { signal });
+  if (!res.ok) return null;
+  const raw = res.data.blocked;
+  return Array.isArray(raw) ? (raw as RawFriendProfile[]).map(parseProfile) : [];
 }
 
 /** Lift a block (§G2). Does not auto-refriend. Idempotent. */
@@ -1193,7 +1254,9 @@ export async function shareFriendPubActivity(
   startedAt?: string,
   /** From a Tour de pub run: only changes the push wording, the server stores nothing. */
   tour?: TourPing,
-): Promise<FriendActionResult> {
+  /** Join my live ping at the same pub and tell only the friends new to it. */
+  addRecipients?: boolean,
+): Promise<{ ok: true; notified?: number | null } | FriendActionError> {
   const now = startedAt ? new Date(startedAt) : new Date();
   const expires = new Date(now.getTime() + 4 * 60 * 60 * 1000);
   const targetIds = recipientIds && recipientIds.length > 0 ? recipientIds : undefined;
@@ -1211,6 +1274,7 @@ export async function shareFriendPubActivity(
       expires_at: expires.toISOString(),
       ...(targetIds ? { recipient_ids: targetIds } : {}),
       ...(tour ? { tour_title: tour.title, tour_heading: tour.heading } : {}),
+      ...(addRecipients ? { add_recipients: true } : {}),
     },
   });
   if (res.ok && res.data.applied === false) {
@@ -1218,7 +1282,8 @@ export async function shareFriendPubActivity(
     // report a silent server no-op as a delivered broadcast.
     return { ok: false, code: 'visit_pending', detail: t.clientErrors.save };
   }
-  return res.ok ? { ok: true } : res.result;
+  // Older backends do not say how many friends heard about it.
+  return res.ok ? { ok: true, notified: typeof res.data.notified_count === 'number' ? res.data.notified_count : null } : res.result;
 }
 
 export async function respondToActivity(

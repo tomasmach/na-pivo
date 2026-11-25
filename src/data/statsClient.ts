@@ -30,6 +30,8 @@ export interface RemotePubTally {
   beers: number;
   spentCzk: number;
   lastDrankAt: string;
+  /** Drinking days with a drink here; null from servers that predate it. */
+  evenings: number | null;
 }
 
 /** Personal records from the backend (durations in seconds, null until data). */
@@ -55,15 +57,36 @@ export interface RemotePeriodStats {
   years: RemotePeriodStat[];
 }
 
+/** Records over whole 04:00 drinking days, across every pub of the night. */
+export interface RemoteNightRecords {
+  mostBeers: number;
+  mostBeersDate: string | null;
+  mostBeersPubNames: string[];
+  longestSeconds: number;
+  longestDate: string | null;
+  longestPubNames: string[];
+}
+
+/** One month of the last twelve, counted by drinking day. */
+export interface RemoteNightMonth {
+  period: string;
+  beers: number;
+  nights: number;
+}
+
 /** The account's durable beer stats. */
 export interface RemoteStats {
   totalBeers: number;
   totalEvenings: number;
+  /** Drinking days with a drink; null from servers that predate it. */
+  totalNights: number | null;
   distinctPubs: number;
   totalSpentCzk: number;
   firstDrinkAt: string | null;
   topPubs: RemotePubTally[];
   records: RemoteRecords;
+  nightRecords: RemoteNightRecords | null;
+  nightMonths: RemoteNightMonth[];
   periods: RemotePeriodStats;
 }
 
@@ -92,6 +115,7 @@ function parsePub(raw: unknown): RemotePubTally | null {
     beers: num(p.beers),
     spentCzk: num(p.spent_czk),
     lastDrankAt: str(p.last_drank_at),
+    evenings: nullableNum(p.evenings),
   };
 }
 
@@ -105,6 +129,29 @@ function parsePeriod(raw: unknown): RemotePeriodStat | null {
     spentCzk: num(period.spent_czk),
     averageBeersPerEvening: num(period.average_beers_per_evening),
   };
+}
+
+function strings(value: unknown): string[] {
+  return Array.isArray(value) ? value.filter((v): v is string => typeof v === 'string' && v.length > 0) : [];
+}
+
+function parseNightRecords(raw: unknown): RemoteNightRecords | null {
+  const r = raw as Record<string, unknown>;
+  if (!r || typeof r !== 'object') return null;
+  return {
+    mostBeers: num(r.most_beers),
+    mostBeersDate: nullableStr(r.most_beers_date),
+    mostBeersPubNames: strings(r.most_beers_pub_names),
+    longestSeconds: num(r.longest_seconds),
+    longestDate: nullableStr(r.longest_date),
+    longestPubNames: strings(r.longest_pub_names),
+  };
+}
+
+function parseNightMonth(raw: unknown): RemoteNightMonth | null {
+  const m = raw as Record<string, unknown>;
+  if (!m || typeof m.period !== 'string') return null;
+  return { period: m.period, beers: num(m.beers), nights: num(m.evenings) };
 }
 
 function parseStats(body: unknown): RemoteStats | null {
@@ -122,9 +169,15 @@ function parseStats(body: unknown): RemoteStats | null {
     ? periods.years.map(parsePeriod).filter((p): p is RemotePeriodStat => p != null)
     : [];
 
+  const nightTimeline = (b.night_timeline ?? {}) as Record<string, unknown>;
+  const nightMonths = Array.isArray(nightTimeline.months)
+    ? nightTimeline.months.map(parseNightMonth).filter((m): m is RemoteNightMonth => m != null)
+    : [];
+
   return {
     totalBeers: num(b.total_beers),
     totalEvenings: num(b.total_evenings),
+    totalNights: nullableNum(b.total_nights),
     distinctPubs: num(b.distinct_pubs),
     totalSpentCzk: num(b.total_spent_czk),
     firstDrinkAt: nullableStr(b.first_drink_at),
@@ -136,6 +189,8 @@ function parseStats(body: unknown): RemoteStats | null {
       fastestBeerSeconds: nullableNum(records.fastest_beer_seconds),
       longestEveningSeconds: nullableNum(records.longest_evening_seconds),
     },
+    nightRecords: parseNightRecords(b.night_records),
+    nightMonths,
     periods: {
       timezone: str(periods.timezone),
       months,
@@ -160,6 +215,8 @@ export async function fetchMyStats(
   signal?: AbortSignal,
   /** Drinks removed on this phone whose DELETE may not have landed yet. */
   excludeClientIds: readonly string[] = [],
+  /** Every pub instead of the top 8; older servers ignore it and send the top 8. */
+  allPubs = false,
 ): Promise<RemoteStats | null> {
   if (signal?.aborted) return null;
 
@@ -168,6 +225,7 @@ export async function fetchMyStats(
   const params: string[] = [];
   const timezone = deviceTimezone();
   if (timezone) params.push(`timezone=${encodeURIComponent(timezone)}`);
+  if (allPubs) params.push('top_pubs=all');
   // Past the server's cap the aggregates would still count some removed
   // drinks; the screen falls back to local numbers instead.
   if (excludeClientIds.length > MAX_EXCLUDED_DRINKS) return null;

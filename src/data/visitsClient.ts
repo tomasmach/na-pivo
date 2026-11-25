@@ -23,6 +23,7 @@
 import { clearCachedAnonymousAccount, ensureAccount } from './account';
 import { getBackendEndpoint } from './backendConfig';
 import { chainAbortSignal, classifyQueueHttpFailure } from './apiFetch';
+import type { DiaryCursor, DiaryRead } from './diaryCache';
 import { trackClientEvent } from './telemetryClient';
 
 /** The byte-stable visit payload persisted in the queue and POSTed on retry. */
@@ -224,7 +225,7 @@ export async function deleteVisit(
   }
 }
 
-function isWireVisit(value: unknown): value is WireVisit {
+export function isWireVisit(value: unknown): value is WireVisit {
   const v = value as WireVisit;
   return (
     !!v &&
@@ -235,12 +236,13 @@ function isWireVisit(value: unknown): value is WireVisit {
 }
 
 /**
- * GET the account's full set of visits. Returns the parsed array, or null on ANY
- * failure (dormant backend, no account, network/timeout, non-2xx, malformed
- * body). Never throws. Exported for future read-side use (the app is push-only
- * for visits today).
+ * GET the account's visits changed since the cursor, or all of them when the
+ * cursor belongs to another account. Null on any failure; never throws.
  */
-export async function fetchVisits(signal?: AbortSignal): Promise<WireVisit[] | null> {
+export async function fetchVisits(
+  cursor: DiaryCursor | null,
+  signal?: AbortSignal,
+): Promise<DiaryRead | null> {
   if (signal?.aborted) return null;
 
   const endpoint = getBackendEndpoint('/v1/pub-visits');
@@ -248,10 +250,11 @@ export async function fetchVisits(signal?: AbortSignal): Promise<WireVisit[] | n
 
   const session = await ensureAccount(signal);
   if (!session || signal?.aborted) return null;
+  const since = cursor?.accountId === session.accountId ? cursor.since : '';
 
   const abort = chainAbortSignal(signal, REQUEST_TIMEOUT_MS);
   try {
-    const resp = await fetch(endpoint, {
+    const resp = await fetch(`${endpoint}?since=${encodeURIComponent(since)}`, {
       method: 'GET',
       headers: { Authorization: `Bearer ${session.token}` },
       signal: abort.signal,
@@ -273,9 +276,7 @@ export async function fetchVisits(signal?: AbortSignal): Promise<WireVisit[] | n
       return null;
     }
 
-    const data = (await resp.json()) as { visits?: unknown };
-    if (!data || !Array.isArray(data.visits)) return null;
-    return data.visits.filter(isWireVisit);
+    return { accountId: session.accountId, body: await resp.json() };
   } catch {
     trackVisitSyncFailed('fetch_visits', {
       reason: 'network_or_timeout',

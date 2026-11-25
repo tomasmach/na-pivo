@@ -6,31 +6,175 @@
 > Produktová část I a mockový jazyk 3.0 jsou reference pro případný návrat některé
 > funkce, ne zadání.
 
+## Světlejší plochy nového vzhledu (7. 11. 2026)
+
+Varianta C z návrhu „Světlejší tmavá“: zem nového vzhledu zůstává `#0A0A0A`, ale
+plochy na ní jsou světlejší, aby appka nepůsobila tak černě. Karta je `#202020`,
+panel `#222222`, ovládací prvek `#323232`, šedý text `#9A9A95` (na kartě 5,8 : 1),
+podklad avataru `#1A1A1A`. Spodní lišta má mimo Liquid Glass `#2A2A2A` s alfou 0,95
+a na iOS 26 sklo s nádechem `#2A2A2A` s alfou 0,5. Žlutá, texty a hairliny se
+nemění. Hodnoty žijí v `src/newlook/theme.ts` a jsou světlejší než `np-*`
+v `na-pivo-redesign.pen`. Web, ikona, splash a Live Activity zůstávají na
+původních hodnotách.
+
+## iPhone Duo v novém vzhledu (9. 11. 2026)
+
+Nový vzhled převzal knihu z §17.6 a doplnil to, co Apple pro Duo chce od iOS 27.1.
+Kód je v `src/newlook/duo/`. Platí jen na iOS: sloupec poznáme podle bočního insetu
+aspoň 60 bodů, knihu podle okna aspoň 800 × 600 bodů na šířku. Telefony a Android
+se nemění.
+
+- **Sloupec u hodin.** Zavřené i otevřené Duo drží vpravo sloupec 84 bodů s kamerou
+  a hodinami. Obsah končí před ním a lišta tabů v něm stojí svisle u spodního okraje:
+  dvě skleněné pilulky po dvou tabech a mezi nimi kruh Štamgasta, šířka 64 bodů.
+  Mapa Kompasu vede pod sloupcem dál, její ovládání ne.
+- **Lišta nástrojů ve sloupci.** Na stránce, panelu nebo obrazovce přes taby stojí
+  Zpět (u úkolů jako přihlášení nebo nová pozvánka Zavřít) nahoře ve sloupci pod hodinami a pod ním ikonové akce
+  stránky: srdcovka, sdílet, úprava profilu, nastavení. Co se nad lištu tabů nevejde,
+  schová „…“, které otevře systémovou nabídku akcí. Vlastní šipka zpět a ikony
+  v hlavičce stránky se na Duu nekreslí.
+- **Kniha.** Každý tab se dělí přesně v ohybu na obrazovku z telefonu a její dvojče:
+  Kompas a mapa, svět a parta Výčepu, počítadlo a deník, žebříčky a sbírka piv,
+  lidé a pozvánky v Partě. Přepínače mezi nimi na knize mizí. Řádky, které se
+  posouvají do stran, končí 20 bodů před ohybem.
+- **Stránka tabu.** Místa k prohlížení se na Duu otevřou jako stránka tabu: hospoda,
+  pivo, kámoš, pozvánka, večer, tvůj profil a seznamy z něj (nastavení, odznaky,
+  pivní fotky, moje hospody, hlídaná piva), FotoPivař, Tour de pub, čísla, žebříčky
+  a setkání. Na knize leží v pravé půlce, zavřené přes celý tab vedle lišty. Po
+  zavření i otevření zůstanou, kde byly, i s posunutím. Výběr v levé půlce knihy
+  pravou půlku vymění prolnutím a stejný výběr podruhé vrátí jeho stránku; co otevře
+  pravá půlka nebo stránka, přijede zprava jako další stránka, odjede stejnou cestou
+  a zpět z ní vede i tah od levého okraje. Na zavřeném Duu tah vrací z každé stránky. Druhé
+  klepnutí na otevřený tab vrátí tab. Na knize je pravá půlka tichá: jantarové
+  tlačítko v ní je šedé a otevřený řádek nebo dlaždice vlevo nese jantarový vybraný
+  stav (`C.yellowSoft`).
+- **Panel.** Úkoly a formuláře otevřené na Duu jsou panel: zavřené přes celé okno
+  vedle sloupce, na knize v pravé půlce přes ztmavené taby. Klepnutí do ztmavené
+  části vrací zpět, kromě jednosměrných obrazovek (příchod, vyvěšování nocí).
+  Onboarding se na knize rozloží do dvou půlek: obrázek vlevo, text a tlačítko
+  vpravo. Mapy přes celé okno a foťák mají celé okno.
+- **Sheet, dialog, toast.** Leží vedle sloupce. Na knize se otevřou v půlce, kam
+  ses naposledy dotkl, a ztmavení pokryje celé okno. Karta sheetu má zaoblený i ten
+  spodní roh, který nesedí na rohu displeje.
+
+## Počty piv na mapě nového vzhledu (9. 11. 2026)
+
+Špendlík hospody dál ukazuje cenu piva. Když tam minulý týden pili aspoň tři lidé,
+má vpravo nahoře žlutý odznak jako mapa 2.x: `C.yellow`, výška 20, radius 10,
+černý obrys 1,5 bodu, ikona piva 11 a počet 11/800, nad 99 „99+“. Do špendlíku
+zasahuje jen 6 bodů, aby nezakryl cenu. Shluk ukazuje součet piv svých hospod,
+kromě shluku schovaného pod cílovým špendlíkem, kde by se součet četl jako počet cíle.
+Karta hospody na mapě má pod otevírací dobou řádek „Minulý týden tu padlo N piv“
+s ikonou piva 13 v `onYellowMuted`. Hospoda, která sdílí geohash buňku s jinou,
+počet nemá, protože server piva počítá po buňkách. Ve Vrstvách je v „Na pinech“
+vypínač „Počty piv za minulý týden“ (uložené `showPubBeers`, výchozí zapnuto) místo
+přepínače cena / počty.
+
+## Pohyb nového vzhledu (1. 11. 2026)
+
+Nový vzhled (`src/newlook`, `app/nv`) se nehoupe. Žádná pružina s dojezdem, žádný
+bounce, elastic ani back easing, žádné vyskočení zvětšením. Všechny jeho animace
+berou tokeny z `src/newlook/motion.ts`: trvání 120 ms (stisk), 160, 220 a 280 ms
+(sheet), vstup `Easing.bezier(0.2, 0, 0, 1)`, odchod rychlejší
+`Easing.bezier(0.3, 0, 1, 1)`. Hýbe se jen průhlednost a malé posuny (8 až 16 bodů),
+celé plochy jen u sheetu a dál letí jen piny na mapě (níže). Pro nový vzhled tím neplatí pružiny a přejetí z §7.2b a §10
+(sheet s dojezdem, pop počítadla, váleček s `bezier(0.3, 1.22, …)`).
+
+- **Sheet** vyjede zespoda za 280 ms a závoj se zároveň prolne. Zavřením (křížek,
+  závoj, back, nahrazení routy) sjede stejnou cestou dolů za 220 ms a routa zmizí až
+  potom; routa sama nic neanimuje. Sheet, který se na stejné routě vymění (načítání
+  → obsah), se prolne na místě a podruhé nevyjíždí. S klávesnicí sheet i tlačítko
+  dole jedou nahoru spolu s ní a oblast posouvání končí nad tlačítkem.
+- **Toast** nahoře sjede o 16 bodů s prolnutím, dole vyjede o 8 bodů a stejnou cestou
+  odejde.
+- **Stisk** ztlumí prvek na 85 % a zmenší na 0,97 za 120 ms, uvolnění se vrátí za
+  220 ms. Běží na UI vlákně a layout se nehne. Sklo není interaktivní, aby se pod
+  prstem nevlnilo.
+- **Změna hodnoty** se prolne na místě: číslo piv, hospoda po „Jinou“. Nový řádek
+  pití se jen prolne. Při otevření obrazovky se nic neanimuje.
+- **Piny na mapě** se přeskupují už během zoomu a posunu, nejvýš jednou za 220 ms.
+  Pin, který pohltí bublina, do ní doletí a zbledne. Při rozpadu z ní hospody vyletí
+  na svá místa. Let trvá 220 ms se vstupní křivkou a smí být delší než 16 bodů,
+  protože ukazuje, kam hospoda zmizela. Letí jen piny, které jsou vidět. Pin bez
+  bubliny, třeba nově načtený, se prolne na místě. Prolnutí má čtyři kroky společné
+  pro celou změnu. Odcházející pin zmizí o krok dřív, než doletí, bublina leží nad
+  piny a vyšší součet ukáže až ve chvíli, kdy do ní hospody dosednou.
+- **Načítání** nesmí posunout obsah: zástupná karta drží výšku výsledku a načtený
+  obsah se prolne.
+- **Omezit pohyb:** posuny odpadnou, zůstanou krátká prolnutí. Jen sheet a tlačítko
+  dál jedou s klávesnicí, aby je nezakryla.
+- Nativní chování platformy (gumový okraj posouvání, přechody stacku) zůstává.
+
+## Live Activity (7. 11. 2026)
+
+Live Activity kopíruje sekci „Live Activity“ v návrhu 9 · Sdílení
+(`na-pivo-redesign.pen`). Na zamčené obrazovce je černá karta `#0A0A0A`: vlevo ve
+sloupci 76 bodů velké žluté číslo `#FFC400` (Sofia Sans Extra Condensed 800,
+116 bodů) a pod ním „piva“, vpravo hospoda s útratou, poslední pivo s časem,
+žluté tlačítko „Ještě jedno“ přes celou šířku a řádek se spojem domů. Neznámá
+útrata ani chybějící spoj nenechávají prázdné místo. Always-On tlumí žlutou na
+`#A8891C` a tlačítko je jen obrys. Dynamic Island má vlevo pivo a vpravo
+„3 piva“, rozbalený ostrov číslo, hospodu a tlačítko. Písma Sofia jsou přibalená
+v rozšíření widgetu (`plugins/withLiveActivityFonts.js`).
+
+## Web na na-pivo.cz (3. 11. 2026)
+
+Web je šedý jako nový vzhled appky, jen tmavý režim. Stojí na Djangu (šablony, žádný
+Next.js) a všechno, co načítá, je z na-pivo.cz: žádné CDN, cizí písma ani skripty.
+
+- **Tokeny** jsou CSS proměnné `--np-*` v `backend/pubs/static/pubs/web/np.css` a
+  kopírují `np-*` z redesignu (appka má od 7. 11. 2026 světlejší plochy): zem `#0A0A0A`, karta
+  `#151515`, pole `#181818`, ovládací prvek `#232323`, jantar `#FFC400`, text
+  `#F7F7F2`, druhý text `#D4D4CE`, šedá `#8F8F8A`, hairline bílá s alfou 0,1.
+  Jantarová plná plocha je na stránce jednou (hlavní akce, v panelu „Zapsat pivo“).
+- **Písma** jsou Sofia Sans Extra Condensed 800 na nadpisy a čísla a Sofia Sans 400
+  až 700 na text, jako woff2 vedle CSS. **Ikony** jsou lucide jako inline SVG z
+  `backend/pubs/web/icons/`; novou ikonu tam přidej jako soubor.
+- **Kostra:** veřejné stránky dědí `web/public.html` (hlavička s hledáním, patička
+  s městy, cenami, pivy a přepínačem jazyka), přihlášené `web/app.html` (levý panel
+  264 px, na telefonu horní lišta a spodní lišta s „Zapsat“). Pod 960 px se hlavička
+  složí do menu.
+- **Komponenty** jsou partialy v `backend/pubs/templates/web/components/` (řádek,
+  pole, velké číslo, drobečky, prázdný stav, avatar, čipy, přepínač) a třídy
+  `np-*` v `np.css`. Lokálně je všechny ukáže `/_komponenty`. Nová stránka skládá
+  tyhle díly; když chybí, přidej ho sem, ne do šablony stránky.
+
+## Kompas v mapě (26. 10. 2026)
+
+Varianta A z návrhu „Kompas a mapa na první obrazovce“: tab Kompas se na
+telefonu otevírá na mapě. Kompas v ní zůstává jako živý ciferník 80 bodů vlevo
+nahoře na místě přepínače „Kompas | Mapa“, jantarová výseč z tvé polohy ukazuje,
+kam míří telefon, a tečkovaná čára vede k cíli. Dole je karta cílové hospody
+(název, otevírací doba, pivo, vzdálenost, „Doveď mě tam“ a „Dej mi jinou“). Kartu
+jde stáhnout dolů; pak je tam zase přepínač vrstev a nad ním pilulka
+„323 m · U Zlatého tygra“, která kartu vrací. Klepnutí na ciferník otevře kompas
+přes celou obrazovku, z jehož hlavičky vede zpátky jantarová ikona mapy. Tajná
+hospoda nemá na mapě zvýrazněný pin ani čáru, protože čára by mířila přímo na
+její pin. Rozložené okno drží kompas a mapu vedle sebe beze změny.
+
 ## Šedá zem pro celou appku (8. 10. 2026)
 
 Celá appka leží na zemi stránky hospody. Stouty mají znovu hodnoty z §2.1:
 `stout` `#15120F`, `stout2` `#1C1815`, `stout3` `#262019`, `border` `#3A322A`.
 Jantar, pěna i texty zůstávají. Samostatný `Colors.canvas` zanikl, jeho
-obrazovky leží na `Colors.stout`. Ikona appky, splash a Live Activity mají
-pozadí `#15120F`; tmavé pásy mezi sekcemi a ztmavení pod sheety jsou
-`Colors.deep` (`#0E0C0A`). Hnědý zůstává jen web na na-pivo.cz. Jantar s nízkou alfou na
+obrazovky leží na `Colors.stout`. Ikona appky a splash mají od 7. 11. 2026
+barvy nového vzhledu: zem `#0A0A0A`, pěna `#F7F7F2` a žlutá `#E6AE00`, o stupeň
+tmavší než žlutá UI `#FFC400`, aby ikona na ploše nekřičela. Tmavé pásy mezi sekcemi a ztmavení pod sheety jsou
+`Colors.deep` (`#0E0C0A`). Web na na-pivo.cz je taky šedý (viz Web). Jantar s nízkou alfou na
 šedé zemi vypadá olivově hnědě, proto klidové plochy nesou neutrální pěnu:
 sekundární tlačítko je `stout3` bez okraje (§6.2), medailonek pod ikonou
 `foam` 0,07. Jantarový nádech zůstává jen vybraným a varovným stavům.
+Terciární text `mutedText` je na šedé zemi neutrální `#958E85` se stejným
+kontrastem jako dřívější hnědá hlína `#A8896A`.
 
-Hnědá zůstává jako neudržovaná volba v Nastavení → Vzhled
-(`src/theme/palette.ts`). Čte se synchronně při startu jako jazyk a přepnutí
-restartuje appku. Mění stouty, `deep`, Live Activity a na iOS i ikonu
-(`expo-alternate-app-icons`, alternativní ikona `Brown`). Android ikonu
-nemění, protože jeho alias nemá filtr `napivo://`. Splash zůstává šedý.
-Ilustrace mají průhledné pozadí a zrno z pěny s alfou ~3 %, takže sedí na
-obou zemích. Nové UI se navrhuje a ověřuje jen v šedé.
+Hnědá paleta a hnědá ikona už v Nastavení nejsou (15. 11. 2026). Appka má jen
+šedou zem. Ilustrace mají průhledné pozadí a zrno z pěny s alfou ~3 %.
 
 ## Schválená obnova plochých seznamů (22. 9. 2026)
 
 Varianta C pro **Moje přidané hospody** vrací na této obrazovce plochý seznam:
 `Colors.stout` (`#15120F`), systémové písmo bez `fontFamily`, stávající `amber`
-(`#E8A317`), `foam` (`#FBF3E0`) a `mutedText` (`#A8896A`).
+(`#E8A317`), `foam` (`#FBF3E0`) a `mutedText`.
 Toto rozhodnutí neobnovuje celé téma ani historickou architekturu 3.0.
 
 Seznam má okraj 20 bodů, záhlaví 52 bodů s titulkem 18/700, názvy 16/600,
@@ -49,8 +193,12 @@ vlastní obrazovku `/pub`, kterou otevírá kompas, karta na mapě, hledání,
 mapovací panel, protože tam jde o mapování.
 
 Obrazovka leží na `Colors.stout` se systémovým písmem jako Moje přidané
-hospody. Hlavička má kulatá tlačítka 44 bodů na `Colors.stout2` (zpět a „…“),
-název hospody se v ní objeví až po odscrollování. Název je 28/700, pod ním
+hospody. Hlavička má kulatá tlačítka 44 bodů (zpět, srdíčko a „…“), na iOS 26
+ze systémového skla, jinde na `Colors.stout2`. Od 27. 10. 2026 stránka zajíždí
+pod hlavičku i pod spodní lištu a u jejich hran se 28 bodů vytrácí do zemi
+(`EdgeFade`), takže se nic neuřízne o hranu. Velký název při scrollu zmizí a
+v hlavičce ho hned vystřídá malý; i krátká stránka jde odscrollovat dost na to,
+aby se název předal. Název je 28/700, pod ním
 jeden stavový řádek 15 bodů: otevírací doba barvou `open`/`closed`,
 vzdálenost a město. Následuje výřez mapy 112 bodů s radiusem 16 a pinem
 uprostřed, klepnutí otevře velkou mapu nad stránkou. Pod mapou jsou nejvýš tři
@@ -306,8 +454,8 @@ funkci, jen přestal ukazovat všechno naráz. Postup je vždycky stejný:
 3. **Jedna cesta k jedné věci.** Tři způsoby, jak udělat totéž, byly hlavní problém starého
    počítadla. Když najdeš duplicitní cestu, **zruš ji** — nezachovávej ji „pro jistotu“.
 4. **Okrajové akce do jednoho `…` sheetu.** Ne do headeru, ne do karty, ne do plovoucí pilulky.
-   **Rovnocenný povrch ale okrajová akce není.** Mapa je dvojče kompasu, ne položka menu — proto
-   sedí v headeru jako polovina titulku (`ExploreSwitch`, `variant="flat"`) a v `…` sheetu už
+   **Rovnocenný povrch ale okrajová akce není.** Mapa je dvojče kompasu, ne položka menu — na
+   telefonu je to domov tabu s ciferníkem v rohu, z kompasu se k ní vrací tlačítko v hlavičce a v `…` sheetu už
    není. Když povrch pustíš do headeru, **musíš** jeho řádek ze sheetu smazat (§14.4).
 5. **Zruš dekoraci, která nic neříká.** Rozmazané záře na pozadí, jantarové kickery nad každou
    sekcí, rámečky kolem rámečků, emoji v chromu, ikona u každého řádku.
@@ -360,10 +508,10 @@ dekorace, ne animace a rozhodně ne emoji v chromu.
 | `Colors.neon` | `#FFD27A` | Rezerva pro zvýrazněné stavy. Na etalonu se nepoužívá. |
 | `Colors.foam` | `#FBF3E0` | Primární text a světlé hairliny (s alfou). |
 | `Colors.foamMuted` | `#E8DCC0` | Sekundární text, popisek pod číslem, ikona zavírání. |
-| `Colors.mutedText` | `#A8896A` | Terciární text, meta řádky, neaktivní stav, „…“ ikona. |
+| `Colors.mutedText` | `#958E85` | Terciární text, meta řádky, neaktivní stav, „…“ ikona. |
 | `Colors.success` | `#7DD66B` | Potvrzení. Používej střídmě; jantar většinou stačí. |
 | `Colors.open` | `#F0BE5C` | Otevřeno (otevírací doba) — text i stavová tečka. |
-| `Colors.closed` | `#A8896A` | Zavřeno. Nikdy červená — nemáme na uživatele křičet. |
+| `Colors.closed` | = `mutedText` | Zavřeno. Nikdy červená — nemáme na uživatele křičet. |
 | `Colors.black` | `#000000` | Jen backdrop (`withAlpha(Colors.black, 0.6)`) a `softDrop()`. |
 | `Colors.white` | `#FFFFFF` | Nepoužívat na text. Text je `foam`. |
 
@@ -732,13 +880,13 @@ button: {
   justifyContent: 'center',
   paddingHorizontal: Spacing.lg,
 },
-pressed: { opacity: 0.9, transform: [{ scale: 0.97 }] },
 label: {
   ...MockType.buttonLabel,               // 16 / 700, systémové písmo
   color: Colors.stout,
 },
 ```
 
+- **Stisk:** `ScalePressable` s `pressScale={PressScale.primary}` (0,955). Pružení popisuje §10.
 - **Žádný glow, žádný `topLight`.** `amberGlow*` je jazyk 2.x — v žádném etalonním souboru se
   nevyskytuje. Tlačítko je plná jantarová pilulka a to stačí.
 - Výšky: **48** na obrazovce, **56** v sheetu, **60** dělená primární kapsle večera („+1 pivo“ +
@@ -768,9 +916,19 @@ Jantarový 6% outline (`CounterSecondary`, `GlowButton`) je jazyk 2.x. Další t
 (48 × 48, sklo, fallback `stout3`), **plovoucí pilulka v chromu** (výška 40, `stout @ 0.92`,
 hairline `foam 0.14`), **textový odkaz** (14/800 `Colors.amber`).
 
-**Pressed slovník:** default `opacity: 0.65`; tělo plovoucího baru `0.85`; jantarová CTA
-`0.9 + scale 0.97`. Pro nový kód jsou tohle defaulty — nevymýšlej další hodnoty; drobné odchylky
-ve starším kódu (0.62, 0.7) se srovnávají při dalším zásahu.
+**Stisk.** Tlačítka, pilulky, kulatá tlačítka, karty a řádky stavíš na
+`ScalePressable` (`@/components/shared/ScalePressable`), ne na holém `Pressable` se stylem
+`pressed`. Stisk se zmáčkne hned a pružinou se vrátí (§10). Hloubku volíš z `PressScale`:
+
+| Prvek | `pressScale` |
+|---|---|
+| jantarové primární tlačítko | `PressScale.primary` 0,955 |
+| sekundární pilulka, kulaté tlačítko, karta, dlaždice | `PressScale.default` 0,97 |
+| řádek přes celou šířku (`ListRow`) | `PressScale.row` 0,985, aby neuskakoval okraj |
+
+Nevymýšlej další hodnoty. Dim `opacity` při stisku zůstává jen u ikon bez plochy, segmentů
+a čipů; ve starším kódu se srovnává při dalším zásahu. Vzhled `disabled` dej do `style`
+(`opacity`), `ScalePressable` ho drží jako klidovou hodnotu.
 
 ### 6.3 Pravidlo jedné akce
 
@@ -822,25 +980,23 @@ Každý modal v appce je `Modal` ze `src/components/shared/Modal.tsx`. Má stejn
   nechá na místě i po otevření, takže rozepsaný zápis nezmizí,
 - jantarové tlačítko uvnitř zůstane jantarové i v tiché pravé půlce, sheet je samostatné okno.
 
-Scrim (`black 0.6`, `animationType="fade"`), dismiss target za kartou
-(`accessibilityElementsHidden`, aby VoiceOver nehlásil „Zavřít“ dvakrát) a Android back přes
-`onRequestClose` si sheet zatím staví sám. Jiný scrim než `black 0.6` předá wrapperu jako
-`scrimColor`, aby ztmavení mimo rámeček mělo stejnou barvu. `BottomSheetModal`, se kterým počítají
-§7.2 a §7.2b, v appce ještě není. Volající dodává kartu:
+Spodní panel dostane ztmavení, dismiss target za kartou, pohyb, tah prstem, Android back
+a VoiceOver escape z `BottomSheetModal` (§7.2b). Jiný scrim než `black 0.6` mu předá jako
+`scrimColor`. Volající dodává kartu:
 
 | Rozhodnutí | Důvod |
 |---|---|
 | `cardWrap` má `maxHeight: '92%'` (strop), **žádnou výchozí `minHeight`**, a `marginBottom: -insets.bottom` | Krátký sheet končí hned pod posledním řádkem, inputem nebo tlačítkem. Nevzniká prázdná „brada“, akce zůstávají u palce a dlouhý obsah přesto nezakryje celou obrazovku. |
 | Karta má `paddingBottom: insets.bottom + Spacing.lg` | Obsah se nedostane pod home indicator. Jde vždycky spolu s `marginBottom` výše. |
 | Sloupec **pevná hlavička → `ScrollView` s `flexGrow: 0`, `flexShrink: 1` → pevná patka MIMO scroll** | Krátký obsah určí výšku sheetu; dlouhý se u stropu zmenší a scrolluje. Patka (akce, součet) neodscrolluje ani se nenechá ustřihnout. |
-| Karta je obyčejný `View` | Dismiss target je sourozenec **za** kartou (ve wrapperu), takže karta nemusí nic polykat — a no-op `Pressable` by celý sheet seskupil do jednoho nepojmenovaného ovladače (§11). |
+| Karta je obyčejný `View`, jediné dítě `BottomSheetModal` | Dismiss target je sourozenec **za** kartou (ve wrapperu), takže karta nemusí nic polykat — a no-op `Pressable` by celý sheet seskupil do jednoho nepojmenovaného ovladače (§11). Wrapper kartě přidá `onLayout` a z její horní hrany počítá dráhu; vlastní komponenta karty ho musí předat svému kořenovému `View`. |
 | Grabber `44 × 4`, `foam 0.22` | Vizuální afordance „tohle je sheet“. (`PlacesSheet` má vlastní `40 × 5`, `foam 0.26`.) |
 
 ### 7.2 Kostra k překopírování
 
 ```tsx
 import React from 'react';
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Colors, withAlpha } from '@/theme/colors';
@@ -850,13 +1006,14 @@ import { softDrop } from '@/theme/shadows';
 import { MockLayout, MockType } from '@/mocks/mockTheme';
 import { cs } from '@/i18n/cs';
 import { BottomSheetModal } from '@/components/shared/BottomSheetModal';
+import { BottomSheetScrollView } from '@/components/shared/BottomSheetScrollView';
 import { CloseButton } from '@/components/shared/CloseButton';
 
 export function ExampleSheet({ visible, onClose }: { visible: boolean; onClose: () => void }) {
   const insets = useSafeAreaInsets();
 
   return (
-    <BottomSheetModal visible={visible} onClose={onClose}>
+    <BottomSheetModal visible={visible} onClose={onClose} underlayColor={Colors.stout}>
       <View style={[styles.cardWrap, { marginBottom: -insets.bottom }]}>
         {/* Plain View: the dismiss target is a sibling BEHIND the card (wrapper),
             so the card does not need to swallow presses — and a no-op Pressable
@@ -873,13 +1030,13 @@ export function ExampleSheet({ visible, onClose }: { visible: boolean; onClose: 
           </View>
 
           {/* 2 — the only scrolling part */}
-          <ScrollView
+          <BottomSheetScrollView
             style={styles.list}
             contentContainerStyle={styles.listContent}
             showsVerticalScrollIndicator={false}
           >
             {/* rows */}
-          </ScrollView>
+          </BottomSheetScrollView>
 
           {/* 3 — pinned footer, OUTSIDE the ScrollView */}
           <View style={styles.actions}>{/* primary/secondary actions */}</View>
@@ -938,32 +1095,45 @@ const styles = StyleSheet.create({
 
 ### 7.2b Sheet vyjíždí zespoda (3.0)
 
-Použij `src/components/shared/BottomSheetModal.tsx`. Nestav si `Modal` s
-`animationType` sám.
+Každý spodní panel je `src/components/shared/BottomSheetModal.tsx`. Nestav si `Modal`
+s `animationType` sám. Vycentrované dialogy (`AppDialog`, karty uprostřed obrazovky)
+a neprůhledné stránky přes celé okno zůstávají na `Modal` s `animationType="fade"`
+nebo `"slide"`.
 
-Dřív tu stálo `animationType="fade"` s odůvodněním, že `"slide"` koliduje
-s vlastním polohováním karty a vzniká dvojitý pohyb. Je to napůl pravda:
-`slide` na `transparent` modalu posune **celý modal včetně backdropu**, takže
-tmavý závoj vyjede zespoda místo aby prolnul. To nečte jako karta přijíždějící
-přes obrazovku, ale jako jeden velký kus tmavého papíru.
+Sheet jsou **dva pohyby najednou a nejsou stejné**:
 
-Řešení není vybrat jednu ze dvou vestavěných animací. Sheet jsou **dva pohyby
-najednou a nejsou stejné**:
-
-| Vrstva | Pohyb | Proč |
+| Vrstva | Pohyb | Hodnoty |
 |---|---|---|
-| závoj | prolnutí | je to stav obrazovky za ním, ne předmět |
-| karta | posun zespoda, spring | je to objekt, který přijíždí, a má hmotu |
+| závoj | prolnutí | 220 ms při otevření, 200 ms při zavření |
+| karta | posun zespoda, pružina s lehkým dojezdem | tuhost 260, tlumení 26, hmota 1; zavření 200 ms ease-in |
 
-Takže `Modal` neanimuje nic (`animationType="none"`) a obojí řídí wrapper. Při
-zavírání běží ty samé dva pohyby pozpátku a `Modal` se odmontuje až na konci —
-`visible={false}` hned by kartu nechal zmizet místo odejít.
+`Modal` neanimuje nic (`animationType="none"`) a obojí řídí wrapper. Karta jede
+o vzdálenost od své horní hrany ke spodnímu okraji. Při zavírání běží ty samé dva
+pohyby pozpátku a `Modal` se odmontuje až na konci; zavření se vejde do 260 ms,
+na které čeká sheet za sheetem (§7.4). Panel, který rodič při zavření odmontuje,
+nastaví `visible={false}` a rodiči předá zavření až v `onClosed`.
 
-Wrapper taky drží Android back gesture, aby zavřel sheet a ne obrazovku za ním.
+**Tah prstem.** Kartu jde stáhnout dolů kdekoli. Puštěná pod čtvrtinou dráhy a
+pomaleji než 900 pt/s se vrátí pružinou. Přes čtvrtinu nebo rychlým švihnutím se
+zavře přes `onClose`, stejně jako křížkem; když hostitel panel nezavře (třeba se
+nejdřív ptá na rozepsaný text), karta se vrátí. Nahoru jde karta jen o čtvrtinu dráhy
+prstu a mezeru pod ní zakryje `underlayColor`, barva karty. Plovoucí karta s okrajem
+dole ho nedostává. Svislý `ScrollView` v panelu je `BottomSheetScrollView`
+(`FlatList` je `BottomSheetFlatList`, `KeyboardAwareScrollView` to umí sám): tah
+dolů posouvá obsah, dokud není nahoře, a teprve pak táhne kartu; tah nahoru
+posouvá obsah, kdykoli je co posouvat.
 
-> **Migrace.** Ve 3.0 na něm jedou sheety v `src/party/`. Zbytek appky
-> (~27 míst) pořád fade a je to **vědomý dluh**, ne opomenutí — projede se to
-> najednou, ne po jednom, aby appka nebyla půl na půl.
+**Haptika.** Impact Soft, když karta po otevření dosedne (zhruba po 260 ms, kdy
+pružina poprvé dojede na místo) a když se zavře tahem. Jen se zapnutou haptikou
+v Nastavení.
+
+**Omezit pohyb.** Jen prolnutí celého panelu (`animationType="fade"`), bez pružiny
+a bez tahu.
+
+**Zavírání.** Ťuknutí na závoj, Android back i VoiceOver escape (dvouprstové Z) volají
+`onClose`, takže zavřou panel, ne obrazovku pod ním.
+
+`PlacesSheet` na mapě zůstává vlastní komponentou.
 
 ### 7.2c Zavírací tlačítko
 
@@ -1034,11 +1204,6 @@ const runAfterSheetClose = useCallback((action: () => void) => {
 
 Timer vždycky uklízej v `useEffect` cleanupu.
 
-> **Známá odchylka:** `CounterMoreSheet.tsx` používá zjednodušenou variantu, kde je backdrop rodičem
-> karty. Funguje to, protože jde o krátký neskrolující seznam bez patky. **Pro nové sheety použij
-> kanonickou variantu výše.** Kdykoli sheet obsahuje `ScrollView` nebo pevnou patku, je varianta
-> s rodičovským backdropem chyba.
-
 ### 7.5 Krátký sheet obepíná obsah, dlouhý má strop na `cardWrap`
 
 Tohle je nejzákeřnější chyba v celém receptu, protože **nikde nespadne a nic nenahlásí** — jen
@@ -1105,6 +1270,11 @@ odečte si pivo omylem. Rozdělení podle záměru dělá z chybného tapu nemo�
 
 Prakticky: pojmenuj sheet slovesem nebo otázkou, která říká jeho jediný záměr, a když do něj chceš
 přidat akci opačného směru, **udělej místo toho druhý sheet**.
+
+**Výjimka: řádky „Dnešní piva“ na počítadle (16. 11. 2026).** Nejsou sheet. Stejné nápoje jsou v jednom
+řádku s „−“, počtem a „+“, aby šel panák nebo pivo přidat jedním klepnutím. Plus zapíše stejný nápoj
+znovu bez otázky na rychlý zápis. Minus ubere poslední zápis. U posledního kusu se zeptá dialogem
+„Odebrat jeden nápoj?“, protože po zmizení řádku najede pod prst další nápoj.
 
 ---
 
@@ -1196,7 +1366,7 @@ madlo 44 × 4) s medailí 128 pt.
 **Žádné smyčkové animace.** Ani bublinky, ani pulzující glow, ani dýchající ikony. Autor je
 nesnáší a byly kvůli tomu už jednou odstraněny. Dekorativní pohyb na jádrových obrazovkách je
 zakázaný. Povolený pohyb má přesně tři kategorie, všechny stavové, ne ambientní: **reakce na tap**
-(pop níže), **příchod nového datového záznamu** (nový řádek threadu, §20.3) a **stavové smyčky
+(pop a stisk níže), **příchod nového datového záznamu** (nový řádek threadu, §20.3) a **stavové smyčky
 vázané na skutečný stav** — loading skeleton během reálného síťového čekání (§20.11), který
 skončí, jakmile stav skončí. V chrome smyčka neběží žádná (§20.6).
 
@@ -1227,8 +1397,13 @@ Pravidla:
 - Trvání drž na `130 / 180 ms`. Nic pomalejšího; nic, co se opakuje.
 - Stavové změny (sloty s proměnlivým obsahem) se přepínají **okamžitě, bez animace** a mají
   pevnou výšku — obsah se mění, výška ne, takže nic pod nimi neposkočí.
-- Stisk se řeší stylem, ne animací: `pressed && { opacity: 0.65–0.9 }` (§6.2), u jantarové CTA
-  navíc `transform: [{ scale: 0.97 }]`.
+- **Stisk je druhá povolená reakce na tap** (`ScalePressable`, §6.2). Při stisku se prvek
+  zmenší na `pressScale` za 70 ms, po uvolnění se vrátí pružinou (damping 20,
+  stiffness 320, mass 0,6). Hýbe se jen `transform`, `onPress` na animaci nečeká. Při omezeném
+  pohybu se prvek nezmenší, jen ztlumí na 70 % klidové průhlednosti (80 ms tam, 120 ms zpět).
+- **Haptika podle významu** (vždy jen při zapnutém `hapticEnabled`): změna hodnoty v přepínači,
+  segmentu, čipu nebo krokovači dá `fireSelectionHaptic` (systémový „výběr“). Ťuknutí na tab
+  a akce, které něco provedou, zůstávají `fireLightImpactHaptic`, úspěch `fireSuccessHaptic`.
 
 **Výjimka: ražba medaile (21. 10. 2026).** Když se medaile od posledního otevření zvedla o úroveň,
 její detail ji jednou vyrazí: 350 ms po otevření se zamáčkne na 0,9 (120 ms, ease-in quad),
@@ -1237,6 +1412,16 @@ a usadí se springem (damping 14, stiffness 220) s haptikou Success. Obě kresby
 a vymění se na UI vlákně, takže úder nečeká na JS. Spouští ji otevření detailu,
 nikdy počítadlo, a podruhé se už neopakuje. Při omezeném pohybu je nová kresba hned na místě
 a haptika zůstává. Pop 130/180 ms by úder nenesl, proto je pomalejší.
+
+**Výjimka: počítadlo (27. 10. 2026).** Číslo piv na počítadle neposkočí. Každá
+změněná číslice se protočí jako váleček ručního počítadla: stará odjede nahoru, nová
+přijede zespoda, obě spolu za 290 ms s lehkým přejetím (`Easing.bezier(0.3, 1.22,
+0.55, 1)`). Okno číslice má pevnou šířku 0,62 × velikost písma, takže číslo neuskočí
+do strany, a při 9 → 10 přijede desítka zespoda. Animace běží na UI vlákně jako
+vstupní a výstupní animace Reanimated. Nikdy při načtení obrazovky ani při ubrání
+piva, při omezeném pohybu se číslice vymění na místě. Záře za číslem zmizela. Zápis
+pití dává jedno krátké cvaknutí (Impact Rigid) místo dvojitého „hotovo“ (Success),
+protože přijde i desetkrát za večer; Success zůstává vzácnějším úspěchům.
 
 **Toast s medailí.** Novou medaili ohlásí stávající `Toast` nahoře přes celou šířku (okraj 12 pt):
 medaile 44 pt místo ikony, druhý řádek s dosaženou hodnotou, okraj `amber` 0,5, šipka a 4 s místo
@@ -1269,6 +1454,8 @@ const VERTICAL_SLOP = (44 - CHIP_HEIGHT) / 2;   // = 3
 - **Ozdobné vrstvy vypni:** backdrop `accessibilityElementsHidden` + `importantForAccessibility="no"`,
   dekorativní `View` navíc `pointerEvents="none"`.
 - **Segmenty:** `accessibilityRole="tab"` + `accessibilityState={{ selected }}`.
+- **Omezit pohyb:** stisk se nezmenšuje, jen ztlumí, a haptika zůstává (§10). `ScalePressable`
+  to řeší sám a předává všechny `accessibility*` props, `testID`, `hitSlop` i `disabled`.
 - **Každý `<Text>` má `maxFontSizeMultiplier`, nebo — u číslic v pevných buňkách — explicitní
   `allowFontScaling={false}`** (viz §3.3).
 - **Dlouhé názvy hospod:** `numberOfLines={1}` na `<Text>` **a** `flexShrink: 1` na něm nebo na jeho
@@ -1414,8 +1601,10 @@ import { GlassView, isLiquidGlassAvailable } from 'expo-glass-effect';
 ```
 
 Tab bar fallback řeší systém: na iOS 18 a starším a na Androidu má plný `Colors.stout2`
-(`backgroundColor` v `NativeTabs`). `expo-glass-effect` dnes žádný soubor neimportuje a
-v `package.json` není; první vlastní sklo ho přidá jako přímou závislost.
+(`backgroundColor` v `NativeTabs`). Vlastní sklo kreslí `GlassSurface`
+(`src/components/shared/Glass.tsx`) nad přímou závislostí `expo-glass-effect`; mimo iOS 26
+vrací plnou plochu, kterou prvek měl předtím. Rozmazání obsahu pod hlavičkou appka nemá,
+hranu řeší vytracení do zemi (§16.1).
 
 Android sklo nemá vůbec. Tam platí fallback větev vždycky.
 
@@ -1437,6 +1626,9 @@ referenční appka sáhla po sytém akcentu (červená u Packety), sahá Na pivo
 - Shader hlavičky obrazovky (`GradientBand` + `HEADER_GRADIENT` / `LIVE_GRADIENT`).
 - Podklad chromu **pod** sklem, aby nebyl plochý obdélník. Pod tab barem ne: ten je systémový
   a podklad si kreslí sám. Jinde ho nezaváděj bez schváleného mocku.
+- Vytracení obsahu u hrany pevné hlavičky nebo spodní lišty (`EdgeFade`): zem `stout`
+  z 94 % do průhledna na 28 bodech. Není to světlo ani barva, jen hrana, pod kterou obsah
+  zajíždí (stránka hospody).
 - Uvnitř ilustrací, kde už dnes je (`TallyCoaster`, `PartyTable` — 2.x obrazovky).
 
 ### 16.2 Co gradient nesmí
@@ -1520,11 +1712,28 @@ vlastní povrch, ne jako rozbalovací pole v liště — jeden záměr na povrch
 
 ### 17.4 List → detail
 
-Default je pushnutá route s nativním zpět (detail výzvy, akce, cizí profil) — patří do stacku
-vedle `/profile/edit` a `/settings`. To platí i pro detail hospody: od 28. 9. 2026 je to
+Default je pushnutá route s nativním zpět (detail výzvy, akce, cizí profil), která přijede zprava
+a zavře se tahem od levého okraje. To platí i pro detail hospody: od 28. 9. 2026 je to
 samostatná obrazovka `/pub` (viz „Schválená stránka hospody“ nahoře), mapu otevírá výřez
 na stránce. Intent sheet (§7) detail nikdy nenese. Na otevřeném iPhonu Duo se hospoda, večer a
 profil kámoše otevírají do pravé půlky (§17.6).
+
+**Obrazovky, které přijedou zespoda, jsou karta (27. 10. 2026).** Nastavení, Domovský bod, O appce,
+Soukromí, Napiš mi, Doplnit info, Přidat hospodu, Navrhnout akci, detail večera, přihlášení,
+obnova hesla, ověření e-mailu, Účet, volba soukromí po registraci, Úprava profilu, pozvánka do
+party, fotka a FotoPivař. V `app/_layout.tsx` mají společné `sheet`.
+
+- Na iPhonu jsou systémová karta (`presentation: 'modal'`). Obrazovka pod ní se zasune o kousek
+  dozadu a kartu jde stáhnout prstem dolů. Domovský bod se otevírá z Nastavení jako druhá karta
+  nad ní.
+- Hlavička má vlevo křížek „Zavřít“ (`XIcon`), protože obrazovka přijela zespoda. Šipka zpět
+  zůstává pushnutým routám a detailu v pravé půlce Duo.
+- Formulář s neuloženou změnou nebo s rozběhlým ukládáním stáhnout nejde, karta se vrátí na
+  místo (`useKeepCardOpen`). Zavře ho křížek, stejně jako dřív.
+- Na Androidu jsou přes celý displej a zavírá je systémové zpět.
+- Na otevřeném iPhonu Duo zůstávají přes celé okno. Na širokém okně iOS kartu ukazuje jako menší
+  obdélník uprostřed, který by ležel přes ohyb (§17.6).
+- Onboarding a oslava příchodu jsou jednosměrné, zůstávají přes celý displej a stáhnout nejdou.
 
 ### 17.5 Kompas v seznamu hospod
 
@@ -1536,6 +1745,9 @@ discovery (seznam hospod, kompasová buňka), `useNearbyPub` (`src/counter/useNe
 autopick hospody při zápisu. Třetí nezakládej.
 
 ### 17.6 Otevřený iPhone Duo: kniha
+
+Nový vzhled knihu přebírá a doplňuje, platí pro něj sekce „iPhone Duo v novém vzhledu“
+nahoře. Následující popis je původní varianta pro starý vzhled.
 
 Schválená varianta B „Kniha“ (mock `na-pivo-iphone-duo.html`, 23. 10. 2026). Platí jen na iOS
 a jen pro okno rozložené jako kniha (šířka aspoň 800 pt a výška aspoň 600 pt) nebo postavené na

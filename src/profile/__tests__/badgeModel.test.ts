@@ -1,14 +1,6 @@
 import { parseBadgeProgress } from '@/data/achievements';
 import type { AccountMapper } from '@/data/auth';
-import {
-  BADGE_RULES,
-  badgeState,
-  badgeStates,
-  daysUntilHoliday,
-  medalFrame,
-  nearestGoals,
-  withMapperCounters,
-} from '@/profile/badgeModel';
+import { BADGE_RULES, badgeState, badgeStates, daysUntilHoliday, withMapperCounters } from '@/profile/badgeModel';
 
 const rule = (key: string) => {
   const found = BADGE_RULES.find((candidate) => candidate.key === key);
@@ -64,30 +56,6 @@ describe('withMapperCounters', () => {
 
     expect(badgeState(rule('mapped'), merged).tier).toBe(1);
     expect(merged.facts).toBe(120);
-  });
-});
-
-describe('nearestGoals', () => {
-  it('picks the closest next levels and never a volume badge', () => {
-    const states = badgeStates(
-      parseBadgeProgress({ beers: 99, distinct_pubs: 47, ratings: 8, facts: 30, distinct_cities: 1 }),
-    );
-
-    expect(nearestGoals(states).map((state) => state.key)).toEqual(['pubs', 'ratings', 'cities']);
-  });
-
-  it('drops a family once every level is reached', () => {
-    const states = badgeStates(parseBadgeProgress({ distinct_pubs: 140, ratings: 9 }));
-
-    expect(nearestGoals(states, 1).map((state) => state.key)).toEqual(['ratings']);
-  });
-});
-
-describe('medalFrame', () => {
-  it('gives the top level the wreath even in a three-level family', () => {
-    expect(medalFrame(3, 3)).toBe(4);
-    expect(medalFrame(3, 4)).toBe(3);
-    expect(medalFrame(1, 4)).toBe(1);
   });
 });
 

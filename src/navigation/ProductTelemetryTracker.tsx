@@ -2,36 +2,32 @@ import { useEffect, useRef } from 'react';
 import { usePathname } from 'expo-router';
 
 import { productScreenFromPathname, trackScreenViewed, type ProductScreenName } from '@/data/productTelemetry';
-import { useBookLayout } from '@/layout/bookLayout';
-import { pagePathname, tabForPathname } from '@/layout/openDetail';
-import { useBookStore } from '@/stores/bookStore';
+import { detailPathname, useDetailStore } from '@/newlook/duo/detailStore';
+
+const TAB_PATH = /^\/nv\/(kompas|vycep|stamgast|piva|parta)$/;
 
 /**
  * Tracks coarse screen usage after account hydration. Dynamic route parameters
  * never leave the device; productTelemetry collapses them to fixed names first.
- *
- * On a wide window the page in the tab's right half counts as if it were pushed
- * over the tab, so opening, going back and moving a pushed route into the half
- * read the same as on a phone.
  */
 export function ProductTelemetryTracker({ enabled }: { enabled: boolean }) {
-  const pathname = usePathname();
-  const { wide } = useBookLayout();
-  const tab = tabForPathname(pathname);
-  const page = useBookStore((state) => (wide && tab ? state.pages[tab].at(-1) : undefined));
-  const viewed = page ? pagePathname(page) : pathname;
+  const routePathname = usePathname();
+  // On the iPhone Duo a pub, friend or profile opens as a page of the tab without changing the route.
+  const tab = TAB_PATH.exec(routePathname)?.[1];
+  const page = useDetailStore((st) => (tab ? st.pages[tab]?.at(-1) : undefined));
+  const pathname = page ? detailPathname(page) : routePathname;
   const previousPathnameRef = useRef<string | null>(null);
   const previousScreenRef = useRef<ProductScreenName | undefined>(undefined);
 
   useEffect(() => {
-    if (!enabled || previousPathnameRef.current === viewed) return;
-    previousPathnameRef.current = viewed;
+    if (!enabled || previousPathnameRef.current === pathname) return;
+    previousPathnameRef.current = pathname;
 
-    const screen = productScreenFromPathname(viewed);
+    const screen = productScreenFromPathname(pathname);
     if (!screen) return;
     trackScreenViewed(screen, previousScreenRef.current);
     previousScreenRef.current = screen;
-  }, [enabled, viewed]);
+  }, [enabled, pathname]);
 
   return null;
 }

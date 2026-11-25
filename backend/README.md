@@ -274,7 +274,7 @@ All settings are read from environment variables or a `.env` file. See `.env.exa
 |---|---|---|
 | `SECRET_KEY` | insecure dev key | Django secret key |
 | `DEBUG` | `True` | Enable debug mode |
-| `ENABLE_DJANGO_ADMIN` | `True` in dev, `False` in prod | Register `/admin/` routes |
+| `ENABLE_DJANGO_ADMIN` | `True` in dev, `False` in prod | Register `/admin/` routes and serve their CSS and JS from `STATIC_ROOT` |
 | `ALLOWED_HOSTS` | `*` in dev, env value in prod | Comma-separated allowed hosts |
 | `PUBLIC_WEB_ORIGIN` | `https://na-pivo.cz` | Canonical origin for invite links and Open Graph metadata |
 | `PUBLIC_API_ORIGIN` | `http://localhost:8012` (dev), `https://api.na-pivo.cz` (prod) | Bare API origin (`scheme://host`, no path/query) used when the backend links to itself |
@@ -309,6 +309,7 @@ All settings are read from environment variables or a `.env` file. See `.env.exa
 | `PUB_REPORTS_THROTTLE_RATE` | `30/min` | Per-IP rate limit for `POST /v1/pub-reports` |
 | `PUB_REPORT_GLOBAL_HIDE_THRESHOLD` | `3` | Distinct active reporting accounts required before a pub is hidden globally |
 | `CLIENT_EVENTS_THROTTLE_RATE` | `120/min` | Per-IP rate limit for `POST /v1/client-events` |
+| `OPS_LIVE_TOKEN` | _(unset)_ | Bearer secret for `GET /v1/ops/live`; unset disables the endpoint |
 | `PUBLIC_READS_THROTTLE_RATE` | `120/min` | Per-IP rate limit for public changelog and report-filter reads |
 | `API_RATE_LIMIT_RETENTION_DAYS` | `2` | Retention for expired shared throttle buckets |
 | `ACCOUNT_EXPORT_JOB_RETENTION_DAYS` | `30` | Retention for delivered and terminally failed durable export jobs |
@@ -371,6 +372,12 @@ The Expo app sends a small event whitelist to:
 
 Authenticated events update `AccountUsageStats`. Product events are coarse and server-validated: dynamic pathnames, account/content ids, pub names, beer names, user text and GPS coordinates are not accepted. Walking distance is computed on-device; the backend stores only meter increments, not coordinates or routes. Event-level rows are retained for 90 days by default and pruned in bounded batches; aggregate account counters remain for the account lifetime.
 
+### Pub reach
+
+`POST /v1/pub-reach` (optional bearer token) takes the app's batch `{"events": [{"type", "pub", "at"}]}`, up to 500 events: `map_impression` (a pin on screen as its own pin, once per pub and app session), `detail_view` and `navigation`. `pub` is the geohash-8 cell; a malformed event is skipped, not the batch. `POST /web/reach` takes one beacon from a pub page on the web (`detail_view` or `navigation` plus the referrer's origin) and keeps only the kind of source; bot user agents are ignored and the web stores nothing about the visitor.
+
+`PubReachDaily` keeps the counts per pub, Prague day, channel, metric and web source for good. `PubReachVisitor` keeps a keyed hash of each app account per pub, day and metric for `PUB_REACH_VISITOR_RETENTION_DAYS` (90) so distinct people over any range inside it are exact; `prune_operational_data` removes older rows and account deletion removes the account's rows. Admin → Pub reach → "Dosah hospody za období" shows one pub's numbers for a range, app and web apart.
+
 Agent-friendly reports:
 
 ```bash
@@ -381,7 +388,28 @@ uv run python manage.py prune_client_events --dry-run
 
 The report includes usage totals, screen popularity, top walkers, client error/API-failure breakdowns and recent feedback with contact-like text redacted.
 
+`GET /v1/ops/live` returns live counters for the operator's desk clock:
+`registrations_today`, `active_today`, `registrations_total` and
+`last_registration_at`. It needs `Authorization: Bearer $OPS_LIVE_TOKEN` and
+answers 404 while the token is unset. "Today" starts at midnight Europe/Prague.
+Registrations count existing `Account` rows, so purged and merged accounts drop
+out. Active accounts are distinct accounts with an `app_open` (cold start) or
+`app_foreground` (resume) event today. The response is cached for 30 seconds.
+
 ---
+
+### Web analytics
+
+Every page of the web loads `stats.js`, which sends `POST /web/stats` once per page view and once per tap on an App Store or Google Play link. `WebStatsDaily` keeps, per Prague day, the page (URL name), its language, the kind of source (`google`, `seznam`, `social`, `ai`, `link`, `direct`, `internal`…), the referrer host for links, social networks and AI chats, the link's `utm_campaign` (or `utm_source`), and `ios` / `android` / `desktop` from the user agent. The address itself is kept only for public content pages (a pub, a beer, a city, a public tour); invites, profiles and account pages are counted by page only. No cookie, IP address or fingerprint is stored, so the numbers are visits, not people. Bot user agents and browsers driven by automation are ignored.
+
+Google search numbers come from Search Console. `sync_search_console` runs in the worker loop, at most every 6 hours: the first run copies the 16 months Google keeps, later runs replace the last 10 days, which Google still adjusts. Without `SEARCH_CONSOLE_SERVICE_ACCOUNT` it does nothing. To turn it on:
+
+1. In Google Cloud, create a service account in any project, enable the "Google Search Console API" and create a JSON key for the account.
+2. In Search Console → Settings → Users and permissions of the `na-pivo.cz` property, add the service account's e-mail with "Restricted" permission.
+3. Put the JSON key on one line into `SEARCH_CONSOLE_SERVICE_ACCOUNT` in the server's `.env`. `SEARCH_CONSOLE_SITE` is `sc-domain:na-pivo.cz` for a domain property; a URL-prefix property is written as `https://na-pivo.cz/`.
+4. Restart the worker; `python manage.py sync_search_console --force` copies the history right away.
+
+Admin → Web analytika shows both for a chosen range, with the same range before it for comparison.
 
 ## Deploy (Docker Compose)
 
@@ -420,7 +448,15 @@ custom-scheme fallback work. Keep the API upload limit on the API host only:
 na-pivo.cz {
     reverse_proxy napivo-web:8000
 }
+
+www.na-pivo.cz {
+    redir https://na-pivo.cz{uri} permanent
+}
 ```
+
+`www.na-pivo.cz` has a DNS record, so without its own block Caddy fails the TLS
+handshake there. Keep it a redirect: `deploy.py` expects exactly two
+`reverse_proxy napivo-web:8000` lines.
 
 ### First-time setup
 

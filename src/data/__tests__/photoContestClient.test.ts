@@ -10,9 +10,11 @@
  */
 
 import {
+  clearPhotoContestTeaserCache,
   clearPhotoContestVote,
   enterPhotoContest,
   fetchPhotoContest,
+  fetchPhotoContestTeaser,
   votePhotoContest,
   withdrawPhotoContestEntry,
 } from '@/data/photoContestClient';
@@ -31,7 +33,9 @@ jest.mock('@/data/account', () => ({
     authenticated: false,
   })),
   clearCachedAnonymousAccount: jest.fn(),
+  getLastKnownSessionAccountId: jest.fn(() => mockCurrentAccountId),
 }));
+let mockCurrentAccountId = 'a';
 
 jest.mock('@/data/telemetryClient', () => ({ trackApiFailure: jest.fn() }));
 
@@ -86,9 +90,12 @@ const APP_ENTRY = {
     isPublic: true,
   },
   imageUrl: 'https://api.test/media/beer-photos/p1.jpg',
+  // An older backend sends no `thumb_url`; the grid falls back to the full image.
+  thumbUrl: 'https://api.test/media/beer-photos/p1.jpg',
   caption: 'Zlatá pěna',
   pubName: 'U Palmy',
   pubCity: 'Brno',
+  beerName: '',
   votes: 12,
   myVote: true,
   isMine: false,
@@ -119,6 +126,7 @@ describe('fetchPhotoContest', () => {
             rank: 1,
             account: { public_id: 'pub-2', nickname: 'lucka', display_name: 'Lucka' },
             image_url: 'https://cdn.test/w.jpg',
+            thumb_url: 'https://cdn.test/w.thumb.webp',
             caption: 'Vítězná',
             votes: 30,
           },
@@ -146,6 +154,8 @@ describe('fetchPhotoContest', () => {
       entries: [APP_ENTRY],
       myEntryId: 'e9',
       myVoteEntryId: 'e1',
+      myEntryIds: ['e9'],
+      myVoteEntryIds: ['e1'],
       lastResults: {
         contest: {
           id: 'contest-6',
@@ -164,6 +174,7 @@ describe('fetchPhotoContest', () => {
               isPublic: true,
             },
             imageUrl: 'https://cdn.test/w.jpg',
+            thumbUrl: 'https://cdn.test/w.thumb.webp',
             caption: 'Vítězná',
             votes: 30,
           },
@@ -191,6 +202,8 @@ describe('fetchPhotoContest', () => {
       entries: [],
       myEntryId: null,
       myVoteEntryId: null,
+      myEntryIds: [],
+      myVoteEntryIds: [],
       lastResults: null,
     });
   });
@@ -201,6 +214,26 @@ describe('fetchPhotoContest', () => {
 
     mockGetBackendEndpoint.mockReturnValue(null);
     expect(await fetchPhotoContest()).toBeNull();
+  });
+
+  it('never hands one account the snapshot fetched with another account', async () => {
+    fetchResolving(200, { contest: WIRE_CONTEST, entries: [], my_entry_id: 'mine' });
+    expect(await fetchPhotoContestTeaser()).not.toBeNull();
+
+    // Signed in to account b: a's cached snapshot is skipped, and the answer
+    // to a's bearer (still the one the request went out with) is dropped.
+    mockCurrentAccountId = 'b';
+    const spy = fetchResolving(200, { contest: WIRE_CONTEST, entries: [], my_entry_id: 'mine' });
+    expect(await fetchPhotoContestTeaser()).toBeNull();
+    expect(spy).toHaveBeenCalledTimes(1);
+    mockCurrentAccountId = 'a';
+  });
+
+  it('drops a response still in flight when logout clears the cache', async () => {
+    fetchResolving(200, { contest: WIRE_CONTEST, entries: [], my_entry_id: 'mine' });
+    const inFlight = fetchPhotoContest();
+    clearPhotoContestTeaserCache();
+    expect(await inFlight).toBeNull();
   });
 });
 

@@ -33,6 +33,7 @@ import * as SecureStore from 'expo-secure-store';
 import { AppState, Platform } from 'react-native';
 
 import { getBackendEndpoint } from './backendConfig';
+import { createCoalescingFlush, createQueueLock, createQueueStorage } from './createQueue';
 import { clearDrinkRateLimit, registerDrinkRateLimitAccountReader } from './drinksRateLimit';
 import { clearAmenityVotesRateLimit } from './pubAmenitiesRateLimit';
 import { clearAccountMerge, hasPendingAccountMerge, prepareAccountMerge, readAccountMerge } from './accountMerge';
@@ -728,18 +729,7 @@ export async function fetchAccountPreferences(
   }
 }
 
-export async function updateAccountPreferences(
-  preferences: Partial<AccountPreferences>,
-  signal?: AbortSignal,
-): Promise<AccountPreferences | null> {
-  if (signal?.aborted) return null;
-
-  const endpoint = getBackendEndpoint('/v1/account/me');
-  if (!endpoint) return null;
-
-  const session = await ensureAccount(signal);
-  if (!session || signal?.aborted) return null;
-
+function preferencesWire(preferences: Partial<AccountPreferences>): Record<string, unknown> {
   const body: Record<string, unknown> = {};
   if (preferences.mode === 'nearest' || preferences.mode === 'surprise') {
     body.compass_mode = preferences.mode;
@@ -768,7 +758,69 @@ export async function updateAccountPreferences(
   if (typeof preferences.marketingEmailsEnabled === 'boolean') {
     body.marketing_emails_enabled = preferences.marketingEmailsEnabled;
   }
+  return body;
+}
 
+function validPreferencesPatch(raw: unknown): Partial<AccountPreferences> {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {};
+  const value = raw as Record<string, unknown>;
+  const patch: Partial<AccountPreferences> = {};
+  if (value.mode === 'nearest' || value.mode === 'surprise') patch.mode = value.mode;
+  if (value.maxDistanceKm === null || (typeof value.maxDistanceKm === 'number' && Number.isFinite(value.maxDistanceKm))) {
+    patch.maxDistanceKm = value.maxDistanceKm;
+  }
+  if (value.priceCurrency === 'CZK' || value.priceCurrency === 'EUR') patch.priceCurrency = value.priceCurrency;
+  for (const key of ['hapticEnabled', 'soundEnabled', 'hideClosedPubs', 'hidePubNames', 'marketingEmailsEnabled'] as const) {
+    if (typeof value[key] === 'boolean') patch[key] = value[key] as boolean;
+  }
+  return patch;
+}
+
+interface PendingAccountPreferences {
+  ownerId: string | null;
+  patch: Partial<AccountPreferences>;
+}
+
+function isPendingAccountPreferences(value: unknown): value is PendingAccountPreferences {
+  const entry = value as PendingAccountPreferences;
+  return (
+    !!entry &&
+    (entry.ownerId === null || typeof entry.ownerId === 'string') &&
+    Object.keys(validPreferencesPatch(entry.patch)).length > 0
+  );
+}
+
+const preferencesQueue = createQueueStorage('na-pivo-account-settings-queue', isPendingAccountPreferences);
+const runPreferencesLocked = createQueueLock();
+
+export const runAccountMeWrite = createQueueLock();
+
+async function loadPendingPreferences(): Promise<PendingAccountPreferences | null> {
+  const [entry] = await preferencesQueue.load();
+  return entry ? { ownerId: entry.ownerId, patch: validPreferencesPatch(entry.patch) } : null;
+}
+
+function samePending(a: PendingAccountPreferences | null, b: PendingAccountPreferences): boolean {
+  return JSON.stringify(a) === JSON.stringify(b);
+}
+
+let preferencesRefusedListener: ((server: AccountPreferences | null) => void) | null = null;
+
+export function setAccountPreferencesRefusedListener(
+  listener: ((server: AccountPreferences | null) => void) | null,
+): void {
+  preferencesRefusedListener = listener;
+}
+
+type PreferencesDelivery = 'ok' | 'retry' | 'permanent-error';
+
+async function sendAccountPreferences(
+  session: AccountSession,
+  patch: Partial<AccountPreferences>,
+  signal: AbortSignal,
+): Promise<PreferencesDelivery> {
+  const endpoint = getBackendEndpoint('/v1/account/me');
+  if (!endpoint) return 'retry';
   const abort = chainAbortSignal(signal);
   try {
     const resp = await fetch(endpoint, {
@@ -777,40 +829,103 @@ export async function updateAccountPreferences(
         'Content-Type': 'application/json',
         Authorization: `Bearer ${session.token}`,
       },
-      body: JSON.stringify(body),
+      body: JSON.stringify(preferencesWire(patch)),
       signal: abort.signal,
     });
-
+    if (resp.ok) return 'ok';
     if (resp.status === 401) {
       await clearCachedAnonymousAccount(session, {
         source: 'account_preferences_update',
         endpoint: '/v1/account/me',
       });
-      return null;
+      return 'retry';
     }
-    if (!resp.ok) {
-      trackApiFailure('account_preferences_update', {
-        endpoint: '/v1/account/me',
-        status: resp.status,
-      });
-      return null;
-    }
-
-    const data = (await resp.json()) as AccountMeResponse;
-    return preferencesFromResponse(data);
+    trackApiFailure('account_preferences_update', {
+      endpoint: '/v1/account/me',
+      status: resp.status,
+    });
+    return resp.status === 400 || resp.status === 422 ? 'permanent-error' : 'retry';
   } catch (err) {
     const isAbortError = err instanceof Error && err.name === 'AbortError';
-    if (!signal?.aborted && !isAbortError) {
+    if (!signal.aborted && !isAbortError) {
       trackApiFailure('account_preferences_update', {
         endpoint: '/v1/account/me',
         reason: 'exception',
         error: err,
       });
     }
-    return null;
+    return 'retry';
   } finally {
     abort.cleanup();
   }
+}
+
+async function dropPendingIfUnchanged(sent: PendingAccountPreferences): Promise<void> {
+  await runPreferencesLocked(async () => {
+    if (samePending(await loadPendingPreferences(), sent)) await preferencesQueue.save([]);
+  });
+}
+
+let preferencesDeliveries = 0;
+
+export function accountPreferencesDeliveries(): number {
+  return preferencesDeliveries;
+}
+
+async function flushPendingPreferences(signal: AbortSignal): Promise<void> {
+  const pending = await runPreferencesLocked(loadPendingPreferences);
+  if (!pending || (await hasPendingAccountMerge())) return;
+  const session = await ensureAccount(signal);
+  if (!session || signal.aborted) return;
+  const belongsHere = pending.ownerId === null ? !session.authenticated : pending.ownerId === session.accountId;
+  if (!belongsHere) {
+    await dropPendingIfUnchanged(pending);
+    return;
+  }
+  const result = await runAccountMeWrite(() => sendAccountPreferences(session, pending.patch, signal));
+  if (result === 'ok') preferencesDeliveries += 1;
+  if (result === 'retry' || signal.aborted) return;
+  await dropPendingIfUnchanged(pending);
+  if (result === 'permanent-error') {
+    const server = await fetchAccountPreferences(signal);
+    if (!signal.aborted) preferencesRefusedListener?.(server);
+  }
+}
+
+const preferencesFlush = createCoalescingFlush(flushPendingPreferences);
+
+export function flushAccountPreferences(): Promise<void> {
+  return preferencesFlush.flush();
+}
+
+export function updateAccountPreferences(preferences: Partial<AccountPreferences>): Promise<void> {
+  const patch = validPreferencesPatch(preferences);
+  if (Object.keys(patch).length === 0) return Promise.resolve();
+  const queued = runPreferencesLocked(async () => {
+    const cached = await readCachedAccount();
+    const ownerId = cached.account?.accountId ?? null;
+    const current = await loadPendingPreferences();
+    const earlier = current && current.ownerId === ownerId ? current.patch : {};
+    await preferencesQueue.save([{ ownerId, patch: { ...earlier, ...patch } }]);
+  });
+  return queued.then(flushAccountPreferences);
+}
+
+export function pendingAccountPreferences(): Promise<Partial<AccountPreferences>> {
+  return runPreferencesLocked(async () => {
+    const pending = await loadPendingPreferences();
+    if (!pending) return {};
+    const { account } = await readCachedAccount();
+    const belongsHere = pending.ownerId === null ? account?.authenticated !== true : pending.ownerId === account?.accountId;
+    return belongsHere ? pending.patch : {};
+  });
+}
+
+export function clearAccountPreferencesQueue(): Promise<void> {
+  preferencesFlush.abortInFlight();
+  return runPreferencesLocked(async () => {
+    await preferencesQueue.save([]);
+  });
 }
 
 // ---------------------------------------------------------------------------

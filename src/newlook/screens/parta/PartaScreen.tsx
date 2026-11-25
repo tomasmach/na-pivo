@@ -1,0 +1,575 @@
+import React, { useCallback, useEffect, useState } from 'react';
+import { RefreshControl, ScrollView, View } from 'react-native';
+import Animated from 'react-native-reanimated';
+import { useFocusEffect } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+
+import {
+  respondFriendRequest,
+  updateFriendSettings,
+  type FriendPresence,
+  type FriendProfile,
+} from '@/data/friendsClient';
+import type { PartaPlan } from '@/data/partaPlansClient';
+import { trackUiInteraction } from '@/data/uxTelemetry';
+import { t } from '@/i18n';
+import { useAccountStore } from '@/stores/accountStore';
+import { usePartaSignalStore } from '@/stores/partaSignalStore';
+
+import { BottomFade, TabHeader, TopFade, useTabBarSpace, useTabHeaderScroll } from '../../components/chrome';
+import { BookTab } from '../../duo/BookTab';
+import { useDetailPages, useNvRouter } from '../../duo/details';
+import { useBook, useIsDuo } from '../../duo/layout';
+import { usePaneWidth } from '../../duo/pane';
+import { StatusCard } from '../../components/StatusCard';
+import { Ticket } from '../../components/forms';
+import { Icon, type IconName } from '../../components/Icon';
+import { Button, Card, IconButton, Person, Press, Row, SectionTitle, Stack, T, Tile, Toggle } from '../../components/ui';
+import { toast } from '../../ui/store';
+import { fadeIn } from '../../motion';
+import { C, SCREEN_X, s } from '../../theme';
+import { lastTogetherLabel, personInitial, personName, planTime, planTitle, ticketDay } from './partaModel';
+import { CheerButton } from './cheer';
+import { usePartaStore } from './partaStore';
+import { endPing, respondToPlan } from './planActions';
+import { PartaPhotoStrip } from './PartaPhotos';
+import { useRefreshWhileOpen } from './useRefreshWhileOpen';
+
+const RSVP: { key: 'going' | 'maybe' | 'cant'; label: () => string; icon: IconName }[] = [
+  { key: 'going', label: () => t.nv.parta.rsvpGoing, icon: 'check' },
+  { key: 'maybe', label: () => t.nv.parta.rsvpMaybe, icon: 'circle-question-mark' },
+  { key: 'cant', label: () => t.nv.parta.rsvpCant, icon: 'x' },
+];
+
+export function RsvpRow({ plan, dark }: { plan: PartaPlan; dark?: boolean }) {
+  return (
+    <View style={[s.row, { gap: 6 }]}>
+      {RSVP.map((r) => (
+        <Press
+          key={r.key}
+          haptic
+          onPress={() => {
+            void respondToPlan(plan, r.key).then((ok) => {
+              if (ok && r.key === 'going') toast({ kind: 'saved', title: t.nv.parta.goingToast(personName(plan.account)), icon: 'check' });
+            });
+          }}
+          style={[s.fill, s.row, { height: 40, borderRadius: 20, justifyContent: 'center', gap: 6, backgroundColor: dark ? C.control : '#0A0A0A1A' }]}
+        >
+          <Icon name={r.icon} size={16} color={dark ? C.white : C.black} />
+          <T s={15} w={700} c={dark ? C.white : C.black}>
+            {r.label()}
+          </T>
+        </Press>
+      ))}
+    </View>
+  );
+}
+
+/** My own pub ping: who is coming, and the way to end it. */
+function MyPingStub({ plan, onEnded }: { plan: PartaPlan; onEnded?: () => void }) {
+  const going = plan.responses.goingProfiles;
+  return (
+    <View style={[s.row, { gap: 10, height: 40 }]}>
+      {going.length ? <Stack initials={going.slice(0, 4).map(personInitial)} /> : <Icon name="users" size={16} color={C.muted} />}
+      <T s={14} w={600} c={C.text2} style={s.fill} numberOfLines={1}>
+        {plan.responses.going ? t.nv.parta.goingCount(plan.responses.going) : t.nv.parta.nobodyGoingYet}
+      </T>
+      <Press
+        haptic
+        hitSlop={8}
+        accessibilityRole="button"
+        accessibilityLabel={t.nv.parta.endPingA11y}
+        onPress={() => endPing(plan, onEnded)}
+        style={[s.row, { height: 30, borderRadius: 15, paddingHorizontal: 12, gap: 6, backgroundColor: C.control }]}
+      >
+        <Icon name="x" size={15} color={C.white} />
+        <T s={14} w={700}>
+          {t.nv.parta.endPing}
+        </T>
+      </Press>
+    </View>
+  );
+}
+
+export function PlanStub({ plan, onEnded }: { plan: PartaPlan; onEnded?: () => void }) {
+  const router = useNvRouter();
+  const partySize = usePartaStore((st) => st.dashboard?.friends.length);
+  const ping = usePartaStore((st) => st.pingIds.includes(plan.id));
+  if (plan.isMine && ping) return <MyPingStub plan={plan} onEnded={onEnded} />;
+  if (plan.isMine) {
+    const n = plan.inviteeCount ?? 0;
+    return (
+      <View style={[s.row, { gap: 8, height: 40, paddingHorizontal: 4 }]}>
+        <Icon name="users" size={16} color={C.muted} />
+        <T s={14} w={600} c={C.text2}>
+          {n === partySize ? t.nv.parta.invitedAll(n) : t.nv.parta.invitedSome(n)}
+        </T>
+      </View>
+    );
+  }
+  if (!plan.myResponse) return <RsvpRow plan={plan} />;
+  if (plan.myResponse === 'going') {
+    return (
+      <View style={[s.row, { height: 40, gap: 10, paddingHorizontal: 4 }]}>
+        <Icon name="circle-check" size={18} color={C.yellow} />
+        <T s={15} w={700} style={s.fill}>
+          {t.nv.parta.goingToast(personName(plan.account))}
+        </T>
+        <Press onPress={() => void respondToPlan(plan, null)} hitSlop={8}>
+          <T s={14} w={600} c={C.text2}>
+            {t.nv.parta.change}
+          </T>
+        </Press>
+      </View>
+    );
+  }
+  return (
+    <Press onPress={() => router.push({ pathname: '/nv/plan/[id]', params: { id: plan.id } })} style={[s.row, { height: 40, gap: 10, paddingHorizontal: 4 }]}>
+      <Icon name={plan.myResponse === 'maybe' ? 'circle-question-mark' : 'circle-x'} size={18} color={C.muted} />
+      <T s={15} w={700} c={C.text2} style={s.fill}>
+        {plan.myResponse === 'maybe' ? t.nv.parta.maybeNote : t.nv.parta.cantNote}
+      </T>
+      <T s={14} w={600} c={C.text2}>
+        {t.nv.parta.change}
+      </T>
+    </Press>
+  );
+}
+
+function GoingStub({ plan }: { plan: PartaPlan }) {
+  return (
+    <View style={[s.row, { gap: 10, height: 40 }]}>
+      <Stack initials={plan.responses.goingProfiles.slice(0, 4).map(personInitial)} />
+      <T s={14} w={600} c={C.text2} style={s.fill}>
+        {t.nv.parta.goingCount(plan.responses.going)}
+      </T>
+      {plan.myResponse === 'going' ? (
+        <View style={[s.row, { height: 30, borderRadius: 15, paddingHorizontal: 12, gap: 6, backgroundColor: C.white }]}>
+          <Icon name="check" size={15} color={C.black} />
+          <T s={14} w={800} c={C.black}>
+            {t.nv.parta.rsvpGoing}
+          </T>
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
+/** `onEnded` runs after I end my own pub ping from the ticket. */
+export function PlanTicket({ plan, width, big, onEnded }: { plan: PartaPlan; width?: number; big?: boolean; onEnded?: () => void }) {
+  const ping = usePartaStore((st) => st.pingIds.includes(plan.id));
+  const yellow = !plan.myResponse && !plan.isMine;
+  const day = ticketDay(planTime(plan));
+  return (
+    <Ticket
+      width={width}
+      big={big}
+      yellow={yellow}
+      kicker={plan.isMine ? (ping ? t.nv.parta.yourPing : t.nv.parta.yourPlan) : t.nv.parta.inviteFrom(personName(plan.account))}
+      kickerIcon={plan.placeKind === 'pub' ? 'beer' : 'house'}
+      dayNum={day.dayNum}
+      dayName={day.dayName}
+      time={day.time}
+      title={planTitle(plan)}
+      quote={plan.message || undefined}
+      stub={yellow || big || plan.isMine ? <PlanStub plan={plan} onEnded={onEnded} /> : <GoingStub plan={plan} />}
+    />
+  );
+}
+
+function LiveRow({ profile, sub, last, cheer, onOpen }: { profile: FriendProfile; sub: string; last?: boolean; cheer?: FriendPresence; onOpen: () => void }) {
+  const router = useNvRouter();
+  const name = personName(profile);
+  return (
+    <Row
+      last={last}
+      height={66}
+      title={
+        <Press onPress={onOpen} accessibilityRole="button" accessibilityLabel={`${name}, ${sub}`} style={[s.row, { gap: 12 }]}>
+          <Person initial={personInitial(profile)} uri={profile.avatarUrl} />
+          <View style={[s.fill, { gap: 2 }]}>
+            <T s={16} w={700} numberOfLines={1}>
+              {name}
+            </T>
+            <T s={13} w={500} c={C.muted}>
+              {sub}
+            </T>
+          </View>
+        </Press>
+      }
+      trailing={
+        cheer ? <CheerButton presence={cheer} /> : <Press
+          haptic
+          onPress={() => router.push({ pathname: '/nv/cinknout', params: { friend: profile.id } })}
+          style={[s.row, { height: 34, borderRadius: 18, paddingHorizontal: 14, gap: 6, backgroundColor: C.card, borderWidth: 1, borderColor: C.hairline }]}
+        >
+          <Icon name="beer" size={16} color={C.yellow} />
+          <T s={14} w={600}>
+            {t.nv.parta.ping}
+          </T>
+        </Press>
+      }
+    />
+  );
+}
+
+export function PartaScreen() {
+  const router = useNvRouter();
+  const insets = useSafeAreaInsets();
+  const tabSpace = useTabBarSpace();
+  const width = usePaneWidth();
+  const dashboard = usePartaStore((st) => st.dashboard);
+  const plans = usePartaStore((st) => st.plans);
+  const failed = usePartaStore((st) => st.failed);
+  const loading = usePartaStore((st) => st.loading);
+  const load = usePartaStore((st) => st.load);
+  const myProfile = useAccountStore((st) => st.profile);
+  const [page, setPage] = useState(0);
+  const ticketW = Math.min(300, width - SCREEN_X * 2 - 50);
+  const onScroll = useTabHeaderScroll('parta');
+  const onPlansScroll = useTabHeaderScroll('parta-pozvanky');
+  const { book } = useBook();
+  const duo = useIsDuo();
+
+  useFocusEffect(
+    useCallback(() => {
+      void load();
+    }, [load]),
+  );
+  useRefreshWhileOpen();
+  const [pulling, setPulling] = useState(false);
+  const pullToRefresh = () => {
+    setPulling(true);
+    void load().finally(() => setPulling(false));
+  };
+
+  // A push tap or invite claim asks for fresh data even when Parta is already open, and may name a plan to open.
+  const pendingRefresh = usePartaSignalStore((st) => st.pendingRefresh);
+  useEffect(() => {
+    if (!pendingRefresh) return;
+    const target = usePartaSignalStore.getState().consumeRefresh();
+    void usePartaStore.getState().reload().then(() => {
+      const id = target?.activityId;
+      if (id && usePartaStore.getState().plans?.some((plan) => plan.id === id)) {
+        router.push({ pathname: '/nv/plan/[id]', params: { id } });
+      }
+    });
+  }, [pendingRefresh, router]);
+
+  const friends = dashboard?.friends ?? [];
+  const settings = dashboard?.settings;
+  const visible = !!settings && settings.shareDrinksWithParta && !settings.ghostMode;
+  const me = dashboard?.myPresence ?? null;
+  const presence = dashboard?.presence ?? [];
+  const homePresence = (dashboard?.homePresence ?? []).filter((row) => !presence.some((p) => p.account.id === row.account.id));
+  const liveIds = new Set([...presence.map((p) => p.account.id), ...homePresence.map((p) => p.account.id)]);
+  const outCount = liveIds.size + (me && me.visibleToParta ? 1 : 0);
+
+  const setVisible = (value: boolean) => {
+    const patch = value ? { shareDrinksWithParta: true, ...(settings?.ghostMode ? { ghostMode: false } : {}) } : { shareDrinksWithParta: false };
+    const previous = settings;
+    usePartaStore.getState().setDashboard((d) => ({ ...d, settings: { ...d.settings, ...patch } }));
+    const leavesGhost = value && !!settings?.ghostMode;
+    void updateFriendSettings(patch).then((res) => {
+      if (res.ok) {
+        if (leavesGhost) toast({ kind: 'saved', title: t.nv.parta.ghostTurnedOff, icon: 'eye' });
+        return;
+      }
+      if (previous) usePartaStore.getState().setDashboard((d) => ({ ...d, settings: previous }));
+      toast({ kind: 'error', title: res.detail, icon: 'circle-alert' });
+    });
+  };
+
+  const answerRequest = (id: string, name: string, action: 'accept' | 'decline') => {
+    trackUiInteraction(action === 'accept' ? 'friends_request_accept' : 'friends_request_decline', action);
+    usePartaStore.getState().setDashboard((d) => ({ ...d, incomingRequests: d.incomingRequests.filter((r) => r.id !== id) }));
+    const signal = usePartaSignalStore.getState();
+    signal.setSignal({ pendingRequests: Math.max(0, signal.pendingRequests - 1), unread: signal.unread, liveNow: signal.liveNow });
+    void respondFriendRequest(id, action).then((res) => {
+      if (res.ok) {
+        if (action === 'accept') toast({ kind: 'saved', title: t.nv.parta.joined(name), icon: 'user-plus' });
+        void load();
+      } else {
+        toast({ kind: 'error', title: res.detail, icon: 'circle-alert' });
+        void load();
+      }
+    });
+  };
+
+  const openPlan = (id: string) => router.push({ pathname: '/nv/plan/[id]', params: { id } });
+  const openFriend = (id: string) => {
+    trackUiInteraction('friends_profile_open');
+    router.push({ pathname: '/nv/kamos/[id]', params: { id } });
+  };
+  const plansList = plans ?? [];
+  const incoming = dashboard?.incomingRequests ?? [];
+  // The page a selection opened stays the selection while pages pile on top of it.
+  const openPage = useDetailPages('parta')[0];
+
+  const invitationsTitle = (
+    <SectionTitle title={t.nv.parta.invitations} action={plansList.length ? t.nv.parta.plan : undefined} onAction={() => router.push('/nv/nova-pozvanka')} />
+  );
+  const carousel = (
+    <>
+        {plansList.length ? (
+          <View style={{ gap: 12 }}>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              snapToInterval={ticketW + 12}
+              decelerationRate="fast"
+              // On the open Duo the invitations start at the content edge beside the fold.
+              style={book ? { marginRight: -SCREEN_X } : { marginHorizontal: -SCREEN_X }}
+              contentContainerStyle={{ paddingLeft: book ? 0 : SCREEN_X, paddingRight: SCREEN_X, gap: 12 }}
+              onScroll={(e) => setPage(Math.round(e.nativeEvent.contentOffset.x / (ticketW + 12)))}
+              scrollEventThrottle={32}
+            >
+              {plansList.map((p) => (
+                <Press key={p.id} onPress={() => openPlan(p.id)}>
+                  <PlanTicket plan={p} width={ticketW} />
+                </Press>
+              ))}
+              <Press onPress={() => router.push('/nv/nova-pozvanka')} style={[{ width: ticketW, minHeight: 242, borderRadius: 24, borderWidth: 1.5, borderColor: C.lineStrong, gap: 10 }, s.center]}>
+                <View style={[{ width: 44, height: 44, borderRadius: 22, backgroundColor: C.control }, s.center]}>
+                  <Icon name="plus" size={20} />
+                </View>
+                <T s={16} w={700}>
+                  {t.nv.parta.newInvite}
+                </T>
+              </Press>
+            </ScrollView>
+            <View style={[s.row, { justifyContent: 'center', gap: 6 }]}>
+              {[...plansList, null].map((_, i) => (
+                <View key={i} style={{ width: i === page ? 18 : 6, height: 6, borderRadius: 3, backgroundColor: i === page ? C.white : '#FFFFFF40' }} />
+              ))}
+            </View>
+          </View>
+        ) : plans === null && (loading || !failed) ? (
+          <StatusCard text={t.nv.parta.loading} action={t.nv.parta.newInvite} actionIcon="plus" reserve />
+        ) : plans === null && failed ? (
+          <StatusCard text={t.nv.parta.loadFailed} action={t.nv.parta.retry} onAction={() => void load()} />
+        ) : (
+          <StatusCard text={t.nv.parta.nothingPlanned} action={t.nv.parta.newInvite} actionIcon="plus" onAction={() => router.push('/nv/nova-pozvanka')} />
+        )}
+    </>
+  );
+  const requests = (
+    <>
+            {incoming.length ? (
+              <>
+                <SectionTitle title={t.nv.parta.requestsTitle(incoming.length)} />
+                {incoming.map((req) => (
+                  <View key={req.id} style={{ paddingHorizontal: 16, borderRadius: 24, borderWidth: 1, borderColor: C.hairline }}>
+                    <Row
+                      last
+                      leading={<Person initial={personInitial(req.requester)} uri={req.requester.avatarUrl} ring={false} />}
+                      title={personName(req.requester)}
+                      titleWeight={700}
+                      sub={req.requester.nickname ? `@${req.requester.nickname}` : undefined}
+                      trailing={
+                        <View style={[s.row, { gap: 8 }]}>
+                          <IconButton icon="x" size={36} iconSize={16} label={t.nv.parta.decline} onPress={() => answerRequest(req.id, personName(req.requester), 'decline')} />
+                          <IconButton
+                            icon="check"
+                            size={36}
+                            iconSize={16}
+                            bg={C.white}
+                            color={C.black}
+                            label={t.nv.parta.accept}
+                            onPress={() => answerRequest(req.id, personName(req.requester), 'accept')}
+                          />
+                        </View>
+                      }
+                    />
+                  </View>
+                ))}
+              </>
+            ) : null}
+    </>
+  );
+  const outNow = (
+    <>
+            <SectionTitle title={t.nv.parta.outNow} action={t.nv.parta.outCount(outCount, friends.length + 1)} />
+            <Card>
+              <Row
+                height={66}
+                last={presence.length + homePresence.length === 0}
+                leading={<Person initial={myProfile ? personInitial(myProfile) : t.nv.parta.you.slice(0, 1)} uri={myProfile?.avatarUrl} />}
+                title={t.nv.parta.you}
+                titleWeight={700}
+                sub={!visible ? t.nv.parta.invisible : me ? (me.reactions?.cheers ? t.nv.parta.cheersAt(me.pubName, me.reactions.cheers) : t.nv.parta.visibleAt(me.pubName)) : t.nv.parta.visibleNotOut}
+                trailing={<Toggle value={visible} onChange={setVisible} />}
+              />
+              {presence.map((p, i) => (
+                <LiveRow key={p.account.id} profile={p.account} cheer={p} onOpen={() => openFriend(p.account.id)} last={i === presence.length - 1 && homePresence.length === 0} sub={t.nv.parta.liveSub(p.pubName, p.beers)} />
+              ))}
+              {homePresence.map((p, i) => (
+                <LiveRow key={p.account.id} profile={p.account} onOpen={() => openFriend(p.account.id)} last={i === homePresence.length - 1} sub={t.nv.parta.atSomeonesHome} />
+              ))}
+            </Card>
+    </>
+  );
+  const wholeParty = (
+    <>
+                <SectionTitle
+                  title={t.nv.parta.wholeParty}
+                  action={String(friends.length)}
+                  onAction={() => {
+                    trackUiInteraction('friends_manage_open');
+                    router.push('/nv/sprava-party');
+                  }}
+                />
+                <Card>
+                  {friends.length === 0 ? (
+                    <Row last leading={<Tile icon="user-plus" />} title={t.nv.parta.inviteFirst} chevron onPress={() => router.push('/nv/sprava-party')} />
+                  ) : (
+                    friends.map((f, i, arr) => {
+                      const stats = dashboard?.friendStats[f.id];
+                      return (
+                        <Row
+                          key={f.id}
+                          last={i === arr.length - 1}
+                          leading={<Person initial={personInitial(f)} uri={f.avatarUrl} />}
+                          title={personName(f)}
+                          sub={lastTogetherLabel(stats?.lastSharedAt ?? null, stats?.lastPubName ?? '')}
+                          chevron
+                          selected={openPage?.route === 'kamos' && openPage.params.id === f.id}
+                          onPress={() => openFriend(f.id)}
+                        />
+                      );
+                    })
+                  )}
+                </Card>
+    </>
+  );
+  const home = (
+    <>
+        {/* Waits for the first load, so it doesn't show up under the loading card and then jump down. */}
+        {dashboard || failed ? (
+          <Animated.View entering={fadeIn}>
+            <Card>
+              <Row
+                last
+                height={72}
+                leading={<Tile icon="house" size={46} radius={14} />}
+                title={t.nv.parta.homeMeetups}
+                titleWeight={700}
+                sub={t.nv.parta.homeMeetupsSub}
+                chevron
+                onPress={() => router.push('/nv/pivo-u-nekoho')}
+              />
+            </Card>
+          </Animated.View>
+        ) : null}
+    </>
+  );
+  // The friends and the crew wait for the dashboard; without plans the invitations card already says the load failed.
+  const dash = (children: React.ReactNode) =>
+    dashboard ? (
+      <Animated.View entering={fadeIn} style={{ gap: 20 }}>
+        {children}
+      </Animated.View>
+    ) : failed && plans !== null ? (
+      <StatusCard text={t.nv.parta.loadFailed} action={t.nv.parta.retry} onAction={() => void load()} />
+    ) : null;
+  const column = (content: React.ReactNode, scrollKey: string) => (
+    <View style={{ flex: 1, backgroundColor: C.bg }}>
+      <Animated.ScrollView
+        onScroll={scrollKey === 'parta' ? onScroll : onPlansScroll}
+        scrollEventThrottle={16}
+        showsVerticalScrollIndicator={false}
+        refreshControl={<RefreshControl refreshing={pulling} onRefresh={pullToRefresh} tintColor={C.muted} progressViewOffset={insets.top + 64} />}
+        contentContainerStyle={{ paddingTop: insets.top + 8, paddingHorizontal: SCREEN_X, gap: 20, paddingBottom: tabSpace + 30 }}
+      >
+        {content}
+      </Animated.ScrollView>
+      <TopFade />
+      <BottomFade height={tabSpace + 40} tabBar />
+    </View>
+  );
+  const invitations = column(
+    <>
+      <TabHeader tab="parta-pozvanky" title={t.nv.parta.invitations}>
+        {plansList.length ? <IconButton icon="plus" label={t.nv.parta.newInvite} onPress={() => router.push('/nv/nova-pozvanka')} /> : null}
+      </TabHeader>
+      {carousel}
+      {dashboard ? <PartaPhotoStrip /> : null}
+      {home}
+    </>,
+    'parta-pozvanky',
+  );
+  // On the open Duo the people stay on the left, so a friend opens beside the list; invitations and photos go right.
+  if (book) {
+    return (
+      <BookTab
+        tab="parta"
+        left={column(
+          <>
+        <TabHeader tab="parta" title={t.nv.parta.title}>
+          <Button label={t.nv.parta.pingPartyShort} icon="bell-ring" height={44} style={{ paddingHorizontal: 16 }} onPress={() => router.push('/nv/cinknout')} />
+          <IconButton icon="user-plus" label={t.nv.parta.addA11y} onPress={() => router.push('/nv/sprava-party')} />
+        </TabHeader>
+        {failed && dashboard ? (
+          <Press onPress={() => void load()} style={[s.row, { gap: 10, paddingHorizontal: 4 }]}>
+            <Icon name="wifi-off" size={16} color={C.muted} />
+            <T s={13} c={C.muted} style={s.fill}>
+              {t.nv.parta.offline}
+            </T>
+            <T s={13} w={700} c={C.yellow}>
+              {t.nv.parta.retry}
+            </T>
+          </Press>
+        ) : null}
+            {dash(
+              <>
+                {requests}
+                {outNow}
+                {wholeParty}
+              </>,
+            )}
+          </>,
+          'parta',
+        )}
+        right={invitations}
+      />
+    );
+  }
+  return (
+    <BookTab
+      tab="parta"
+      left={column(
+        <>
+        <TabHeader tab="parta" title={t.nv.parta.title}>
+          <Button label={t.nv.parta.pingPartyShort} icon="bell-ring" height={44} style={{ paddingHorizontal: 16 }} onPress={() => router.push('/nv/cinknout')} />
+          <IconButton icon="user-plus" label={t.nv.parta.addA11y} onPress={() => router.push('/nv/sprava-party')} />
+        </TabHeader>
+        {failed && dashboard ? (
+          <Press onPress={() => void load()} style={[s.row, { gap: 10, paddingHorizontal: 4 }]}>
+            <Icon name="wifi-off" size={16} color={C.muted} />
+            <T s={13} c={C.muted} style={s.fill}>
+              {t.nv.parta.offline}
+            </T>
+            <T s={13} w={700} c={C.yellow}>
+              {t.nv.parta.retry}
+            </T>
+          </Press>
+        ) : null}
+          {invitationsTitle}
+          {carousel}
+          {dash(
+            <>
+              {requests}
+              {outNow}
+              <PartaPhotoStrip />
+              {wholeParty}
+            </>,
+          )}
+          {home}
+        </>,
+        'parta',
+      )}
+      // Folded, the Duo keeps the invitations half hidden, so opening the book finds it as it was.
+      right={duo ? invitations : undefined}
+    />
+  );
+}

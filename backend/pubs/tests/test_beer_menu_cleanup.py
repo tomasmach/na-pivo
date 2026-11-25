@@ -80,30 +80,6 @@ def test_drink_merge_updates_an_existing_spelling_instead_of_adding_a_row():
 
 
 @pytest.mark.django_db
-def test_menu_write_keeps_one_row_per_beer_and_volume():
-    from pubs.api.serializers import PubCommunityRequestSerializer
-
-    serializer = PubCommunityRequestSerializer(
-        data={
-            "client_id": str(uuid.uuid4()),
-            "name": "U Tygra",
-            "lat": _LAT,
-            "lng": _LNG,
-            "beers": [
-                {"name": "Stodolní 11", "price_czk": 40, "volume_ml": 500},
-                {"name": "Stodolní 11°", "price_czk": 42, "volume_ml": 500},
-                {"name": "Stodolní 11°", "price_czk": 30, "volume_ml": 300},
-            ],
-        }
-    )
-    assert serializer.is_valid(), serializer.errors
-    assert [(b["name"], b["volume_ml"]) for b in serializer.validated_data["beers"]] == [
-        ("Stodolní 11", 500),
-        ("Stodolní 11°", 300),
-    ]
-
-
-@pytest.mark.django_db
 def test_cleanup_unifies_names_and_merges_duplicates(tmp_path):
     account = Account.objects.create(device_id="cleanup-drinker")
     pub = _menu(

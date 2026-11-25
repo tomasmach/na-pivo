@@ -1215,7 +1215,7 @@ def _serialize_party_record(evening: PartyEvening, viewer: Account, request: Req
             account__ghost_mode=False,
         )
         .filter(
-            Q(visibility=BeerPhoto.Visibility.FRIENDS)
+            Q(visibility__in=(BeerPhoto.Visibility.FRIENDS, BeerPhoto.Visibility.PUBLIC))
             | Q(account=viewer, visibility=BeerPhoto.Visibility.PRIVATE)
         )
         .order_by("taken_at", "id"),

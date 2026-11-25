@@ -18,7 +18,7 @@
 
 import { t } from '@/i18n';
 
-import { ensureAccount, type AccountSession } from './account';
+import { ensureAccount, getLastKnownSessionAccountId, type AccountSession } from './account';
 import { chainAbortSignal, classifyQueueHttpFailure } from './apiFetch';
 import { getBackendEndpoint } from './backendConfig';
 import { resolveBeerPhotoUrl } from './beerPhotosClient';
@@ -46,9 +46,13 @@ export interface PhotoContestEntry {
   photoId: string | null;
   account: FriendProfile;
   imageUrl: string;
+  /** Small variant for the grid (additive `thumb_url`); the full image on older backends. */
+  thumbUrl: string;
   caption: string;
   pubName: string;
   pubCity: string;
+  /** Beer tagged on the photo (additive `beer_name`); empty when untagged. */
+  beerName: string;
   votes: number;
   /** True when MY vote currently sits on this entry. */
   myVote: boolean;
@@ -61,6 +65,7 @@ export interface PhotoContestWinner {
   rank: number;
   account: FriendProfile;
   imageUrl: string;
+  thumbUrl: string;
   caption: string;
   votes: number;
 }
@@ -96,6 +101,10 @@ export interface PhotoContestSnapshot {
   entries: PhotoContestEntry[];
   myEntryId: string | null;
   myVoteEntryId: string | null;
+  /** Every entry of mine in the round (additive; falls back to myEntryId). */
+  myEntryIds?: string[];
+  /** Every entry I gave a runda (additive; falls back to myVoteEntryId). */
+  myVoteEntryIds?: string[];
   lastResults: PhotoContestResults | null;
 }
 
@@ -120,9 +129,11 @@ interface RawEntry {
   photo_id?: string;
   account?: RawContestProfile;
   image_url?: string | null;
+  thumb_url?: string | null;
   caption?: string;
   pub_name?: string;
   pub_city?: string;
+  beer_name?: string | null;
   votes?: number;
   my_vote?: boolean;
   is_mine?: boolean;
@@ -133,6 +144,7 @@ interface RawWinner {
   rank?: number;
   account?: RawContestProfile;
   image_url?: string | null;
+  thumb_url?: string | null;
   caption?: string;
   votes?: number;
 }
@@ -183,14 +195,17 @@ export function parsePhotoContest(raw: RawContest): PhotoContest {
 }
 
 export function parsePhotoContestEntry(raw: RawEntry): PhotoContestEntry {
+  const imageUrl = resolveBeerPhotoUrl(raw.image_url);
   return {
     id: raw.id ?? '',
     photoId: typeof raw.photo_id === 'string' && raw.photo_id.length > 0 ? raw.photo_id : null,
     account: parseProfile(raw.account),
-    imageUrl: resolveBeerPhotoUrl(raw.image_url),
+    imageUrl,
+    thumbUrl: resolveBeerPhotoUrl(raw.thumb_url) || imageUrl,
     caption: raw.caption ?? '',
     pubName: raw.pub_name ?? '',
     pubCity: raw.pub_city ?? '',
+    beerName: typeof raw.beer_name === 'string' ? raw.beer_name : '',
     votes: typeof raw.votes === 'number' && Number.isFinite(raw.votes) ? raw.votes : 0,
     myVote: raw.my_vote === true,
     isMine: raw.is_mine === true,
@@ -199,10 +214,12 @@ export function parsePhotoContestEntry(raw: RawEntry): PhotoContestEntry {
 }
 
 export function parsePhotoContestWinner(raw: RawWinner): PhotoContestWinner {
+  const imageUrl = resolveBeerPhotoUrl(raw.image_url);
   return {
     rank: typeof raw.rank === 'number' && Number.isFinite(raw.rank) ? raw.rank : 0,
     account: parseProfile(raw.account),
-    imageUrl: resolveBeerPhotoUrl(raw.image_url),
+    imageUrl,
+    thumbUrl: resolveBeerPhotoUrl(raw.thumb_url) || imageUrl,
     caption: raw.caption ?? '',
     votes: typeof raw.votes === 'number' && Number.isFinite(raw.votes) ? raw.votes : 0,
   };
@@ -211,6 +228,8 @@ export function parsePhotoContestWinner(raw: RawWinner): PhotoContestWinner {
 interface RequestOk {
   ok: true;
   data: Record<string, unknown>;
+  /** The account whose bearer made the request. */
+  accountId: string;
 }
 
 type RequestResult = RequestOk | { ok: false; result: FriendActionError };
@@ -263,7 +282,7 @@ async function requestJson(
       return { ok: false, result: { ok: false, code: 'auth', detail: t.clientErrors.auth } };
     }
     if (!resp.ok) return { ok: false, result: extractError(data, resp.status) };
-    return { ok: true, data };
+    return { ok: true, data, accountId: session.accountId };
   } catch (err) {
     const isAbort = err instanceof Error && err.name === 'AbortError';
     if (!options.signal?.aborted && !isAbort) {
@@ -282,24 +301,52 @@ async function requestJson(
  * refreshes it, so the teaser is at most TTL-stale.
  */
 const TEASER_SNAPSHOT_TTL_MS = 5 * 60 * 1000;
-let teaserCache: { at: number; snapshot: PhotoContestSnapshot } | null = null;
+let teaserCache: { at: number; accountId: string; snapshot: PhotoContestSnapshot } | null = null;
+/**
+ * Bumped on clear. Logout clears before the session moves, so a request still
+ * in flight for the outgoing account must not land in that gap either.
+ */
+let teaserGeneration = 0;
+
+function stringList(list: unknown, fallback: unknown): string[] {
+  if (Array.isArray(list)) return list.filter((v): v is string => typeof v === 'string');
+  return typeof fallback === 'string' ? [fallback] : [];
+}
 
 /** The snapshot for lightweight teaser surfaces: cached, TTL-bounded. */
 export async function fetchPhotoContestTeaser(
   signal?: AbortSignal,
 ): Promise<PhotoContestSnapshot | null> {
-  if (teaserCache && Date.now() - teaserCache.at < TEASER_SNAPSHOT_TTL_MS) {
+  if (
+    teaserCache &&
+    teaserCache.accountId === getLastKnownSessionAccountId() &&
+    Date.now() - teaserCache.at < TEASER_SNAPSHOT_TTL_MS
+  ) {
     return teaserCache.snapshot;
   }
   return fetchPhotoContest(signal);
 }
 
-/** GET /v1/photo-contest — the whole round snapshot. null on any failure. */
+/** The cached snapshot carries the signed-in account's own entry and vote. */
+export function clearPhotoContestTeaserCache(): void {
+  teaserCache = null;
+  teaserGeneration += 1;
+}
+
+/**
+ * GET /v1/photo-contest — the whole round snapshot. null on any failure, and
+ * when the session moved to another account while the request was in flight.
+ */
 export async function fetchPhotoContest(
   signal?: AbortSignal,
+  options: { order?: 'top' } = {},
 ): Promise<PhotoContestSnapshot | null> {
-  const res = await requestJson('/v1/photo-contest', { signal });
-  if (!res.ok) return null;
+  const generation = teaserGeneration;
+  const path = options.order === 'top' ? '/v1/photo-contest?order=top' : '/v1/photo-contest';
+  const res = await requestJson(path, { signal });
+  if (!res.ok || generation !== teaserGeneration || res.accountId !== getLastKnownSessionAccountId()) {
+    return null;
+  }
   const d = res.data;
   const rawLast = d.last_results as
     | { contest?: RawContest; winners?: RawWinner[]; my_result?: RawMyResult | null }
@@ -315,6 +362,8 @@ export async function fetchPhotoContest(
       : [],
     myEntryId: typeof d.my_entry_id === 'string' ? d.my_entry_id : null,
     myVoteEntryId: typeof d.my_vote_entry_id === 'string' ? d.my_vote_entry_id : null,
+    myEntryIds: stringList(d.my_entry_ids, d.my_entry_id),
+    myVoteEntryIds: stringList(d.my_vote_entry_ids, d.my_vote_entry_id),
     lastResults:
       rawLast && typeof rawLast === 'object'
         ? {
@@ -326,7 +375,7 @@ export async function fetchPhotoContest(
           }
         : null,
   };
-  teaserCache = { at: Date.now(), snapshot };
+  teaserCache = { at: Date.now(), accountId: res.accountId, snapshot };
   return snapshot;
 }
 
@@ -381,4 +430,47 @@ export async function votePhotoContest(
 export async function clearPhotoContestVote(): Promise<FriendActionResult> {
   const res = await requestJson('/v1/photo-contest/vote', { method: 'DELETE' });
   return res.ok ? { ok: true } : res.result;
+}
+
+/**
+ * POST /v1/photo-contest/entries with add=true: enter one more photo and keep
+ * my other entries. Entering the same photo twice returns the existing entry.
+ */
+export async function addPhotoContestEntry(
+  photoId: string,
+  signal?: AbortSignal,
+): Promise<{ ok: true; entry: PhotoContestEntry } | FriendActionError> {
+  const res = await requestJson('/v1/photo-contest/entries', {
+    method: 'POST',
+    body: { photo_id: photoId, add: true },
+    signal,
+  });
+  if (!res.ok) return res.result;
+  return { ok: true, entry: parsePhotoContestEntry((res.data.entry ?? {}) as RawEntry) };
+}
+
+/** DELETE /v1/photo-contest/entries/<id>: withdraw one of my entries. */
+export async function withdrawPhotoContestEntryById(entryId: string): Promise<FriendActionResult> {
+  const res = await requestJson(`/v1/photo-contest/entries/${encodeURIComponent(entryId)}`, {
+    method: 'DELETE',
+  });
+  return res.ok ? { ok: true } : res.result;
+}
+
+/** POST/DELETE /v1/photo-contest/entries/<id>/round: give or take one runda. */
+export async function setPhotoContestRound(
+  entryId: string,
+  given: boolean,
+): Promise<{ ok: true; votes: number; myVote: boolean } | FriendActionError> {
+  const res = await requestJson(
+    `/v1/photo-contest/entries/${encodeURIComponent(entryId)}/round`,
+    { method: given ? 'POST' : 'DELETE' },
+  );
+  if (!res.ok) return res.result;
+  return {
+    ok: true,
+    votes:
+      typeof res.data.votes === 'number' && Number.isFinite(res.data.votes) ? res.data.votes : 0,
+    myVote: res.data.my_vote === true,
+  };
 }

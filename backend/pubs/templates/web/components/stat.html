@@ -1,0 +1,8 @@
+{% comment %}
+Big number with a label. value, label; sub (small line under the label); hero=True
+makes the yellow headline number of a page. Put several inside <div class="np-stats">.
+{% endcomment %}<div class="np-stat{% if hero %} np-stat--hero{% endif %}">
+  <span class="np-stat__value">{{ value }}</span>
+  <span class="np-stat__label">{{ label }}</span>
+  {% if sub %}<span class="np-stat__sub">{{ sub }}</span>{% endif %}
+</div>

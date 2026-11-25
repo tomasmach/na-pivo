@@ -34,9 +34,9 @@ appId: ${MAESTRO_APP_ID}
       # am start finishes before Expo has mounted the Router. Wait for the
       # actual navigation or unfinished onboarding before the next step. The
       # system tab bar keeps its testID in a view tag Maestro cannot read, so
-      # the Kompas tab is matched by its accessibility label.
+      # the first tab is matched by its accessibility label.
       - extendedWaitUntil:
-          visible: {text: 'Kompas|Compass|Přeskočit|Skip'}
+          visible: {text: 'Mapa|Map|Kompas|Compass|Přeskočit|Skip'}
           timeout: 60000
 - runFlow:
     when:

@@ -8,7 +8,13 @@ from collections.abc import Iterable
 from django.db import transaction
 from django.utils import timezone
 
-from pubs.models import Account, BeerPhoto, BeerPhotoFileDeletion, FeedbackReport
+from pubs.models import (
+    Account,
+    BeerPhoto,
+    BeerPhotoFileDeletion,
+    FeedbackReport,
+    beer_photo_thumbnail_name,
+)
 
 logger = logging.getLogger("pubs.beer_photo_deletions")
 
@@ -79,14 +85,17 @@ def retry_beer_photo_file_deletion(cleanup_id: int) -> bool:
         return True
 
     file_kind = BeerPhotoFileDeletion.FileKind
+    names = [cleanup.image_name]
     if cleanup.file_kind == file_kind.AVATAR:
         storage_field = Account._meta.get_field("avatar")
     elif cleanup.file_kind == file_kind.FEEDBACK_ATTACHMENT:
         storage_field = FeedbackReport._meta.get_field("attachment")
     else:
         storage_field = BeerPhoto._meta.get_field("image")
+        names.append(beer_photo_thumbnail_name(cleanup.image_name))
     try:
-        storage_field.storage.delete(cleanup.image_name)
+        for name in names:
+            storage_field.storage.delete(name)
     except Exception as exc:  # noqa: BLE001 -- storage backends expose heterogeneous errors
         BeerPhotoFileDeletion.objects.filter(pk=cleanup.pk).update(
             last_attempted_at=timezone.now()

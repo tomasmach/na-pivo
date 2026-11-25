@@ -1,10 +1,12 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { clearToursPrivateData } from '@/stores/toursStore';
 
+import { clearAccountPreferencesQueue } from './account';
 import { clearAddedPubsQueue } from './addedPubsQueue';
 import { clearBeerPhotoLocalFiles, clearBeerPhotosQueue } from './beerPhotosQueue';
 import { clearCommunityQueue } from './communityQueue';
 import { clearDeleteDrinksQueue } from './deleteDrinksQueue';
+import { clearDiaryCache } from './diaryCache';
 import { clearDrinksQueue } from './drinksQueue';
 import { clearDrinkRateLimit } from './drinksRateLimit';
 import {
@@ -18,8 +20,10 @@ import { clearFeedbackQueue } from './feedbackQueue';
 import { clearFriendsQueue } from './friendsQueue';
 import { clearFriendsDashboardSnapshot } from './friendsSnapshot';
 import { resetForegroundPulls } from './foregroundPulls';
+import { clearScreenCache } from './screenCache';
 import { clearLeaderboardsCache } from './leaderboardsClient';
 import { clearNightsQueue } from './nightsQueue';
+import { clearPhotoContestTeaserCache } from './photoContestClient';
 import { clearTourRunQueue } from './tourRunQueue';
 import { clearPubNameCorrectionsQueue } from './pubNameCorrectionsQueue';
 import { clearPubReportQueue } from './pubReportQueue';
@@ -27,6 +31,7 @@ import { clearPubAmenitiesQueue } from './pubAmenitiesQueue';
 import { runWithoutPubAmenitiesSync } from './pubAmenitiesSync';
 import { clearPubFavoritesQueue } from './pubFavoritesQueue';
 import { clearLocalPubFavorites } from './pubFavoritesSync';
+import { forgetSharingPrefsForAccountBoundary } from './sharingPrefsClient';
 import { clearPubRatingsQueue } from './pubRatingsQueue';
 import { runWithoutPubRatingsSync } from './pubRatingsSync';
 import { clearVisitsQueue } from './visitsQueue';
@@ -34,14 +39,15 @@ import { clearVisitsSnapshot } from './visitsSnapshot';
 import { BADGE_STORAGE_KEY, useBadgeStore } from '@/stores/badgeStore';
 import { clearBeerPhotosForAccountBoundary } from '@/stores/beerPhotosStore';
 import { useBeerWatchStore } from '@/stores/beerWatchStore';
-import { useBookStore } from '@/stores/bookStore';
 import { useCommunityStore } from '@/stores/communityStore';
+import { useContestResultsStore } from '@/stores/contestResultsStore';
+import { useHomeEveningStore } from '@/stores/homeEveningStore';
 import { usePartyGroupsStore } from '@/stores/partyGroupsStore';
 import { usePubAmenitiesStore } from '@/stores/pubAmenitiesStore';
 import { usePubRatingsStore } from '@/stores/pubRatingsStore';
 import { usePubStore } from '@/stores/pubStore';
 import { useTallyStore } from '@/stores/tallyStore';
-import { useVycepStore } from '@/stores/vycepStore';
+import { DEFAULT_SHARING_PREFS, useVycepStore } from '@/stores/vycepStore';
 import { useSettingsStore } from '@/stores/settingsStore';
 
 const PRIVATE_STORAGE_KEYS = [
@@ -89,12 +95,12 @@ const PRIVATE_STORAGE_KEYS = [
   'na-pivo-handled-notification-responses-v1',
   'na-pivo-beer-watch-location-v1',
   BADGE_STORAGE_KEY,
-  // Note: the Parta social-graph snapshot ('na-pivo-friends-dashboard') is cleared
+  // Note: the Parta snapshots ('na-pivo-friends-dashboard', 'na-pivo-parta-plans') are cleared
   // via clearFriendsDashboardSnapshot() below — that path also bumps the snapshot
   // generation so an in-flight dashboard fetch can't re-persist it after the clear.
 ];
 
-const PRIVATE_STORAGE_PREFIXES = ['na-pivo-night-feed-v1:'];
+const PRIVATE_STORAGE_PREFIXES = ['na-pivo-night-feed-v1:', 'nv-my-ratings:'];
 const SETTINGS_STORAGE_KEY = 'na-pivo-settings';
 const PRIVATE_SETTINGS_DEFAULTS = {
   homePoint: null,
@@ -139,6 +145,7 @@ export async function clearLocalPrivateAccountData(): Promise<void> {
   // The wiped ratings, votes and own pubs must come back on the next foreground
   // even when the same account signs in again within the pull interval.
   resetForegroundPulls();
+  clearScreenCache();
   useTallyStore.setState({ current: null, history: [], restoredAccountId: null });
   runWithoutPubRatingsSync(() => {
     usePubRatingsStore.setState({ ratings: {} });
@@ -157,12 +164,21 @@ export async function clearLocalPrivateAccountData(): Promise<void> {
   clearBeerPhotosForAccountBoundary();
   clearBeerPhotoLocalFiles();
   usePartyGroupsStore.setState({ groups: [] });
-  useBookStore.getState().clearAll();
+  // "Jsem u kamaráda" belongs to the outgoing account's evening.
+  useHomeEveningStore.setState({ evening: null });
   useBeerWatchStore.getState().reset();
   // The cached boards carry the outgoing account's own rank.
   clearLeaderboardsCache();
+  // So do the contest snapshot (own entry and votes) and the counter nudge state.
+  clearPhotoContestTeaserCache();
+  useContestResultsStore.setState({
+    lastSeenResultsContestId: null,
+    pendingResult: null,
+    counterNudgeDismissal: null,
+  });
   // Výčep publication ledger is tied to the outgoing account's nights.
-  useVycepStore.setState({ published: {} });
+  forgetSharingPrefsForAccountBoundary();
+  useVycepStore.setState({ published: {}, ...DEFAULT_SHARING_PREFS });
   // Seen levels and unopened medals describe the outgoing account.
   useBadgeStore.getState().reset();
   usePubStore.setState({
@@ -173,6 +189,7 @@ export async function clearLocalPrivateAccountData(): Promise<void> {
 
   await Promise.all([
     drinksCooldownCleanup,
+    clearAccountPreferencesQueue(),
     toursCleanup,
     clearAddedPubsQueue(),
     clearCommunityQueue(),
@@ -186,6 +203,7 @@ export async function clearLocalPrivateAccountData(): Promise<void> {
     clearVisitsQueue(),
     clearBeerPhotosQueue(),
     clearVisitsSnapshot(),
+    clearDiaryCache(),
     clearFriendsQueue(),
     clearFriendsDashboardSnapshot(),
     clearNightsQueue(),

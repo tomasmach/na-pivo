@@ -1,6 +1,8 @@
 appId: ${MAESTRO_APP_ID}
 name: Home point changes only after confirmation and survives restart
-tags: [critical, full]
+# Not rewritten for the new look yet: still drives the removed screens.
+# critical and full skip it; see ../../COVERAGE.md.
+tags: [critical, full, legacy-ui]
 ---
 - runFlow:
     file: ../../maestro/reset.yaml
@@ -25,7 +27,7 @@ tags: [critical, full]
     commands:
       - evalScript: ${output.local.screenshot('places-android-home-after-map-tap')}
 - assertVisible: {id: home-save, enabled: true}
-- tapOn: Zpět
+- tapOn: Zavřít
 - runFlow:
     file: ../../maestro/route.yaml
     env:

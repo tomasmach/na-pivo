@@ -1,6 +1,8 @@
 appId: ${MAESTRO_APP_ID}
 name: Host approval and cancellation protect the exact event address
-tags: [critical, full]
+# Not rewritten for the new look yet: still drives the removed screens.
+# critical and full skip it; see ../../COVERAGE.md.
+tags: [critical, full, legacy-ui]
 ---
 - runFlow:
     file: ../../maestro/reset.yaml

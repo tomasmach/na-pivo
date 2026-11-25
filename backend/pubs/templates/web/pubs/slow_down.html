@@ -1,0 +1,7 @@
+{% extends "web/public.html" %}
+{% load i18n web %}
+{% block content %}
+{% translate "Zkus to prosím za chvíli" as empty_title %}
+{% translate "Tohle bylo moc dotazů za sebou. Dej si chvilku pauzu a zkus to znovu." as empty_text %}
+{% include "web/components/empty.html" with icon="beer" title=empty_title text=empty_text %}
+{% endblock %}

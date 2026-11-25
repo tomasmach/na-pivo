@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from io import BytesIO
 
 import pytest
@@ -19,11 +20,13 @@ def test_invite_assets_are_public_and_cacheable(client, path, content_type):
 
     assert response.status_code == 200
     assert response["Content-Type"] == content_type
-    assert "immutable" in response["Cache-Control"]
+    # Without a version in the address the file may change under it, so it is cached but not immutable.
+    assert response["Cache-Control"] == "public, max-age=604800"
     assert b"".join(response.streaming_content)
+    assert "immutable" in client.get(f"{path}?v=abc")["Cache-Control"]
 
 
-def test_invite_landing_has_canonical_deep_link_and_social_metadata(client, settings):
+def test_invite_landing_has_canonical_deep_link_and_social_metadata(client, settings, db):
     settings.PUBLIC_WEB_ORIGIN = "https://na-pivo.cz"
 
     response = client.get("/p/Ab3xK9_pQ2sT")
@@ -32,11 +35,11 @@ def test_invite_landing_has_canonical_deep_link_and_social_metadata(client, sett
     html = response.content.decode()
     assert 'href="napivo://parta/pozvanka?code=Ab3xK9_pQ2sT"' in html
     assert '<meta property="og:url" content="https://na-pivo.cz/p/Ab3xK9_pQ2sT">' in html
-    assert '<meta property="og:image" content="https://na-pivo.cz/og/invite.png">' in html
+    assert re.search(r'<meta property="og:image" content="https://na-pivo.cz/og/invite.png\?v=[0-9a-f]{10}">', html)
     assert "noindex" in response["X-Robots-Tag"]
 
 
-def test_party_invite_landing_opens_the_prefilled_table_flow(client, settings):
+def test_party_invite_landing_opens_the_prefilled_table_flow(client, settings, db):
     settings.PUBLIC_WEB_ORIGIN = "https://na-pivo.cz"
 
     response = client.get("/party/EFJ66G")

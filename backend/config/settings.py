@@ -64,6 +64,7 @@ ENABLE_DJANGO_ADMIN = os.environ.get(
     "ENABLE_DJANGO_ADMIN",
     "True" if DEBUG else "False",
 ).lower() in ("1", "true", "yes")
+CSRF_FAILURE_VIEW = "config.csrf.csrf_failure"
 
 if DEBUG:
     # Expo on a physical device reaches the dev server via the Mac's LAN IP,
@@ -81,6 +82,7 @@ else:
 # Application definition
 # ---------------------------------------------------------------------------
 INSTALLED_APPS = [
+    "unfold",
     "django.contrib.admin",
     "django.contrib.auth",
     "django.contrib.contenttypes",
@@ -103,12 +105,17 @@ MIDDLEWARE = [
     # Above everything that reads or writes the body, so it compresses the
     # final response. Streams (live game SSE, file downloads) pass through.
     "pubs.compression.BufferedGZipMiddleware",
+    # Below gzip, so the ETag hashes the uncompressed body; gzip then marks it weak.
+    "pubs.conditional.ApiConditionalGetMiddleware",
     "pubs.observability.RequestLogMiddleware",
+    # /hospody/, /CENY and /zebricky?kraj=praha lead to the page's address before anything else looks at it.
+    "pubs.web.routes.canonical_address_middleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     # Resolves the request language from Accept-Language ("en" from the new app,
     # anything else falls back to LANGUAGE_CODE). Must sit after
     # SessionMiddleware and before CommonMiddleware.
     "django.middleware.locale.LocaleMiddleware",
+    "pubs.i18n.czech_admin_middleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
@@ -242,6 +249,7 @@ LANGUAGES = [
     ("en", "English"),
 ]
 LOCALE_PATHS = [BASE_DIR / "locale"]
+LOGIN_REDIRECT_URL = "admin:index"
 TIME_ZONE = "Europe/Prague"
 USE_I18N = True
 USE_TZ = True
@@ -251,6 +259,28 @@ USE_TZ = True
 # ---------------------------------------------------------------------------
 STATIC_URL = "/static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
+
+UNFOLD = {
+    "SITE_TITLE": "Na pivo admin",
+    "SITE_HEADER": "Na pivo",
+    "SITE_SUBHEADER": "admin",
+    "SITE_SYMBOL": "sports_bar",
+    "THEME": "dark",
+    "DASHBOARD_CALLBACK": "pubs.admin_site.dashboard",
+    "SIDEBAR": {"show_search": True, "navigation": "pubs.admin_site.navigation"},
+    "COLORS": {
+        "base": {
+            "50": "#FAFAF8", "100": "#F7F7F2", "200": "#E4E4DE", "300": "#D4D4CE",
+            "400": "#8F8F8A", "500": "#6B6B67", "600": "#4A4A47", "700": "#323232",
+            "800": "#232323", "900": "#151515", "950": "#0A0A0A",
+        },
+        "primary": {
+            "50": "#FFFBEB", "100": "#FFF3C4", "200": "#FFE689", "300": "#FFD54D",
+            "400": "#FFC400", "500": "#E6AE00", "600": "#B88800", "700": "#8A6600",
+            "800": "#5C4400", "900": "#3D2D00", "950": "#261C00",
+        },
+    },
+}
 
 # Canonical public website used by shareable links and their Open Graph metadata.
 # Keep this separate from the API origin: production serves both hostnames through
@@ -467,6 +497,10 @@ CLIENT_EVENTS_THROTTLE_RATE: str = os.environ.get("CLIENT_EVENTS_THROTTLE_RATE",
 # Raw telemetry is useful for short product funnels and diagnostics only. Keep
 # long-term account counters separately and automatically prune event-level rows.
 CLIENT_EVENT_RETENTION_DAYS: int = int(os.environ.get("CLIENT_EVENT_RETENTION_DAYS", "90"))
+# Which app accounts saw a pub on which day; distinct visitors are exact for ranges inside it.
+PUB_REACH_VISITOR_RETENTION_DAYS: int = int(os.environ.get("PUB_REACH_VISITOR_RETENTION_DAYS", "90"))
+# Bearer secret for GET /v1/ops/live (desk clock). Unset disables the endpoint.
+OPS_LIVE_TOKEN: str = os.environ.get("OPS_LIVE_TOKEN", "").strip()
 PUBLIC_READS_THROTTLE_RATE: str = os.environ.get(
     "PUBLIC_READS_THROTTLE_RATE", "120/min"
 )
@@ -658,6 +692,8 @@ BEER_PHOTO_MAX_UPLOAD_BYTES: int = int(
 )
 # Stored photo long-edge ceiling in pixels (aspect ratio kept, never cropped).
 BEER_PHOTO_MAX_EDGE_PX: int = int(os.environ.get("BEER_PHOTO_MAX_EDGE_PX", "1600"))
+# List thumbnail short edge: covers the largest tile (FotoPivař grid, ~585x630 px at 3x).
+BEER_PHOTO_THUMB_SHORT_EDGE_PX: int = int(os.environ.get("BEER_PHOTO_THUMB_SHORT_EDGE_PX", "640"))
 # webp encoder quality for the stored photo.
 BEER_PHOTO_WEBP_QUALITY: int = int(os.environ.get("BEER_PHOTO_WEBP_QUALITY", "80"))
 # Per-account total photo cap — bounds disk usage per user (media volume cost).
@@ -709,9 +745,14 @@ REST_FRAMEWORK = {
         "tour_write": "20/hour",
         "tour_share": "10/hour",
         "tour_public": "60/min",
-        # Public beer price page and its share image; a reader loads one page at a time.
-        "price_map": "60/min",
+        # Public web pages per network. A person reads a few pages a minute and Google slows down on a
+        # 429 by itself; a scraper copying every pub's menu and prices has to take hours, not minutes.
+        "web_pages": "120/min",
+        # Share images and the CSV draw on a cache miss, so they keep a tighter budget.
+        "web_og": "60/min",
         "tour_search": "60/min",
+        # Web search: one query per submitted form, so a person stays far below this.
+        "web_search": "30/min",
         "tour_publish": "20/hour",
         "tour_run": "240/hour",
         # Inviting friends pushes to their phones, so it has a tighter budget than reading who answered.
@@ -730,12 +771,20 @@ REST_FRAMEWORK = {
         "pub_ratings": PUB_RATINGS_THROTTLE_RATE,
         "pub_favorites": PUB_FAVORITES_THROTTLE_RATE,
         "beer_watches": "60/min",
+        # Piva tab reads: ranking pages, search while typing, reviews and the collection.
+        "beers": "120/min",
         "pub_visits": PUB_VISITS_THROTTLE_RATE,
         "pubs_near": PUBS_NEAR_THROTTLE_RATE,
         "pub_location_lookup": PUB_LOCATION_LOOKUP_THROTTLE_RATE,
         "pub_hours": PUB_HOURS_THROTTLE_RATE,
         "pub_reports": PUB_REPORTS_THROTTLE_RATE,
         "client_events": CLIENT_EVENTS_THROTTLE_RATE,
+        # The app sends pub reach in batches about every half minute.
+        "pub_reach": "30/min",
+        # One beacon per pub page view and per navigation tap on the web.
+        "web_reach": "60/min",
+        "web_stats": "120/min",
+        "ops_live": "10/min",
         "push_devices": PUSH_DEVICES_THROTTLE_RATE,
         "friends": FRIENDS_THROTTLE_RATE,
         "follows": FOLLOWS_THROTTLE_RATE,
@@ -756,6 +805,12 @@ REST_FRAMEWORK = {
         "public_reads": PUBLIC_READS_THROTTLE_RATE,
         "transit_stops": TRANSIT_STOPS_THROTTLE_RATE,
         "transit_last_direct": TRANSIT_LAST_DIRECT_THROTTLE_RATE,
+        # Guest link of a plan: reading it, and answering per network and per plan.
+        "plan_invite": "60/min",
+        "plan_guest": "20/hour",
+        "plan_guest_plan": "60/hour",
+        # Deletion link from the web, counted per e-mail address on top of auth_email per network.
+        "delete_link_email": "3/hour",
     },
 }
 
@@ -788,9 +843,10 @@ UGC_POLICY_VERSION = "2026-08-22"
 # Custom URL scheme of the mobile app (app.config.ts `scheme`). Password reset
 # can still use napivo://auth/...; email verification uses the public HTTPS API
 # endpoint when sent from a request so mail clients do not have to support custom
-# schemes. The web base URL hosts the Play-required public account-deletion page.
+# schemes. The web base URL hosts the Play-required public account-deletion page
+# (/smazat-ucet) and the privacy policy and terms.
 APP_DEEP_LINK_SCHEME: str = os.environ.get("APP_DEEP_LINK_SCHEME", "napivo")
-WEB_BASE_URL: str = os.environ.get("WEB_BASE_URL", "https://tomasmach.github.io/na-pivo")
+WEB_BASE_URL: str = os.environ.get("WEB_BASE_URL", "https://na-pivo.cz")
 
 # --- Google Sign-In (server-side ID-token verification) ---
 # OAuth client IDs from Google Cloud Console. The web client id is what the
@@ -884,6 +940,14 @@ LOGGING = {
         },
     },
 }
+
+# ---------------------------------------------------------------------------
+# Google Search Console (web analytics in the admin)
+# ---------------------------------------------------------------------------
+# Used by `sync_search_console`. The service account's JSON key on one line, and
+# the Search Console property it was added to as a user. Empty key = no sync.
+SEARCH_CONSOLE_SERVICE_ACCOUNT: str = os.environ.get("SEARCH_CONSOLE_SERVICE_ACCOUNT", "")
+SEARCH_CONSOLE_SITE: str = os.environ.get("SEARCH_CONSOLE_SITE", "sc-domain:na-pivo.cz")
 
 # ---------------------------------------------------------------------------
 # Linear integration (feedback → Linear issue sync)

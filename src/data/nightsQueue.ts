@@ -9,6 +9,9 @@ import {
 } from './nightsClient';
 import { createCoalescingFlush, createQueueLock, createQueueStorage } from './createQueue';
 import type { QueueSyncResult } from './apiFetch';
+import { t } from '@/i18n';
+import { useToastStore } from '@/stores/toastStore';
+import { useVycepStore } from '@/stores/vycepStore';
 
 const STORAGE_KEY = 'na-pivo-nights-queue';
 
@@ -50,7 +53,10 @@ function isQueueItem(value: unknown): value is NightQueueItem {
         (item.payload.durationMinutes === undefined ||
           typeof item.payload.durationMinutes === 'number') &&
         (item.payload.visibility === 'friends' || item.payload.visibility === 'public') &&
-        typeof item.payload.updatedAt === 'string'
+        typeof item.payload.updatedAt === 'string' &&
+        (item.payload.photoIds === undefined ||
+          (Array.isArray(item.payload.photoIds) &&
+            item.payload.photoIds.every((id) => typeof id === 'string')))
       );
     case 'unpublish':
       return typeof item.clientId === 'string';
@@ -96,12 +102,14 @@ async function flushUnlocked(signal: AbortSignal): Promise<void> {
 
   const attempted = new Map<string, string>();
   const settled = new Set<string>();
+  const refused: string[] = [];
   for (const item of queue) {
     if (signal.aborted) break;
     const key = dedupKey(item);
     attempted.set(key, signature(item));
     const result = await deliver(item);
     if (result !== 'retry') settled.add(key);
+    if (result === 'permanent-error' && item.op === 'publish') refused.push(item.payload.clientId);
   }
 
   await runMutation(async () => {
@@ -114,6 +122,13 @@ async function flushUnlocked(signal: AbortSignal): Promise<void> {
     });
     await saveQueue(remaining);
   });
+
+  const pendingNights = new Set((await runMutation(loadQueue)).map(dedupKey));
+  const gone = refused.filter((clientId) => !pendingNights.has(`night:${clientId}`));
+  if (gone.length === 0 || signal.aborted) return;
+  const vycep = useVycepStore.getState();
+  gone.forEach((clientId) => vycep.markUnpublished(clientId));
+  useToastStore.getState().show(t.nv.vycep.publishRefused);
 }
 
 const { flush: _flush, abortInFlight } = createCoalescingFlush(flushUnlocked);
@@ -122,8 +137,15 @@ export async function enqueueNightOp(item: NightQueueItem): Promise<void> {
   const key = dedupKey(item);
   await runMutation(async () => {
     const queue = await loadQueue();
+    const previous = queue.find((existing) => dedupKey(existing) === key);
     const deduped = queue.filter((existing) => dedupKey(existing) !== key);
-    deduped.push(item);
+    // The server keeps the photo choice when photo_ids is omitted; the queue
+    // must not drop it when Dopito re-queues the same night while offline.
+    if (item.op === 'publish' && item.payload.photoIds === undefined && previous?.op === 'publish' && previous.payload.photoIds) {
+      deduped.push({ ...item, payload: { ...item.payload, photoIds: previous.payload.photoIds } });
+    } else {
+      deduped.push(item);
+    }
     await saveQueue(deduped);
   });
   await flushNightsQueue();

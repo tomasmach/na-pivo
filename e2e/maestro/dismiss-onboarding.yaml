@@ -1,0 +1,9 @@
+appId: ${MAESTRO_APP_ID}
+---
+# A signed-out restart after logout or deletion may show onboarding again.
+- runFlow:
+    when:
+      visible:
+        id: onboarding-skip
+    commands:
+      - runFlow: skip-onboarding.yaml

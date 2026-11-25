@@ -8,7 +8,7 @@ import * as SecureStore from 'expo-secure-store';
 
 export type Locale = 'cs' | 'en';
 
-export const SUPPORTED_LOCALES: readonly Locale[] = ['cs', 'en'];
+const SUPPORTED_LOCALES: readonly Locale[] = ['cs', 'en'];
 export const DEFAULT_LOCALE: Locale = 'cs';
 
 /** Secure store is the only synchronous persisted storage in the app. */

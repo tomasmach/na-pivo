@@ -11,17 +11,19 @@ import re
 import statistics
 from collections import Counter, defaultdict
 from datetime import datetime, timedelta
+from functools import cache
 from io import BytesIO
 from pathlib import Path
 
 from django.conf import settings
+from django.core.cache import cache as shared_cache
 from django.utils import formats, timezone, translation
 from django.utils.text import slugify
 from django.utils.translation import gettext
 from PIL import Image, ImageDraw, ImageFont
 
 from pubs.api.pub_beers_views import CITY_ALIASES, _merged_aliases, _places, city_name
-from pubs.api.views import _globally_reported_pub_cache_keys
+from pubs.api.views import _globally_reported_pub_cache_keys, _with_pub_name_corrections
 from pubs.enrichment import names_match
 from pubs.enrichment.coverage import coverage_country
 from pubs.models import (
@@ -33,6 +35,8 @@ from pubs.models import (
     PubPriceIndex,
     PubPriceSnapshot,
 )
+from pubs.prague_districts import district_at, near_district
+from pubs.web.places import is_private_pub, municipality
 
 # A year is how long the app itself shows a pub's price; older ones count as gone.
 WINDOW_DAYS = 365
@@ -41,20 +45,28 @@ FRESH_DAYS = 90
 # A city or district with fewer priced pubs says more about one pub than the city.
 MIN_PUBS = 5
 CHEAPEST_PUBS = 10
-# A cheapest beer under this is a typo or a joke, not a pub's price.
-CHEAPEST_MIN_CZK = 20
+# A beer price under this is a typo or a joke, not a pub's price: no public page,
+# number or structured data uses it.
+PUBLIC_MIN_CZK = 20
+# Nor does a half litre under half the country's median: 20 Kč for a Kozel 11° is a typo when
+# the median is 56. The median takes one price per pub before either rule, and the snapshot
+# keeps the result as "min_czk" for every other public page.
+_FLOOR_KEY = "web:price-floor"
 # Prices people entered in the app. Imported third-party menus stay in the app only.
 _SOURCES = (PubPriceIndex.Source.COMMUNITY, PubPriceIndex.Source.DRINK)
 PATHS = {"cs": "/ceny", "en": "/en/prices"}
 _PRAGUE_NUMBERED = re.compile(r"Praha\s*[-–]?\s*(\d{1,2})\b")
 
-_FONTS = Path(__file__).resolve().parent / "fonts"
-_GROUND = (35, 20, 7)
-_FOAM = (251, 243, 224)
-_FOAM_MUTED = (232, 220, 192)
-_MUTED = (168, 137, 106)
-# Foam at 12 % over the ground, the hairline the web pages use.
-_HAIR = tuple(round(g + (f - g) * 0.12) for g, f in zip(_GROUND, _FOAM, strict=True))
+_WEB = Path(__file__).resolve().parent / "static" / "pubs" / "web"
+# The web's own woff2 files; Pillow's FreeType reads WOFF2 (the wheel bundles brotli).
+_FONT_FILES = {"ExtraBold": "sofia-sans-extra-condensed-800.woff2", "SemiBold": "sofia-sans.woff2"}
+# The web's grey tokens (np.css): ground, white, second text, grey, hairline and amber.
+_GROUND = (10, 10, 10)
+_FOAM = (247, 247, 242)
+_FOAM_MUTED = (212, 212, 206)
+_MUTED = (143, 143, 138)
+_HAIR = (36, 36, 36)
+_AMBER = (255, 196, 0)
 
 
 def _chunks(keys: list[str], size: int = 500):
@@ -129,14 +141,26 @@ def _confirmed_since(rows: list[PubPriceIndex], since: datetime) -> dict[str, da
     return confirmed
 
 
-def prague_district(raw: str) -> str:
-    """"Praha 2 - Vinohrady" is Praha 2, "Praha-Libuš" stays itself, plain "Praha" has none."""
+def prague_district(raw: str, lat: float | None = None, lng: float | None = None) -> str:
+    """The district of a pub in Prague, from its position when it has one in Prague.
+
+    The address alone: "Praha 2 - Vinohrady" is Praha 2, "Praha-Libuš" stays itself,
+    plain "Praha" has none. With a position in Prague the pub is in the numbered
+    district it stands in; a numbered address still wins when the pub stands within
+    a few metres of that district, since the border runs along streets.
+    """
 
     city = " ".join((raw or "").split())
-    if city == "Praha" or city in CITY_ALIASES or city_name(city) != "Praha":
+    if city_name(city) != "Praha":
         return ""
     numbered = _PRAGUE_NUMBERED.match(city)
-    return f"Praha {numbered.group(1)}" if numbered else city
+    said = "" if city == "Praha" or city in CITY_ALIASES else f"Praha {numbered.group(1)}" if numbered else city
+    if lat is None or lng is None:
+        return said
+    # With a position, the address counts only where it can be true: in its district or a few metres off it.
+    if numbered and near_district(said, lat, lng):
+        return said
+    return district_at(lat, lng)
 
 
 def city_slug(name: str) -> str:
@@ -169,6 +193,33 @@ def _areas(groups: dict[str, list[PubPriceIndex]]) -> list[dict]:
     )
 
 
+def price_floor(half_litres: list[float]) -> int:
+    """The cheapest half litre a public page shows: half the median of these prices, never under PUBLIC_MIN_CZK."""
+
+    return max(PUBLIC_MIN_CZK, _round(statistics.median(half_litres) / 2)) if half_litres else PUBLIC_MIN_CZK
+
+
+def shows_price(price: int, volume_ml: int | None, floor: int) -> bool:
+    return price >= PUBLIC_MIN_CZK and price * 500 / (volume_ml or 500) >= floor
+
+
+def half_litre_czk(pub: dict) -> int:
+    """A listed pub's cheapest beer as the price of half a litre, the number its list is ordered by."""
+
+    return round(pub["price_czk"] * 500 / (pub.get("volume_ml") or 500))
+
+
+def public_floor() -> int:
+    """The floor of the newest price snapshot, for pages that show prices outside it."""
+
+    floor = shared_cache.get(_FLOOR_KEY)
+    if floor is None:
+        snapshot = PubPriceSnapshot.objects.only("data").first()
+        floor = (snapshot.data.get("min_czk") if snapshot else None) or PUBLIC_MIN_CZK
+        shared_cache.set(_FLOOR_KEY, floor, 3600)
+    return floor
+
+
 def _district_order(area: dict) -> tuple:
     """Praha 1, 2 … 22 by number, then the named districts."""
 
@@ -189,7 +240,7 @@ def _cheapest(rows: list[PubPriceIndex], in_city: str = "") -> list[dict]:
 
     # 41 Kč for 0,4 l is dearer than 45 Kč for 0,5 l.
     candidates = sorted(
-        (row for row in rows if row.price_czk >= CHEAPEST_MIN_CZK),
+        rows,
         key=lambda row: (_half_litre_price(row), row.cache_key),
     )
     picked: list[dict] = []
@@ -200,17 +251,18 @@ def _cheapest(rows: list[PubPriceIndex], in_city: str = "") -> list[dict]:
             place = places.get(row.pub_key)
             # Two businesses can share one geohash cell: the price must be this pub's,
             # under its own name or the name of a duplicate merged into it.
-            if place is None or not any(
+            if place is None or is_private_pub(place["name"]) or not any(
                 names_match(name, row.name) for name in (place["name"], *row.alias_names)
             ):
                 continue
             city = place["city"] or row.city
-            if in_city and city_slug(city_name(city)) != city_slug(in_city):
+            if in_city and city_slug(municipality(city_name(city))) != city_slug(in_city):
                 continue
             picked.append({
+                "cache_key": row.pub_key,
                 "name": place["name"],
                 # The same city names the tables use.
-                "city": prague_district(city) or city_name(city),
+                "city": prague_district(city, place["lat"], place["lng"]) or city_name(city),
                 "price_czk": row.price_czk,
                 "volume_ml": row.volume_ml or 500,
                 "stale": row.stale,
@@ -218,6 +270,81 @@ def _cheapest(rows: list[PubPriceIndex], in_city: str = "") -> list[dict]:
             if len(picked) == CHEAPEST_PUBS:
                 return picked
     return picked
+
+
+def without_private_pubs(rows: list[PubPriceIndex], targets: dict[str, str]) -> list[PubPriceIndex]:
+    """Prices of pubs anyone can walk into, judged by the name the web shows like the catalogue does.
+
+    A price row keeps the name it was written under. A pub renamed to "soukromý výčep" since, or a
+    duplicate merged into one, is private all the same. ``targets`` maps a merged duplicate to its pub.
+    Each row gets ``corrected_name``, the name after the community's corrections.
+    """
+
+    places = _places(sorted({row.cache_key for row in rows} | {targets[row.cache_key] for row in rows if row.cache_key in targets}))
+    renamed = _with_pub_name_corrections(
+        [{"name": row.name, "position": {"lat": row.lat, "lon": row.lng}} for row in rows]
+    )
+    kept = []
+    for row, item in zip(rows, renamed, strict=True):
+        row.corrected_name = item["name"]
+        names = [row.name, item["name"]]
+        place = places.get(row.cache_key)
+        if place and any(names_match(place["name"], name) for name in names):
+            names.append(place["name"])
+        if (target := targets.get(row.cache_key)) and target in places:
+            names.append(places[target]["name"])
+        if not any(is_private_pub(name) for name in names):
+            kept.append(row)
+    return kept
+
+
+def _one_price_per_pub(rows: list[PubPriceIndex], since: datetime, fresh_since: datetime) -> list[PubPriceIndex]:
+    """The newest confirmed price of every public pub: merged duplicates count once, hidden and private pubs not at all."""
+
+    # A duplicate merged into another pub is that pub: it counts once, with the newest price.
+    targets: dict[str, str] = {}
+    alias_names: dict[str, list[str]] = defaultdict(list)
+    for key, target, name in _merged_aliases().values_list("cache_key", "canonical_pub__cache_key", "name"):
+        targets[key] = target
+        alias_names[key].append(name)
+    rows = without_private_pubs(rows, targets)
+    confirmed = _confirmed_since(rows, since)
+    pubs: dict[str, PubPriceIndex] = {}
+    for row in sorted(
+        (row for row in rows if row.cache_key in confirmed), key=lambda row: confirmed[row.cache_key]
+    ):
+        row.pub_key = targets.get(row.cache_key, row.cache_key)
+        row.alias_names = alias_names.get(row.cache_key, [])
+        row.stale = confirmed[row.cache_key] < fresh_since
+        pubs[row.pub_key] = row
+    excluded = _globally_reported_pub_cache_keys(
+        {row.cache_key for row in pubs.values()} | set(pubs)
+    )
+    return [
+        row for row in pubs.values() if row.cache_key not in excluded and row.pub_key not in excluded
+    ]
+
+
+def _catalogue_districts(rows: list[PubPriceIndex]) -> dict[str, str]:
+    """The Prague district the catalogue gives each priced pub it lists, so a district's median counts the pubs its pages show."""
+
+    from pubs.web.pubs_data import catalogue
+
+    by_cell: dict[str, list[dict]] = defaultdict(list)
+    for pub in catalogue()["pubs"]:
+        by_cell[pub["k"]].append(pub)
+    found = {}
+    for row in rows:
+        pub = next(
+            (
+                pub for pub in by_cell.get(row.pub_key, ())
+                if any(names_match(pub["n"], name) for name in (row.name, row.corrected_name, *row.alias_names))
+            ),
+            None,
+        )
+        if pub is not None:
+            found[row.cache_key] = pub["d"] if city_name(pub["d"]) == "Praha" else ""
+    return found
 
 
 def build_price_map(now: datetime | None = None) -> dict:
@@ -236,43 +363,33 @@ def build_price_map(now: datetime | None = None) -> dict:
             source__in=_SOURCES,
         ).only("cache_key", "name", "lat", "lng", "city", "price_czk", "volume_ml", "observed_at")
     ))
-    confirmed = _confirmed_since(rows, since)
-    # A duplicate merged into another pub is that pub: it counts once, with the newest price.
-    targets: dict[str, str] = {}
-    alias_names: dict[str, list[str]] = defaultdict(list)
-    for key, target, name in _merged_aliases().values_list("cache_key", "canonical_pub__cache_key", "name"):
-        targets[key] = target
-        alias_names[key].append(name)
-    pubs: dict[str, PubPriceIndex] = {}
-    for row in sorted(
-        (row for row in rows if row.cache_key in confirmed), key=lambda row: confirmed[row.cache_key]
-    ):
-        row.pub_key = targets.get(row.cache_key, row.cache_key)
-        row.alias_names = alias_names.get(row.cache_key, [])
-        row.stale = confirmed[row.cache_key] < fresh_since
-        pubs[row.pub_key] = row
-    excluded = _globally_reported_pub_cache_keys(
-        {row.cache_key for row in pubs.values()} | set(pubs)
+    # The floor is half the median of the same pubs before any price is left out.
+    floor = price_floor([_half_litre_price(row) for row in _one_price_per_pub(rows, since, fresh_since)])
+    rows = _one_price_per_pub(
+        [row for row in rows if shows_price(row.price_czk, row.volume_ml, floor)], since, fresh_since
     )
-    rows = [
-        row for row in pubs.values() if row.cache_key not in excluded and row.pub_key not in excluded
-    ]
 
+    listed = _catalogue_districts(rows)
     # Spellings that share an address ("Plzen", "Plzeň") are one city under its most common name.
     by_slug: dict[str, list[PubPriceIndex]] = defaultdict(list)
     spellings: dict[str, Counter] = defaultdict(Counter)
     districts: dict[str, list[PubPriceIndex]] = defaultdict(list)
+    # "Louny 1" is the post office of Louny, so its pubs count there and /ceny/louny-1 leads there.
+    merged: dict[str, str] = {}
     for row in rows:
-        if (city := city_name(row.city)) and (slug := city_slug(city)):
+        if (city := municipality(city_name(row.city))) and (slug := city_slug(city)):
             by_slug[slug].append(row)
             spellings[slug][city] += 1
-        if district := prague_district(row.city):
+            if (posted := city_slug(city_name(row.city))) != slug:
+                merged[posted] = slug
+        if district := listed.get(row.cache_key, prague_district(row.city, row.lat, row.lng)):
             districts[district].append(row)
     cities = {spellings[slug].most_common(1)[0][0]: group for slug, group in by_slug.items()}
     return {
         "window_days": WINDOW_DAYS,
         "fresh_days": FRESH_DAYS,
         "min_pubs": MIN_PUBS,
+        "min_czk": floor,
         "country": _stats(rows) if len(rows) >= MIN_PUBS else None,
         # Each city keeps its own cheapest pubs for its page.
         "cities": [
@@ -280,6 +397,7 @@ def build_price_map(now: datetime | None = None) -> dict:
         ],
         "prague_districts": sorted(_areas(districts), key=_district_order),
         "cheapest": _cheapest(rows),
+        "merged": {old: new for old, new in merged.items() if old not in by_slug},
     }
 
 
@@ -294,8 +412,14 @@ def headline_prices(data: dict) -> list[tuple[str, dict | None]]:
     ]
 
 
+@cache
 def _font(name: str, size: int) -> ImageFont.FreeTypeFont:
-    return ImageFont.truetype(str(_FONTS / f"Baloo2-{name}.ttf"), size)
+    """"ExtraBold" is Sofia Sans Extra Condensed 800, "SemiBold" Sofia Sans at 600."""
+
+    font = ImageFont.truetype(str(_WEB / _FONT_FILES[name]), size)
+    if name == "SemiBold":
+        font.set_variation_by_axes([600])
+    return font
 
 
 def _fitted(draw: ImageDraw.ImageDraw, text: str, name: str, size: int, width: int):
@@ -306,42 +430,104 @@ def _fitted(draw: ImageDraw.ImageDraw, text: str, name: str, size: int, width: i
     return font
 
 
-def render_og_image(data: dict, day, lang: str) -> bytes:
-    """A flat 1200 × 630 share image with the three headline medians."""
+def _wrapped(draw: ImageDraw.ImageDraw, text: str, size: int, width: int, lines: int = 2):
+    """A title in at most ``lines`` lines of ``width``, the font shrunk until it fits."""
+
+    while True:
+        font = _font("ExtraBold", size)
+        rows: list[str] = []
+        for word in text.split():
+            if rows and draw.textlength(f"{rows[-1]} {word}", font=font) <= width:
+                rows[-1] = f"{rows[-1]} {word}"
+            else:
+                rows.append(word)
+        if size <= 40 or (len(rows) <= lines and all(draw.textlength(row, font=font) <= width for row in rows)):
+            return font, rows
+        size -= 4
+
+
+def share_card(
+    *, eyebrow: str, title: str, number: str, number_label: str, figures: list[tuple[str, str]], address: str
+) -> bytes:
+    """The web's 1200 × 630 share image: a title, one amber number and up to three figures under a line."""
 
     image = Image.new("RGB", (1200, 630), _GROUND)
     draw = ImageDraw.Draw(image)
-    with translation.override(lang):
-        draw.text((80, 92), "Na pivo", font=_font("ExtraBold", 40), fill=_FOAM, anchor="ls")
-        title = gettext("Kolik stojí pivo v hospodě")
-        draw.text((80, 196), title, font=_fitted(draw, title, "ExtraBold", 72, 1040), fill=_FOAM, anchor="ls")
-        draw.line((80, 252, 1120, 252), fill=_HAIR, width=2)
+    mark = Image.open(_WEB / "og-mark.png")
+    image.paste(mark, (64, 54), mark)
+    draw.text((120, 93), "Na pivo", font=_font("ExtraBold", 38), fill=_FOAM, anchor="ls")
+    draw.text((1136, 88), address, font=_fitted(draw, address, "SemiBold", 22, 520), fill=_MUTED, anchor="rs")
 
-        number_font = _font("ExtraBold", 132)
-        unit_font = _font("ExtraBold", 44)
-        label_font = _font("SemiBold", 36)
-        unit = gettext("Kč")
-        for index, (label, stats) in enumerate(headline_prices(data)):
-            x = 80 + index * 360
-            draw.text((x, 318), label, font=label_font, fill=_FOAM_MUTED, anchor="ls")
-            value = str(stats["median"]) if stats else "–"
-            draw.text((x, 462), value, font=number_font, fill=_FOAM, anchor="ls")
-            if stats:
-                unit_x = x + draw.textlength(value, font=number_font) + 14
-                draw.text((unit_x, 462), unit, font=unit_font, fill=_FOAM_MUTED, anchor="ls")
+    number_font = _fitted(draw, number, "ExtraBold", 150, 400)
+    number_width = draw.textlength(number, font=number_font) if number else 0
+    title_font, rows = _wrapped(draw, title, 96, 1072 - max(number_width, 0) - (48 if number else 0))
+    line = title_font.size * 0.98
+    top = 300 - (len(rows) - 1) * line / 2
+    if eyebrow:
+        draw.text((64, top - title_font.size * 0.95), eyebrow, font=_fitted(draw, eyebrow, "SemiBold", 28, 700), fill=_FOAM_MUTED, anchor="ls")
+    for index, row in enumerate(rows):
+        draw.text((64, top + index * line + title_font.size * 0.3), row, font=title_font, fill=_FOAM, anchor="ls")
+    if number:
+        draw.text((1136, 350), number, font=number_font, fill=_AMBER, anchor="rs")
+        draw.text((1136, 404), number_label, font=_fitted(draw, number_label, "SemiBold", 26, 400), fill=_FOAM_MUTED, anchor="rs")
 
-        draw.line((80, 524, 1120, 524), fill=_HAIR, width=2)
-        footer_font = _font("SemiBold", 30)
-        footer = gettext("Medián nejlevnějšího piva od 0,4 l, stav k %(date)s") % {
-            "date": formats.date_format(day, "DATE_FORMAT"),
-        }
-        draw.text((80, 576), footer, font=_fitted(draw, footer, "SemiBold", 30, 760), fill=_MUTED, anchor="ls")
-        address = settings.PUBLIC_WEB_ORIGIN.split("://", 1)[-1] + PATHS[lang]
-        draw.text((1120, 576), address, font=footer_font, fill=_FOAM_MUTED, anchor="rs")
+    draw.line((64, 470, 1136, 470), fill=_HAIR, width=2)
+    x = 64
+    for value, label in figures[:3]:
+        value_font = _fitted(draw, value, "ExtraBold", 48, 300)
+        label_font = _fitted(draw, label, "SemiBold", 22, 300)
+        draw.text((x, 540), value, font=value_font, fill=_FOAM, anchor="ls")
+        draw.text((x, 575), label, font=label_font, fill=_MUTED, anchor="ls")
+        x += max(draw.textlength(value, font=value_font), draw.textlength(label, font=label_font)) + 56
 
     buffer = BytesIO()
     image.save(buffer, format="PNG", optimize=True)
     return buffer.getvalue()
+
+
+def _address(path: str) -> str:
+    return settings.PUBLIC_WEB_ORIGIN.split("://", 1)[-1] + path
+
+
+def render_og_image(data: dict, day, lang: str) -> bytes:
+    """Share image of the whole map: the country median, Praha and Brno beside it."""
+
+    with translation.override(lang):
+        country = data.get("country")
+        cities = {area["name"]: area for area in data.get("cities", [])}
+        figures = [
+            (f"{cities[name]['median']}\u00a0{gettext('Kč')}", name) for name in ("Praha", "Brno") if name in cities
+        ]
+        if country:
+            figures.append((str(country["pubs"]), gettext("hospod s cenou")))
+        return share_card(
+            eyebrow=gettext("Medián nejlevnějšího piva, stav k %(date)s") % {"date": formats.date_format(day, "DATE_FORMAT")},
+            title=gettext("Kolik stojí pivo v hospodě"),
+            number=f"{country['median']}\u00a0{gettext('Kč')}" if country else "",
+            number_label=gettext("celá ČR"),
+            figures=figures,
+            address=_address(PATHS[lang]),
+        )
+
+
+def render_city_og_image(area: dict, day, lang: str) -> bytes:
+    """Share image of one city: its median, cheapest pub and the middle half of its pubs."""
+
+    with translation.override(lang):
+        unit = gettext("Kč")
+        figures = []
+        if area.get("cheapest"):
+            figures.append((f"{half_litre_czk(area['cheapest'][0])}\u00a0{unit}", gettext("nejlevněji za 0,5 l")))
+        figures.append((f"{area['p25']}–{area['p75']}\u00a0{unit}", gettext("polovina hospod")))
+        figures.append((str(area["pubs"]), gettext("hospod s cenou")))
+        return share_card(
+            eyebrow=gettext("Medián nejlevnějšího piva, stav k %(date)s") % {"date": formats.date_format(day, "DATE_FORMAT")},
+            title=gettext("Kolik stojí pivo: %(city)s") % {"city": area["name"]},
+            number=f"{area['median']}\u00a0{unit}",
+            number_label=gettext("medián"),
+            figures=figures,
+            address=_address(f"{PATHS[lang]}/{city_slug(area['name'])}"),
+        )
 
 
 def save_price_snapshot(now: datetime | None = None) -> PubPriceSnapshot:
@@ -359,4 +545,5 @@ def save_price_snapshot(now: datetime | None = None) -> PubPriceSnapshot:
             "og_image_en": render_og_image(data, day, "en"),
         },
     )
+    shared_cache.set(_FLOOR_KEY, data["min_czk"], 3600)
     return snapshot

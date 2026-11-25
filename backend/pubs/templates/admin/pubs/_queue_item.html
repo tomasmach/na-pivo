@@ -1,0 +1,22 @@
+<div class="wb-item">
+  <div>
+    <span class="wb-tag {{ item.tone }}">{{ item.tag }}</span>
+    <div class="wb-when">{{ item.when|date:"j. n. H:i" }}</div>
+  </div>
+  <div>
+    <div class="wb-title"><a href="{{ item.url }}">{{ item.title|truncatechars:240 }}</a></div>
+    {% for line in item.lines %}<div class="wb-line">{{ line }}</div>{% endfor %}
+    {% if item.quote %}<div class="wb-quote">{{ item.quote|truncatechars:400 }}</div>{% endif %}
+    {% if item.image %}<img class="wb-image" src="{{ item.image }}" alt="Nahlášená fotka">{% endif %}
+    {% if item.links %}<div class="wb-links">{% for label, url in item.links %}<a href="{{ url }}">{{ label }}</a>{% endfor %}</div>{% endif %}
+  </div>
+  <div class="wb-actions">
+    {% for action in item.actions %}
+      <form method="post" action="{% url 'admin_queue' %}{% if show %}?typ={{ show }}{% endif %}"{% if action.confirm %} x-data x-on:submit="confirm('{{ action.confirm|escapejs }}') || $event.preventDefault()"{% endif %}>
+        {% csrf_token %}
+        <input type="hidden" name="item" value="{{ item.ref }}">
+        <button class="wb-btn {{ action.style }}" name="action" value="{{ action.key }}">{{ action.label }}</button>
+      </form>
+    {% endfor %}
+  </div>
+</div>

@@ -1,4 +1,4 @@
-import { fetchPubHours } from '../hoursClient';
+import { fetchPubHours, forgetPubHours } from '../hoursClient';
 import type { Pub } from '../pubs';
 
 const PUB_A: Pub = { id: 'mapy:50.0,14.0', name: 'U Fleků', lat: 50.0, lng: 14.0, city: 'Praha' };
@@ -16,6 +16,7 @@ function setBackend(url: string | undefined): void {
 }
 
 afterEach(() => {
+  forgetPubHours();
   global.fetch = ORIGINAL_FETCH;
   setBackend(ORIGINAL_URL);
   jest.clearAllMocks();
@@ -61,6 +62,8 @@ describe('fetchPubHours — happy path', () => {
     setBackend('https://api.example.com');
     const fetchSpy = jest.fn(async () => ({
       ok: true,
+      status: 200,
+      headers: new Headers(),
       json: async () => ({
         results: [
           // Note: keys are geohashes, deliberately NOT our ids.
@@ -126,10 +129,12 @@ describe('fetchPubHours — happy path', () => {
     });
   });
 
-  it('POSTs the correct body and a cache-only sync_budget for a single pub', async () => {
+  it('reads a single pub with a GET that never asks for a synchronous fill', async () => {
     setBackend('https://api.example.com/');
     const fetchSpy = jest.fn(async () => ({
       ok: true,
+      status: 200,
+      headers: new Headers(),
       json: async () => ({ results: [{ status: 'unknown' }] }),
     }));
     global.fetch = fetchSpy as unknown as typeof fetch;
@@ -139,27 +144,29 @@ describe('fetchPubHours — happy path', () => {
     expect(fetchSpy).toHaveBeenCalledTimes(1);
     const [url, init] = fetchSpy.mock.calls[0] as unknown as [string, RequestInit];
     // Trailing slash on the base URL must not produce a double slash.
-    expect(url).toBe('https://api.example.com/v1/pub-hours');
-    expect(init.method).toBe('POST');
-    const parsed = JSON.parse(init.body as string);
-    expect(parsed.sync_budget).toBe(0);
-    expect(parsed.pubs).toEqual([
-      { name: 'U Fleků', lat: 50.0, lng: 14.0, city: 'Praha' },
-    ]);
+    expect(url).toBe('https://api.example.com/v1/pub-hours?name=U%20Flek%C5%AF&lat=50&lng=14&city=Praha');
+    expect(init.method).toBe('GET');
   });
 
-  it('allows callers to override sync_budget explicitly', async () => {
+  it('POSTs a single pub when the caller asks for a synchronous fill', async () => {
     setBackend('https://api.example.com/');
     const fetchSpy = jest.fn(async () => ({
       ok: true,
+      status: 200,
+      headers: new Headers(),
       json: async () => ({ results: [{ status: 'unknown' }] }),
     }));
     global.fetch = fetchSpy as unknown as typeof fetch;
 
     await fetchPubHours([PUB_A], undefined, { syncBudget: 1 });
 
-    const [, init] = fetchSpy.mock.calls[0] as unknown as [string, RequestInit];
-    expect(JSON.parse(init.body as string).sync_budget).toBe(1);
+    const [url, init] = fetchSpy.mock.calls[0] as unknown as [string, RequestInit];
+    expect(url).toBe('https://api.example.com/v1/pub-hours');
+    expect(init.method).toBe('POST');
+    expect(JSON.parse(init.body as string)).toEqual({
+      pubs: [{ name: 'U Fleků', lat: 50.0, lng: 14.0, city: 'Praha' }],
+      sync_budget: 1,
+    });
   });
 
   it('caps sync_budget at 5 for many pubs', async () => {
@@ -172,6 +179,8 @@ describe('fetchPubHours — happy path', () => {
     }));
     const fetchSpy = jest.fn(async () => ({
       ok: true,
+      status: 200,
+      headers: new Headers(),
       json: async () => ({ results: many.map(() => ({ status: 'ok' })) }),
     }));
     global.fetch = fetchSpy as unknown as typeof fetch;
@@ -186,6 +195,8 @@ describe('fetchPubHours — happy path', () => {
     setBackend('https://api.example.com');
     const fetchSpy = jest.fn(async () => ({
       ok: true,
+      status: 200,
+      headers: new Headers(),
       json: async () => ({ results: [{ status: 'weird-value' }] }),
     }));
     global.fetch = fetchSpy as unknown as typeof fetch;
@@ -225,6 +236,8 @@ describe('fetchPubHours — happy path', () => {
     };
     const fetchSpy = jest.fn(async () => ({
       ok: true,
+      status: 200,
+      headers: new Headers(),
       json: async () => ({
         results: [
           {
@@ -265,6 +278,8 @@ describe('fetchPubHours — happy path', () => {
     setBackend('https://api.example.com');
     const fetchSpy = jest.fn(async () => ({
       ok: true,
+      status: 200,
+      headers: new Headers(),
       json: async () => ({ results: [{ status: 'ok', isOpenNow: true }] }),
     }));
     global.fetch = fetchSpy as unknown as typeof fetch;
@@ -287,6 +302,8 @@ describe('fetchPubHours — happy path', () => {
     setBackend('https://api.example.com');
     global.fetch = jest.fn(async () => ({
       ok: true,
+      status: 200,
+      headers: new Headers(),
       json: async () => ({
         results: [
           {
@@ -309,6 +326,8 @@ describe('fetchPubHours — happy path', () => {
     setBackend('https://api.example.com');
     const fetchSpy = jest.fn(async () => ({
       ok: true,
+      status: 200,
+      headers: new Headers(),
       json: async () => ({
         results: [
           { status: 'ok', hasGarden: true },
@@ -330,6 +349,8 @@ describe('fetchPubHours — happy path', () => {
       setBackend('https://api.example.com');
       global.fetch = jest.fn(async () => ({
         ok: true,
+        status: 200,
+        headers: new Headers(),
         json: async () => ({ results: [{ status: 'ok', venueKind: kind }] }),
       })) as unknown as typeof fetch;
 
@@ -342,6 +363,8 @@ describe('fetchPubHours — happy path', () => {
     setBackend('https://api.example.com');
     global.fetch = jest.fn(async () => ({
       ok: true,
+      status: 200,
+      headers: new Headers(),
       json: async () => ({
         results: [
           { status: 'ok', venueKind: 'restaurant' },
@@ -359,6 +382,8 @@ describe('fetchPubHours — happy path', () => {
     setBackend('https://api.example.com');
     const fetchSpy = jest.fn(async () => ({
       ok: true,
+      status: 200,
+      headers: new Headers(),
       json: async () => ({
         results: [{ status: 'ok', source: 'community', hours_json: { mo: 'nope' } }],
       }),
@@ -373,6 +398,8 @@ describe('fetchPubHours — happy path', () => {
     setBackend('https://api.example.com');
     const fetchSpy = jest.fn(async () => ({
       ok: true,
+      status: 200,
+      headers: new Headers(),
       json: async () => ({ results: [{ status: 'ok', opening_hours: 'X' }] }),
     }));
     global.fetch = fetchSpy as unknown as typeof fetch;
@@ -410,6 +437,8 @@ describe('fetchPubHours — never throws', () => {
     setBackend('https://api.example.com');
     global.fetch = jest.fn(async () => ({
       ok: true,
+      status: 200,
+      headers: new Headers(),
       json: async () => {
         throw new Error('not json');
       },
@@ -422,6 +451,8 @@ describe('fetchPubHours — never throws', () => {
     setBackend('https://api.example.com');
     global.fetch = jest.fn(async () => ({
       ok: true,
+      status: 200,
+      headers: new Headers(),
       json: async () => ({ results: 'nope' }),
     })) as unknown as typeof fetch;
 
@@ -465,5 +496,103 @@ describe('fetchPubHours — abort handling', () => {
     controller.abort();
 
     await expect(promise).resolves.toEqual(new Map());
+  });
+});
+
+describe('fetchPubHours — reusing an answer', () => {
+  function server(answer: () => { status: number; body?: unknown; etag?: string }) {
+    const fetchSpy = jest.fn(async () => {
+      const { status, body, etag } = answer();
+      return {
+        ok: status >= 200 && status < 300,
+        status,
+        headers: new Headers(etag ? { ETag: etag } : {}),
+        json: async () => body,
+      };
+    });
+    global.fetch = fetchSpy as unknown as typeof fetch;
+    return fetchSpy;
+  }
+  const sentTag = (spy: jest.Mock, call: number) =>
+    ((spy.mock.calls[call] as unknown as [string, RequestInit])[1].headers as Record<string, string>)['If-None-Match'];
+
+  afterEach(() => jest.useRealTimers());
+
+  it('shares one request between screens and reuses a settled answer for five minutes', async () => {
+    setBackend('https://api.example.com');
+    jest.useFakeTimers({ now: new Date('2026-11-15T12:00:00Z'), doNotFake: ['setImmediate', 'nextTick'] });
+    const fetchSpy = server(() => ({ status: 200, body: { results: [{ status: 'ok' }] }, etag: '"v1"' }));
+
+    const [compass, page] = await Promise.all([
+      fetchPubHours([PUB_A]),
+      fetchPubHours([{ ...PUB_A, id: 'page-id' }]),
+    ]);
+    await fetchPubHours([PUB_A]);
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    expect(compass.get(PUB_A.id)?.status).toBe('ok');
+    expect(page.get('page-id')?.status).toBe('ok');
+
+    jest.setSystemTime(new Date('2026-11-15T12:05:00Z'));
+    const again = await fetchPubHours([PUB_A]);
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+    expect(sentTag(fetchSpy, 1)).toBe('"v1"');
+    expect(again.get(PUB_A.id)?.status).toBe('ok');
+  });
+
+  it('keeps the answer the server confirms with 304', async () => {
+    setBackend('https://api.example.com');
+    let reply: { status: number; body?: unknown; etag?: string } = { status: 200, body: { results: [{ status: 'ok', beers: [{ name: 'Pilsner Urquell' }] }] }, etag: '"v1"' };
+    const fetchSpy = server(() => reply);
+
+    await fetchPubHours([PUB_A]);
+    reply = { status: 304 };
+    const confirmed = await fetchPubHours([PUB_A], undefined, { fresh: true });
+
+    expect(sentTag(fetchSpy, 1)).toBe('"v1"');
+    expect(confirmed.get(PUB_A.id)?.beers).toEqual([{ name: 'Pilsner Urquell' }]);
+  });
+
+  it('asks without a stored answer after this device changed the pub', async () => {
+    setBackend('https://api.example.com');
+    const fetchSpy = server(() => ({ status: 200, body: { results: [{ status: 'ok' }] }, etag: '"v1"' }));
+
+    await fetchPubHours([PUB_A]);
+    forgetPubHours();
+    await fetchPubHours([PUB_A]);
+
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+    expect(sentTag(fetchSpy, 1)).toBeUndefined();
+  });
+
+  it('asks again while the answer is pending or the pub has opened or closed since', async () => {
+    setBackend('https://api.example.com');
+    jest.useFakeTimers({ now: new Date('2026-11-15T12:00:00Z'), doNotFake: ['setImmediate', 'nextTick'] });
+    let result: Record<string, unknown> = { status: 'pending' };
+    const fetchSpy = server(() => ({ status: 200, body: { results: [result] } }));
+
+    await fetchPubHours([PUB_A]);
+    await fetchPubHours([PUB_A]);
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+
+    result = { status: 'ok', isOpenNow: true, nextChange: '2026-11-15T12:01:00+00:00' };
+    await fetchPubHours([PUB_A]);
+    jest.setSystemTime(new Date('2026-11-15T12:01:00Z'));
+    await fetchPubHours([PUB_A]);
+    expect(fetchSpy).toHaveBeenCalledTimes(4);
+  });
+
+  it('falls back to the POST on a backend without the GET', async () => {
+    setBackend('https://api.example.com');
+    const fetchSpy = jest.fn(async (_url: string, init: RequestInit) =>
+      init.method === 'GET'
+        ? { ok: false, status: 405, headers: new Headers(), json: async () => ({}) }
+        : { ok: true, status: 200, headers: new Headers(), json: async () => ({ results: [{ status: 'ok' }] }) },
+    );
+    global.fetch = fetchSpy as unknown as typeof fetch;
+
+    const result = await fetchPubHours([PUB_A]);
+
+    expect(fetchSpy.mock.calls.map(([, init]) => init.method)).toEqual(['GET', 'POST']);
+    expect(result.get(PUB_A.id)?.status).toBe('ok');
   });
 });

@@ -2,7 +2,9 @@
 // the host's size through Auto Layout. On an open iPhone Duo the tabs are then
 // installed into a view that does not reach the rail's edge, and iOS never adds
 // the rail's buttons afterwards, so the app starts without tabs. Giving the view
-// the host's size before it joins the window avoids that.
+// the host's size before it joins the window avoids that. react-native-screens
+// 4.30.1 ships the same line with a comment above it, so the script also
+// accepts that shape; drop the script once 4.30.0 is no longer in the lockfile.
 const fs = require('fs');
 const path = require('path');
 
@@ -33,6 +35,14 @@ const source = fs.readFileSync(file, 'utf8');
 
 if (source.includes(replacement)) {
   console.log('[patch-react-native-screens-tabs-frame] tab host frame patch already applied');
+  process.exit(0);
+}
+
+const upstreamFix =
+  /  if \(self\.window != nil && _controller\.parentViewController == nil\) \{\n(?:    \/\/.*\n)*    _controller\.view\.frame = self\.bounds;\n    BOOL mountResult/;
+
+if (upstreamFix.test(source)) {
+  console.log('[patch-react-native-screens-tabs-frame] react-native-screens already sizes the tab host view');
   process.exit(0);
 }
 

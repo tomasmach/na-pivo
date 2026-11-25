@@ -39,14 +39,9 @@ export function useAlcoholEstimate(): { estimate: AlcoholEstimate | null; nowMs:
   }, [profile, current, history, tickMs]);
 }
 
-/** Once absorbed and below this, the middle guess reads as zero and the cautious end takes over. */
+/** Once absorbed and below this, the middle guess reads as zero and the sheet shows when it gets there. */
 export function isMorning(estimate: AlcoholEstimate): boolean {
   return !estimate.absorbing && estimate.now < 0.05;
-}
-
-/** The cautious level rounded up, so a morning never reads 0,0 while it is not zero. */
-export function cautiousCeil(value: number): number {
-  return Math.ceil(value * 10) / 10;
 }
 
 export function formatPromile(value: number): string {
@@ -69,13 +64,4 @@ export function formatZeroAt(date: Date, nowMs: number): string {
   if (offset <= 0) return t.alcohol.whenToday(time);
   if (offset === 1) return t.alcohol.whenTomorrow(time);
   return t.alcohol.whenDate(date.toLocaleDateString(intlLocale, { day: 'numeric', month: 'numeric' }), time);
-}
-
-/** "13:00" today, "zítra 13:00" tomorrow — for the short morning line. */
-export function formatZeroAtShort(date: Date, nowMs: number): string {
-  const time = formatClock(date);
-  const offset = dayOffset(date, nowMs);
-  if (offset <= 0) return t.alcohol.shortToday(time);
-  if (offset === 1) return t.alcohol.shortTomorrow(time);
-  return formatZeroAt(date, nowMs);
 }

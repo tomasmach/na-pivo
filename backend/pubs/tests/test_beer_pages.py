@@ -5,6 +5,7 @@ import re
 import uuid
 from datetime import timedelta
 from io import BytesIO, StringIO
+from unittest.mock import ANY
 
 import pytest
 from django.core.management import call_command
@@ -25,13 +26,12 @@ from pubs.models import (
     PubDirectory,
     PubHours,
 )
+from pubs.tests.prague_points import DISTRICT_POINTS
+from pubs.tests.sitemaps import sitemap_xml
+from pubs.web.pages import _csp
 
 PRAGUE = (50.08, 14.42)
 BRATISLAVA = (48.14, 17.11)
-PAGE_CSP = (
-    "default-src 'none'; style-src 'unsafe-inline'; img-src 'self'; font-src 'self'; "
-    "script-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'"
-)
 
 pytestmark = pytest.mark.django_db
 _cells = iter(range(10_000))
@@ -55,14 +55,15 @@ def _pub(
     *,
     city: str = "Praha 2",
     days_ago: int = 1,
-    at: tuple[float, float] = PRAGUE,
+    at: tuple[float, float] = DISTRICT_POINTS["Praha 2"],
     country: str = "cz",
     rotates: bool = False,
 ) -> str:
     """A catalogue pub whose menu someone submitted ``days_ago``."""
 
     index = next(_cells)
-    lat, lng = at[0] + index * 0.0007, at[1]
+    # Each pub its own cell, all within ~600 m of ``at`` so they stay in its district.
+    lat, lng = at[0] + index % 8 * 0.0007, at[1] + index // 8 % 8 * 0.0011
     directory = PubDirectory.objects.create(
         name=name,
         lat=lat,
@@ -135,7 +136,7 @@ def _drink(
 def _three_fresh_pubs() -> None:
     _pub("U Kalicha", [("Testovar 11°", 52, 500)], days_ago=3)
     _pub("Na Růžku", [("Testovar 11", 58, 500)], city="Brno", days_ago=10)
-    _pub("U Lípy", [("testovar 11.", 64, 500)], city="Praha 7 - Holešovice", days_ago=40)
+    _pub("U Lípy", [("testovar 11.", 64, 500)], city="Praha 7 - Holešovice", days_ago=40, at=DISTRICT_POINTS["Praha 7"])
 
 
 def _second_beer() -> None:
@@ -168,12 +169,13 @@ def test_spellings_of_one_beer_are_one_page_with_prices_cities_and_dates():
     beer = build_beer_pages()["beers"]["testovar-11"]
 
     assert beer["listed"][0] == {
+        "cache_key": ANY,
         "name": "U Kalicha",
         "city": "Praha 2",
         "price_czk": 52,
         "volume_ml": 500,
         "lat": beer["listed"][0]["lat"],
-        "lng": PRAGUE[1],
+        "lng": beer["listed"][0]["lng"],
         "confirmed": timezone.localdate(timezone.now() - timedelta(days=3)).isoformat(),
         "fresh": True,
         "rotates": False,
@@ -279,12 +281,12 @@ def test_beer_page_shows_pubs_prices_and_dates_without_anyone_who_wrote_them(cli
     response = client.get("/pivo/testovar-11")
 
     assert response.status_code == 200
-    assert response["Content-Security-Policy"] == PAGE_CSP
+    assert response["Content-Security-Policy"] == _csp()
     assert response["Cache-Control"] == "public, max-age=600"
     html = response.content.decode()
     assert "<title>Testovar 11°: kde se čepuje a za kolik | Na pivo</title>" in html
-    assert '<h1 id="page-title">Kde se čepuje Testovar 11°</h1>' in html
-    assert re.search(r'<a href="https://www\.google\.com/maps/search/\?api=1&amp;query=[\d.]+,[\d.]+">U Lípy<', html)
+    assert '<h1 class="np-h1 rs-h1--long" id="page-title">Kde se čepuje Testovar 11°</h1>' in html
+    assert re.search(r'<a class="rs-row__link" href="/hospoda/u-lipy-\w{8}">U Lípy<', html)
     assert "pípy se tu střídají" in html and "cena chybí" in html and "za 0,3 l" in html
     # The pub not confirmed for four months comes last, under its own heading.
     old = html.index("Zápisy starší než 3 měsíce")
@@ -301,6 +303,8 @@ def test_beer_page_shows_pubs_prices_and_dates_without_anyone_who_wrote_them(cli
     assert product["offers"] == {
         "@type": "AggregateOffer", "priceCurrency": "CZK", "lowPrice": 52, "highPrice": 64, "offerCount": 3,
     }
+    # Nobody rated it yet, so there are no stars to claim.
+    assert "aggregateRating" not in product and "review" not in product
     crumbs = [crumb["name"] for crumb in data["@graph"][0]["itemListElement"]]
     assert crumbs == ["Na pivo", "Piva", "Testovar", "Testovar 11°"]
     # Nothing about who wrote what is stored for the page either.
@@ -319,12 +323,12 @@ def test_beer_under_the_threshold_has_no_page_but_leads_to_the_others(client):
     for url in ("/pivo/testovar-12", "/pivo/neznam-tohle", "/en/beer/testovar-12"):
         response = client.get(url)
         assert response.status_code == 404
-        assert 'class="all-beers" href="/' in response.content.decode()
+        assert 'class="np-btn np-btn--primary" href="/' in response.content.decode()
     html = client.get("/pivo/testovar-12").content.decode()
-    assert '<h1 id="page-title">Testovar 12°</h1>' in html
+    assert '<h1 class="np-h1 rs-h1--long" id="page-title">Testovar 12°</h1>' in html
     assert "Tohle pivo tu teď nemám." in html and "Víš, kde se čepuje Testovar 12°?" in html
     assert 'rel="canonical"' not in html
-    assert '<h1 id="page-title">Tohle pivo neznám</h1>' in client.get("/pivo/neznam-tohle").content.decode()
+    assert '<h1 class="np-h1 rs-h1--long" id="page-title">Tohle pivo neznám</h1>' in client.get("/pivo/neznam-tohle").content.decode()
 
 
 def test_a_brand_with_one_beer_has_no_page_of_its_own(client):
@@ -344,7 +348,7 @@ def test_brand_page_gathers_its_beers_and_the_list_links_them_all(client):
     listing = client.get("/pivo")
 
     assert brand.status_code == 200 and listing.status_code == 200
-    assert '<h1 id="page-title">Kde se čepuje Testovar</h1>' in brand.content.decode()
+    assert '<h1 class="np-h1 rs-h1--long" id="page-title">Kde se čepuje Testovar</h1>' in brand.content.decode()
     assert '<a href="/pivo/testovar-11">Testovar 11°</a>' in brand.content.decode()
     assert "3\u00a0hospody" in brand.content.decode()
     assert '<a href="/pivo/testovar-11">Testovar 11°</a>' in listing.content.decode()
@@ -386,7 +390,7 @@ def test_sitemap_lists_every_beer_page_in_both_languages(client, settings):
     _second_beer()
     call_command("snapshot_beer_prices", stdout=StringIO())
 
-    xml = client.get("/sitemap.xml").content.decode()
+    xml = sitemap_xml(client)
 
     for url in (
         "https://na-pivo.cz/pivo",
@@ -425,7 +429,7 @@ def test_beer_pages_share_the_price_page_throttle(client, monkeypatch):
     assert client.get("/pivo").status_code == 200
     limited = client.get("/pivo/testovar-11")
 
-    assert scopes == {"price_map"}
+    assert scopes == {"web_pages"}
     assert limited.status_code == 429
     assert limited["Cache-Control"] == "no-store"
     assert "Hospody se teď nedotáhly. Zkus to za minutu." in limited.content.decode()

@@ -7,6 +7,9 @@ let uuid = 0;
 jest.mock('../account', () => ({
   generateUuidV4: () => `visit-${++uuid}`,
   setAnonymousSessionEvictionListener: jest.fn(),
+  setAccountPreferencesRefusedListener: jest.fn(),
+  pendingAccountPreferences: jest.fn(async () => ({})),
+  accountPreferencesDeliveries: jest.fn(() => 0),
 }));
 const submitVisit = jest.fn(async (_entry: unknown, _signal?: AbortSignal) => 'retry');
 jest.mock('../visitsClient', () => ({

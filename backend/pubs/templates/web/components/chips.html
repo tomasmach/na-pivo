@@ -1,0 +1,6 @@
+{% comment %}
+Filter chips made of links. items: list of {"label": ..., "url": ..., "current": bool, "icon": optional};
+label: accessible name of the group. For toggles in a form use <button class="np-chip" aria-pressed="true">.
+{% endcomment %}{% load web %}<nav class="np-chips" aria-label="{{ label }}">{% for item in items %}
+  <a class="np-chip" href="{{ item.url }}"{% if item.current %} aria-current="true"{% endif %}>{% if item.icon %}{% icon item.icon %}{% endif %}{{ item.label }}</a>{% endfor %}
+</nav>

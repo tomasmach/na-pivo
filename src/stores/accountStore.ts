@@ -1,8 +1,11 @@
 import { create } from 'zustand';
 
 import {
+  accountPreferencesDeliveries,
   ensureAccount,
   fetchAccountPreferences,
+  pendingAccountPreferences,
+  setAccountPreferencesRefusedListener,
   setAnonymousSessionEvictionListener,
   type AccountSession,
 } from '@/data/account';
@@ -23,9 +26,11 @@ import {
 } from '@/data/auth';
 import { FALLBACK_LEVELS, FALLBACK_XP_RULES } from '@/data/mapperXp';
 import { reconcileDiarySnapshot, restoreAccountDiary, type DiarySnapshot } from '@/data/diarySync';
+import { adoptServerSharing, sharingReadTicket } from '@/data/sharingPrefsClient';
 import { tourBoundary } from '@/data/toursBoundary';
-import { useBookStore } from '@/stores/bookStore';
+import { t } from '@/i18n';
 import { useSettingsStore } from '@/stores/settingsStore';
+import { useToastStore } from '@/stores/toastStore';
 import { releaseToursToDevice } from '@/stores/toursStore';
 
 export type AccountStatus = 'idle' | 'loading' | 'ready' | 'reauth-required' | 'error';
@@ -122,8 +127,9 @@ interface AccountState {
   /** Re-fetch GET /v1/account/me into `profile`. */
   refreshProfile: () => Promise<void>;
   /**
-   * Re-fetch only the badge values into the current profile. Settings and the
-   * rest stay as they are, so a slow answer cannot undo a change made meanwhile.
+   * Re-fetch only the badge values (GET /v1/account/me/badge-progress) into the
+   * current profile. Settings and the rest stay as they are, so a slow answer
+   * cannot undo a change made meanwhile.
    */
   refreshBadges: () => Promise<void>;
   /** Flush local diary queues, then refresh the authoritative drink/visit snapshot. */
@@ -161,6 +167,7 @@ interface AccountState {
     nickname?: string;
     displayName?: string;
     isPublic?: boolean;
+    showAsPubRegular?: boolean;
   }) => Promise<AuthResult>;
   checkNicknameAvailable: (nickname: string) => Promise<NicknameAvailability>;
   uploadAvatar: (localUri: string) => Promise<AuthResult>;
@@ -198,22 +205,23 @@ function withoutRemoved(
   };
 }
 
-export const useAccountStore = create<AccountState>((set, get) => {
-  const applyAccountSettings = (settings?: AccountSettings | null) => {
-    if (!settings) return;
-    const store = useSettingsStore.getState();
-    if (settings.mode) store.setMode(settings.mode);
-    if (settings.maxDistanceKm !== undefined) store.setMaxDistanceKm(settings.maxDistanceKm);
-    if (settings.priceCurrency) store.setPriceCurrency(settings.priceCurrency);
-    if (typeof settings.hapticEnabled === 'boolean') store.setHapticEnabled(settings.hapticEnabled);
-    if (typeof settings.soundEnabled === 'boolean') store.setSoundEnabled(settings.soundEnabled);
-    if (typeof settings.hideClosedPubs === 'boolean') store.setHideClosedPubs(settings.hideClosedPubs);
-    if (typeof settings.hidePubNames === 'boolean') store.setHidePubNames(settings.hidePubNames);
-    if (typeof settings.marketingEmailsEnabled === 'boolean') {
-      store.setMarketingEmailsEnabled(settings.marketingEmailsEnabled);
-    }
-  };
+function writeServerSettings(settings: AccountSettings, pending: Partial<AccountSettings>): void {
+  const server = { ...settings };
+  for (const key of Object.keys(pending) as (keyof AccountSettings)[]) delete server[key];
+  const store = useSettingsStore.getState();
+  if (server.mode) store.setMode(server.mode);
+  if (server.maxDistanceKm !== undefined) store.setMaxDistanceKm(server.maxDistanceKm);
+  if (server.priceCurrency) store.setPriceCurrency(server.priceCurrency);
+  if (typeof server.hapticEnabled === 'boolean') store.setHapticEnabled(server.hapticEnabled);
+  if (typeof server.soundEnabled === 'boolean') store.setSoundEnabled(server.soundEnabled);
+  if (typeof server.hideClosedPubs === 'boolean') store.setHideClosedPubs(server.hideClosedPubs);
+  if (typeof server.hidePubNames === 'boolean') store.setHidePubNames(server.hidePubNames);
+  if (typeof server.marketingEmailsEnabled === 'boolean') {
+    store.setMarketingEmailsEnabled(server.marketingEmailsEnabled);
+  }
+}
 
+export const useAccountStore = create<AccountState>((set, get) => {
   // Profile answers arrive late and out of order. Every read and write takes a
   // ticket, and an answer to a read older than the last write (a newer read,
   // a sign-in, a logout or a deletion) is dropped. The store keeps the old
@@ -227,13 +235,20 @@ export const useAccountStore = create<AccountState>((set, get) => {
     return true;
   };
 
+  const applyAccountSettings = (settings?: AccountSettings | null, readStartedAt?: number) => {
+    if (!settings) return;
+    const ticket = writtenTicket;
+    void pendingAccountPreferences().then((pending) => {
+      if (ticket !== writtenTicket) return;
+      if (readStartedAt !== undefined && readStartedAt !== accountPreferencesDeliveries()) return;
+      writeServerSettings(settings, pending);
+    });
+  };
+
   /** Re-read the (possibly rotated) session token into the store. */
   const syncSession = async () => {
     const session = await ensureAccount();
     setTelemetrySession(session);
-    const previousAccountId = get().session?.accountId;
-    // Pages in the right halves of the open iPhone Duo belong to the outgoing account.
-    if (previousAccountId && previousAccountId !== session?.accountId) useBookStore.getState().clearAll();
     set((state) => ({
       session,
       status: session ? 'ready' : 'idle',
@@ -260,12 +275,15 @@ export const useAccountStore = create<AccountState>((set, get) => {
     return data != null;
   };
 
-  /** After a session-changing auth call: persist the new token + profile. */
-  const applyAuthResult = async (result: AuthResult): Promise<AuthResult> => {
+  /** Run a session-changing auth call, then persist the new token + profile. */
+  const signIn = async (request: () => Promise<AuthResult>): Promise<AuthResult> => {
+    const sharingBefore = sharingReadTicket();
+    const result = await request();
     if (result.ok) {
       claimProfileWrite(takeProfileTicket());
       set({ profile: result.profile });
       applyAccountSettings(result.profile.settings);
+      adoptServerSharing(result.profile.sharing, sharingBefore && sharingReadTicket(sharingBefore.changes));
       await syncSession();
       await refreshDiarySnapshot();
     }
@@ -274,7 +292,7 @@ export const useAccountStore = create<AccountState>((set, get) => {
 
   /** After a profile-changing auth call that leaves the session token intact
    *  (link / unlink / profile / avatar / purchases): persist the updated profile
-   *  + settings. Mirrors applyAuthResult without the session re-sync. */
+   *  + settings. Mirrors signIn without the session re-sync. */
   const applyProfileResult = (result: AuthResult): AuthResult => {
     if (result.ok) {
       claimProfileWrite(takeProfileTicket());
@@ -306,6 +324,8 @@ export const useAccountStore = create<AccountState>((set, get) => {
         }));
         if (session) {
           const ticket = takeProfileTicket();
+          const readStartedAt = accountPreferencesDeliveries();
+          const sharingTicket = sharingReadTicket();
           const [profile] = await Promise.all([
             auth.fetchAccountProfile(),
             // A successful launch pull lets the first foreground skip it.
@@ -315,13 +335,15 @@ export const useAccountStore = create<AccountState>((set, get) => {
           if (profile) {
             if (!claimProfileWrite(ticket)) return;
             set({ profile });
-            applyAccountSettings(profile.settings);
+            applyAccountSettings(profile.settings, readStartedAt);
+            adoptServerSharing(profile.sharing, sharingTicket);
           } else {
             // The profile includes settings on current backends. Keep the
             // narrower read as a fallback when that request is unavailable.
+            const fallbackStartedAt = accountPreferencesDeliveries();
             const preferences = await fetchAccountPreferences();
             if (preferences && get().session?.token === session.token) {
-              applyAccountSettings(preferences);
+              applyAccountSettings(preferences, fallbackStartedAt);
             }
           }
         }
@@ -344,6 +366,8 @@ export const useAccountStore = create<AccountState>((set, get) => {
       if (!session.authenticated) return 'anonymous';
 
       const ticket = takeProfileTicket();
+      const readStartedAt = accountPreferencesDeliveries();
+      const sharingTicket = sharingReadTicket();
       const validation = await auth.validateAccountSession(session);
       // Ignore a response for a session that was replaced while validation was
       // in flight (for example by a manual login opened from another screen).
@@ -361,26 +385,34 @@ export const useAccountStore = create<AccountState>((set, get) => {
 
       set({ profile: validation.profile, status: 'ready' });
       setTelemetrySession(session);
-      applyAccountSettings(validation.profile.settings);
+      applyAccountSettings(validation.profile.settings, readStartedAt);
+      adoptServerSharing(validation.profile.sharing, sharingTicket);
       return 'valid';
     },
 
     refreshProfile: async () => {
       const token = get().session?.token;
       const ticket = takeProfileTicket();
+      const readStartedAt = accountPreferencesDeliveries();
+      const sharingTicket = sharingReadTicket();
       const profile = await auth.fetchAccountProfile();
       if (get().session?.token !== token) return;
       if (profile && claimProfileWrite(ticket)) {
         set({ profile });
-        applyAccountSettings(profile.settings);
+        applyAccountSettings(profile.settings, readStartedAt);
+        adoptServerSharing(profile.sharing, sharingTicket);
       }
     },
 
     refreshBadges: async () => {
       const token = get().session?.token;
       const ticket = takeProfileTicket();
-      const fresh = await auth.fetchAccountProfile();
-      if (!fresh?.badgeProgress || get().session?.token !== token) return;
+      let fresh = await auth.fetchBadgeProgress();
+      if (fresh === 'unsupported') {
+        const profile = await auth.fetchAccountProfile();
+        fresh = profile?.badgeProgress ? { id: profile.id, badgeProgress: profile.badgeProgress } : null;
+      }
+      if (!fresh || get().session?.token !== token) return;
       const current = get().profile;
       if (current?.id !== fresh.id || !claimProfileWrite(ticket)) return;
       set({ profile: { ...current, badgeProgress: fresh.badgeProgress } });
@@ -435,11 +467,11 @@ export const useAccountStore = create<AccountState>((set, get) => {
       });
     },
 
-    register: (params) => auth.registerEmail(params).then(applyAuthResult),
-    login: (params) => auth.loginEmail(params).then(applyAuthResult),
-    signInGoogle: () => auth.signInWithGoogle().then(applyAuthResult),
-    signInApple: () => auth.signInWithApple().then(applyAuthResult),
-    resetPassword: (params) => auth.resetPassword(params).then(applyAuthResult),
+    register: (params) => signIn(() => auth.registerEmail(params)),
+    login: (params) => signIn(() => auth.loginEmail(params)),
+    signInGoogle: () => signIn(() => auth.signInWithGoogle()),
+    signInApple: () => signIn(() => auth.signInWithApple()),
+    resetPassword: (params) => signIn(() => auth.resetPassword(params)),
 
     linkGoogle: () => auth.linkGoogle().then(applyProfileResult),
     linkApple: () => auth.linkApple().then(applyProfileResult),
@@ -490,6 +522,11 @@ export const useAccountStore = create<AccountState>((set, get) => {
       return result;
     },
   };
+});
+
+setAccountPreferencesRefusedListener((server) => {
+  if (server) void pendingAccountPreferences().then((pending) => writeServerSettings(server, pending));
+  useToastStore.getState().show(t.nv.profil.settings.savedSettingRefused);
 });
 
 setAnonymousSessionEvictionListener(async (evictedAccountId) => {

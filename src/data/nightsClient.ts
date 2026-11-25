@@ -2,6 +2,7 @@ import { ensureAccount, type AccountSession } from './account';
 import { t } from '@/i18n';
 import { chainAbortSignal, classifyQueueHttpFailure } from './apiFetch';
 import { getBackendEndpoint } from './backendConfig';
+import { resolveBeerPhotoUrl } from './beerPhotosClient';
 import { trackApiFailure } from './telemetryClient';
 
 const REQUEST_TIMEOUT_MS = 9000;
@@ -35,6 +36,8 @@ export interface PublishedNight {
   rounds: number;
   myRound: boolean;
   isMine: boolean;
+  /** First photo the author attached to the night, when the viewer may see it. */
+  heroPhotoUrl: string | null;
 }
 
 export interface NightPublishPayload {
@@ -51,6 +54,8 @@ export interface NightPublishPayload {
   durationMinutes?: number;
   visibility: NightVisibility;
   updatedAt: string;
+  /** Diary photo ids (server or client id) shown on the night; additive. */
+  photoIds?: string[];
 }
 
 export interface NightActionError {
@@ -95,6 +100,16 @@ interface RawPublishedNight {
   rounds?: number | string | null;
   my_round?: boolean | null;
   is_mine?: boolean | null;
+  hero_photos?: unknown;
+}
+
+function firstHeroPhotoUrl(value: unknown): string | null {
+  if (!Array.isArray(value)) return null;
+  for (const photo of value) {
+    const url = resolveBeerPhotoUrl((photo as { image_url?: unknown } | null)?.image_url);
+    if (url) return url;
+  }
+  return null;
 }
 
 interface RequestOk {
@@ -155,26 +170,49 @@ export function parsePublishedNight(raw: RawPublishedNight): PublishedNight {
     rounds: parseCount(raw.rounds),
     myRound: raw.my_round === true,
     isMine: raw.is_mine === true,
+    heroPhotoUrl: firstHeroPhotoUrl(raw.hero_photos),
   };
 }
 
+const NIGHT_PUB_NAME_MAX = 80;
+const NIGHT_PUB_NAMES_MAX = 5;
+const NIGHT_CITY_MAX = 120;
+const NIGHT_COUNT_MAX = 65_535;
+
+function fitNightText(value: string, max: number): string {
+  const text = value.trim();
+  const chars = Array.from(text);
+  if (chars.length <= max) return text;
+  return `${chars.slice(0, max - 1).join('').trimEnd()}…`;
+}
+
+function wireCount(value: number): number {
+  return Math.min(NIGHT_COUNT_MAX, Math.max(0, Math.floor(value)));
+}
+
 export function nightPublishWire(payload: NightPublishPayload): Record<string, unknown> {
+  const pubNames = payload.pubNames
+    .map((name) => fitNightText(name, NIGHT_PUB_NAME_MAX))
+    .filter(Boolean)
+    .slice(0, NIGHT_PUB_NAMES_MAX);
+  const duration = payload.durationMinutes;
   return {
     client_id: payload.clientId,
     drinking_day: payload.drinkingDay,
     started_at: payload.startedAt,
     ended_at: payload.endedAt,
-    beer_count: payload.beerCount,
-    wine_count: payload.wineCount,
-    soft_drink_count: payload.softDrinkCount,
-    shot_count: payload.shotCount,
-    pub_names: payload.pubNames,
-    ...(payload.city !== undefined ? { city: payload.city } : {}),
-    ...(payload.durationMinutes !== undefined
-      ? { duration_minutes: payload.durationMinutes }
+    beer_count: wireCount(payload.beerCount),
+    wine_count: wireCount(payload.wineCount),
+    soft_drink_count: wireCount(payload.softDrinkCount),
+    shot_count: wireCount(payload.shotCount),
+    pub_names: pubNames,
+    ...(payload.city !== undefined ? { city: fitNightText(payload.city, NIGHT_CITY_MAX) } : {}),
+    ...(duration !== undefined && Number.isFinite(duration)
+      ? { duration_minutes: Math.max(1, Math.round(duration)) }
       : {}),
     visibility: payload.visibility,
     updated_at: payload.updatedAt,
+    ...(payload.photoIds ? { photo_ids: payload.photoIds } : {}),
   };
 }
 
@@ -317,4 +355,37 @@ export function isRetriableNightError(result: NightActionError): boolean {
   if (status === 401 || status === 429) return true;
   if (status >= 400 && status < 500) return false;
   return true;
+}
+
+export interface NightsSummaryLeader {
+  kind: 'city' | 'account';
+  name: string;
+  isMe: boolean;
+}
+
+export type NightsSummaryResult =
+  | { ok: true; nights: number; beers: number; leader: NightsSummaryLeader | null }
+  | NightActionError;
+
+/** GET /v1/nights/summary: the "last 7 days" aggregate of one feed scope. */
+export async function fetchNightsSummary(
+  scope: NightsFeedScope,
+  days = 7,
+): Promise<NightsSummaryResult> {
+  const res = await requestJson(`/v1/nights/summary?scope=${scope}&days=${days}`);
+  if (!res.ok) return res.result;
+  const leader = rawObject(res.data.leader) as Record<string, unknown>;
+  return {
+    ok: true,
+    nights: parseCount(res.data.nights),
+    beers: parseCount(res.data.beers),
+    leader:
+      typeof leader.name === 'string' && leader.name
+        ? {
+            kind: leader.kind === 'account' ? 'account' : 'city',
+            name: leader.name,
+            isMe: leader.is_me === true,
+          }
+        : null,
+  };
 }

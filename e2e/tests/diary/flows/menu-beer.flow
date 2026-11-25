@@ -1,9 +1,10 @@
 appId: ${MAESTRO_APP_ID}
 ---
-- runFlow:
-    file: ../../../maestro/route.yaml
-    env:
-      ROUTE: /beer
+- runFlow: ../../../maestro/counter.yaml
 - tapOn:
     id: counter-primary
-- tapOn: 'Připsat E2E Ležák za 0,5 l · 41 Kč'
+- tapOn: 'E2E Ležák, 41\sKč'
+- tapOn:
+    id: drink-save
+- assertNotVisible:
+    id: drink-save

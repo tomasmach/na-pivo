@@ -14,12 +14,6 @@ export function pingStop(run: Pick<TourRun, 'snapshot' | 'statuses'>): { stop: T
   return next ? { stop: next, heading: true } : null;
 }
 
-/** Friends walking the tour already sit at the table; everyone else hears about it. Undefined keeps the plain "whole party". */
-export function pingRecipients(friendIds: string[], crewIds: string[]): string[] | undefined {
-  const away = friendIds.filter((id) => !crewIds.includes(id));
-  return away.length < friendIds.length ? away : undefined;
-}
-
 export type PingResult = { status: 'sent' | 'queued'; clientId: string } | { error: string };
 
 /** One ping per tour at a time: whatever still waits for signal gives way to where the crew is now. */

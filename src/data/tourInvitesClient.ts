@@ -34,6 +34,7 @@ export interface OpenTourInvite extends MyTourInvite {
   title: string;
   scheduledDate: string | null;
   scheduledTime: string | null;
+  timezone: string;
   firstPub: string;
 }
 
@@ -168,11 +169,12 @@ export async function answerTourInvite(planId: string, status: 'going' | 'declin
 
 function parseOpen(raw: unknown): OpenTourInvite | null {
   const mine = parseMine(raw);
-  const r = raw as { token?: unknown; title?: unknown; scheduled_date?: unknown; scheduled_time?: unknown; first_pub?: unknown };
+  const r = raw as { token?: unknown; title?: unknown; scheduled_date?: unknown; scheduled_time?: unknown; timezone?: unknown; first_pub?: unknown };
   if (!mine || typeof r.token !== 'string' || !/^[A-Za-z0-9_-]{20,200}$/.test(r.token) || typeof r.title !== 'string') return null;
   return { ...mine, token: r.token, title: r.title,
     scheduledDate: typeof r.scheduled_date === 'string' ? r.scheduled_date : null,
     scheduledTime: typeof r.scheduled_time === 'string' ? r.scheduled_time : null,
+    timezone: typeof r.timezone === 'string' && r.timezone ? r.timezone : 'Europe/Prague',
     firstPub: typeof r.first_pub === 'string' ? r.first_pub : '' };
 }
 

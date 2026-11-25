@@ -19,11 +19,14 @@ from pubs.models import (
     Account,
     AmenityKind,
     BeerBrand,
+    BeerProduct,
+    BeerRanking,
     PubAmenity,
     PubBeerBrand,
     PubCommunityData,
     PubDirectory,
     PubExternalBeerMenu,
+    PubGooglePlace,
     PubHours,
     PubNameCorrection,
     PubPriceIndex,
@@ -159,6 +162,133 @@ def test_local_first_serves_directory_without_provider_or_search_cache(client, s
     assert [item["name"] for item in body["items"]] == ["Hospoda Z Adresáře"]
     assert body["fetched_at"]
     assert not PubSearchCache.objects.exists()
+
+
+@pytest.mark.django_db
+def test_directory_response_keeps_exact_items_with_every_enrichment(client):
+    """Pin the full wire items while the nearby read path is optimised."""
+    directory = _directory_pub("Hospoda U Měření", lat=50.0815, lng=14.4185)
+    PubHours.objects.create(
+        cache_key=directory.cache_key,
+        name=directory.name,
+        lat=directory.lat,
+        lng=directory.lng,
+        opening_hours_raw="24/7",
+        status=PubHours.Status.OK,
+        rating_value=4.4,
+        rating_count=120,
+        rating_label="Velmi dobré",
+        has_garden=True,
+        venue_kind=PubHours.VenueKind.PUB,
+        venue_categories=["Hospody a hostince"],
+        venue_tags=["se-zahradkou"],
+    )
+    PubGooglePlace.objects.create(
+        cache_key=directory.cache_key,
+        name_key=directory.name_key,
+        google_place_id="ChIJ-measured",
+        matched_at=dj_tz.now(),
+    )
+    observed_at = dj_tz.now().replace(microsecond=0) - timedelta(days=3)
+    PubPriceIndex.objects.create(
+        cache_key=directory.cache_key,
+        name=directory.name,
+        lat=directory.lat,
+        lng=directory.lng,
+        price_czk=59,
+        volume_ml=None,
+        observed_at=observed_at,
+        source=PubPriceIndex.Source.DRINK,
+    )
+    _directory_pub("Bar Vedle", lat=50.0816, lng=14.4190, venue_kind="maybe")
+    PubNameCorrection.objects.create(
+        client_id="aaaaaaaa-1111-2222-3333-444444444451",
+        cache_key=geohash8(50.0816, 14.4190),
+        external_id="mapy:50.08160,14.41900",
+        original_name="Bar Vedle",
+        suggested_name="Bar Vedle Opravený",
+        lat=50.0816,
+        lng=14.4190,
+        active=True,
+    )
+    PubCommunityData.objects.create(
+        cache_key=geohash8(50.0820, 14.4170),
+        name="Komunitní Výčep",
+        lat=50.0820,
+        lng=14.4170,
+        city="Praha",
+        external_id="provider-community-id",
+        beers=[{"name": "Kozel 11°", "price_czk": 49, "volume_ml": 500}],
+        hours_json={day: [] for day in ("mo", "tu", "we", "th", "fr", "sa", "su")},
+        opening_hours_raw="off",
+    )
+
+    resp = client.get("/v1/pubs/near", data={"lat": _LAT, "lng": _LNG, "radius_km": 1})
+
+    assert resp.status_code == status.HTTP_200_OK
+    country = {"name": "Česko", "type": "regional.country", "isoCode": "CZ"}
+    assert resp.json()["items"] == [
+        {
+            "name": "Hospoda U Měření",
+            "label": "Hospoda",
+            "position": {"lat": 50.0815, "lon": 14.4185},
+            "regionalStructure": [
+                {"name": "Praha", "type": "regional.municipality"},
+                country,
+            ],
+            "googlePlaceId": "ChIJ-measured",
+            "pubDetails": {
+                "opening_hours": "24/7",
+                "isOpenNow": True,
+                "nextChange": None,
+                "status": "ok",
+                "source": "firmy",
+                "rating": 4.4,
+                "ratingCount": 120,
+                "ratingLabel": "Velmi dobré",
+                "hasGarden": True,
+                "venueKind": "pub",
+                "beer_menu_rotates": False,
+                "price": {
+                    "czk": 59,
+                    "volume_ml": 500,
+                    "observed_at": observed_at.isoformat().replace("+00:00", "Z"),
+                    "source": "drink",
+                },
+            },
+        },
+        {
+            "name": "Bar Vedle Opravený",
+            "label": "Restaurace a pohostinství",
+            "position": {"lat": 50.0816, "lon": 14.419},
+            "regionalStructure": [
+                {"name": "Praha", "type": "regional.municipality"},
+                country,
+            ],
+        },
+        {
+            "name": "Komunitní Výčep",
+            "label": "Hospoda",
+            "position": {"lat": 50.082, "lon": 14.417},
+            "source": "community_signal",
+            "id": "provider-community-id",
+            "regionalStructure": [{"name": "Praha", "type": "regional.municipality"}],
+            "location": "Praha",
+            "pubDetails": {
+                "opening_hours": "off",
+                "isOpenNow": False,
+                "nextChange": None,
+                "status": "ok",
+                "source": "community",
+                "rating": None,
+                "ratingCount": None,
+                "ratingLabel": None,
+                "hasGarden": None,
+                "venueKind": "pub",
+                "beer_menu_rotates": False,
+            },
+        },
+    ]
 
 
 @pytest.mark.django_db
@@ -462,6 +592,59 @@ def test_local_directory_keeps_distance_authoritative_across_relevance_bands(cli
         "Blízká restaurace",
         "Vzdálenější hospoda",
     ]
+
+
+@pytest.mark.django_db
+def test_directory_marks_restaurants_additively_without_dropping_them(client):
+    rows = [
+        ("Restaurace Na Náměstí", PubHours.VenueKind.PUB),
+        ("Pizzeria Bella", PubHours.VenueKind.PUB),
+        ("U Nováků", PubHours.VenueKind.MAYBE),
+        ("Restaurace a pivnice U Kapra", PubHours.VenueKind.MAYBE),
+        ("Pivovarská restaurace Kotva", PubHours.VenueKind.PUB),
+        ("U Zeleného sudu", PubHours.VenueKind.PUB),
+        ("U Lípy", PubHours.VenueKind.UNKNOWN),
+    ]
+    for index, (name, venue_kind) in enumerate(rows):
+        _directory_pub(name, lat=_LAT + 0.0001 * index, venue_kind=venue_kind)
+
+    resp = client.get("/v1/pubs/near", data={"lat": _LAT, "lng": _LNG, "radius_km": 1})
+
+    items = {item["name"]: item for item in resp.json()["items"]}
+    assert set(items) == {name for name, _ in rows}
+    assert {name for name, item in items.items() if item.get("placeKind") == "restaurant"} == {
+        "Restaurace Na Náměstí",
+        "Pizzeria Bella",
+        "U Nováků",
+    }
+    assert {item.get("placeKind") for item in items.values()} == {"restaurant", None}
+    assert items["Restaurace Na Náměstí"]["label"] == "Hospoda"
+
+
+@pytest.mark.django_db
+def test_beer_and_amenity_filters_keep_the_restaurant_mark(client):
+    restaurant = _directory_pub("Restaurace Na Rohu")
+    pub = _directory_pub("U Zeleného sudu", lat=_LAT + 0.001)
+    brand, _ = BeerBrand.objects.get_or_create(key="pilsner-urquell", defaults={"name": "Pilsner Urquell"})
+    for row in (restaurant, pub):
+        PubBeerBrand.objects.create(
+            cache_key=row.cache_key,
+            name=row.name,
+            lat=row.lat,
+            lng=row.lng,
+            brand=brand,
+            brand_key=brand.key,
+            brand_name=brand.name,
+            source=PubBeerBrand.Source.COMMUNITY,
+        )
+        _amenity("payment_card", name=row.name, lat=row.lat, lng=row.lng)
+
+    for filters in ({"beer_brand": "pilsner-urquell"}, {"amenities": "payment_card"}):
+        resp = client.get("/v1/pubs/near", data={"lat": _LAT, "lng": _LNG, "radius_km": 1, **filters})
+
+        kinds = {item["name"]: item.get("placeKind") for item in resp.json()["items"]}
+        assert kinds == {"Restaurace Na Rohu": "restaurant", "U Zeleného sudu": None}, filters
+    default_cache.clear()
 
 
 @pytest.mark.django_db
@@ -1850,3 +2033,47 @@ def test_beer_name_filter_uses_imported_menus_only_without_a_community_menu(clie
 
     assert resp.status_code == status.HTTP_200_OK
     assert [item["name"] for item in resp.json()["items"]] == ["Imported Only"]
+
+
+@pytest.mark.django_db
+def test_beer_kind_filter_finds_pubs_pouring_craft(client):
+    voted_craft, voted_pale = BeerProduct.objects.filter(active=True, brand__active=True).order_by(
+        "key"
+    )[:2]
+    now = dj_tz.now()
+    BeerRanking.objects.create(product=voted_craft, styles=["craft"], computed_at=now)
+    BeerRanking.objects.create(product=voted_pale, styles=["pale"], computed_at=now)
+    _menu_pub("Hlasovaný craft", _LAT, _LNG, [voted_craft.name])
+    _menu_pub("Craft podle názvu", _LAT + 0.001, _LNG, ["Sibeeria Hoppy IPA"])
+    _menu_pub("Jen ležák", _LAT + 0.002, _LNG, [voted_pale.name, "Gambrinus 10"])
+    _external_menu("Importovaný craft", _LAT + 0.003, ["Zichovec APA"])
+
+    resp = client.get(
+        "/v1/pubs/near",
+        data={"lat": _LAT, "lng": _LNG, "radius_km": 5, "beer_kind": "craft"},
+    )
+
+    assert resp.status_code == status.HTTP_200_OK
+    assert [item["name"] for item in resp.json()["items"]] == [
+        "Hlasovaný craft",
+        "Craft podle názvu",
+        "Importovaný craft",
+    ]
+    assert resp.json()["applied_filters"]["beer_kind"] == "craft"
+    assert resp.json()["applied_filters"]["beer_brand"] is None
+
+
+@pytest.mark.django_db
+def test_beer_kind_filter_rejects_unknown_kind_and_beer_combination(client):
+    BeerBrand.objects.get_or_create(key="pilsner-urquell", defaults={"name": "Pilsner Urquell"})
+    base = {"lat": _LAT, "lng": _LNG, "radius_km": 25}
+
+    unknown = client.get("/v1/pubs/near", data={**base, "beer_kind": "dark"})
+    with_brand = client.get(
+        "/v1/pubs/near", data={**base, "beer_kind": "craft", "beer_brand": "pilsner-urquell"}
+    )
+    with_name = client.get("/v1/pubs/near", data={**base, "beer_kind": "craft", "beer_name": "ipa"})
+
+    assert unknown.status_code == status.HTTP_400_BAD_REQUEST
+    assert with_brand.status_code == status.HTTP_400_BAD_REQUEST
+    assert with_name.status_code == status.HTTP_400_BAD_REQUEST

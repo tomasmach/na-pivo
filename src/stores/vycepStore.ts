@@ -23,18 +23,40 @@ export interface PublishedNightRecord {
   publishedAt: string;
 }
 
-interface VycepState {
+export type NightAutopublish = 'off' | NightVisibility;
+
+/**
+ * Account sharing defaults (GET/PATCH /v1/account/me). Kept on the device so
+ * the auto-publish after Dopito works offline; `sharingDirty` marks a local
+ * change the server has not confirmed yet. Null `nightAutopublish` means the
+ * user has never chosen (the first publish asks).
+ */
+export interface SharingPrefs {
+  shareDefault: NightVisibility;
+  nightAutopublish: NightAutopublish | null;
+  sharingDirty: boolean;
+}
+
+export const DEFAULT_SHARING_PREFS: SharingPrefs = {
+  shareDefault: 'friends',
+  nightAutopublish: null,
+  sharingDirty: false,
+};
+
+interface VycepState extends SharingPrefs {
   /** clientId → publication record for my nights. */
   published: Record<string, PublishedNightRecord>;
 
   markPublished: (clientId: string, visibility: NightVisibility) => void;
   markUnpublished: (clientId: string) => void;
+  setSharing: (patch: Partial<SharingPrefs>) => void;
 }
 
 export const useVycepStore = create<VycepState>()(
   persist(
     (set) => ({
       published: {},
+      ...DEFAULT_SHARING_PREFS,
 
       markPublished: (clientId, visibility) =>
         set((state) => ({
@@ -51,6 +73,8 @@ export const useVycepStore = create<VycepState>()(
           delete next[clientId];
           return { published: next };
         }),
+
+      setSharing: (patch) => set(patch),
     }),
     {
       name: 'na-pivo-vycep',

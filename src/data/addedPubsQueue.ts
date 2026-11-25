@@ -136,6 +136,17 @@ async function saveRegistry(items: AddedPubSubmission[]): Promise<void> {
     (item) => item.syncState !== 'synced' || keptSyncedIds.has(item.client_id),
   );
   await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(kept));
+  registryListeners.forEach((listener) => listener());
+}
+
+const registryListeners = new Set<() => void>();
+
+/** Calls `listener` after every saved change to the own-pubs list, such as a delivered queue item. */
+export function onAddedPubSubmissionsChanged(listener: () => void): () => void {
+  registryListeners.add(listener);
+  return () => {
+    registryListeners.delete(listener);
+  };
 }
 
 const registryTask = createQueueLock();

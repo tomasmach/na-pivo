@@ -558,3 +558,49 @@ def test_hard_delete_keeps_survivor_drink_rows_even_without_surviving_logs():
         price_czk=48,
         source=PubPriceIndex.Source.DRINK,
     ).exists()
+
+
+@pytest.mark.django_db
+def test_hard_delete_rebuilds_each_pub_in_a_shared_cell_from_its_own_logs():
+    deleted = Account.objects.create(device_id="final-purge-neighbour")
+    survivor = Account.objects.create(device_id="final-purge-cell-survivor")
+    cache_key = geohash8(50.0812, 14.4182)
+    pub = _pub_identity(cache_key, "U Zlatého tygra", 50.0812, 14.4182)
+    neighbour = _pub_identity(cache_key, "Kavárna Na Rohu", 50.08122, 14.41823)
+    pub_hours = _weekly_hours([["11:00", "23:00"]])
+    pub_beers = [_beer("Pilsner Urquell", 59)]
+    for kind, payload in (
+        (PubContributionLog.Kind.HOURS, pub_hours),
+        (PubContributionLog.Kind.BEERS, pub_beers),
+    ):
+        PubContributionLog.objects.create(
+            account=survivor, **pub, kind=kind, payload=payload, client_id=uuid.uuid4()
+        )
+    PubContributionLog.objects.create(
+        account=deleted,
+        **neighbour,
+        kind=PubContributionLog.Kind.HOURS,
+        payload=_weekly_hours([["08:00", "12:00"]]),
+        client_id=uuid.uuid4(),
+    )
+    PubCommunityData.objects.create(
+        account=survivor,
+        **pub,
+        hours_json=pub_hours,
+        opening_hours_raw="Mo 11:00-23:00",
+        beers=pub_beers,
+    )
+    PubCommunityData.objects.create(
+        account=deleted,
+        **neighbour,
+        hours_json=_weekly_hours([["08:00", "12:00"]]),
+        opening_hours_raw="Mo 08:00-12:00",
+    )
+
+    accounts.hard_delete(deleted)
+
+    row = PubCommunityData.objects.get(cache_key=cache_key)
+    assert row.name == "U Zlatého tygra"
+    assert row.hours_json == pub_hours
+    assert row.beers == pub_beers
+    assert row.account == survivor

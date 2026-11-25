@@ -10,14 +10,12 @@ from __future__ import annotations
 import statistics
 from collections import defaultdict
 from datetime import datetime, timedelta
-from io import BytesIO
 
 from django.conf import settings
 from django.db import transaction
 from django.db.models import F, Q
 from django.utils import formats, timezone, translation
 from django.utils.translation import gettext
-from PIL import Image, ImageDraw
 
 from pubs.api.pub_beers_views import _merged_aliases, _places, city_name
 from pubs.api.views import _globally_reported_pub_cache_keys
@@ -26,7 +24,7 @@ from pubs.beer_catalog import (
     BEER_PRICE_MAX_CZK,
     BEER_PRICE_MIN_CZK,
     BeerCatalogMatchCache,
-    match_beer,
+    poured_product,
 )
 from pubs.enrichment import names_match
 from pubs.models import (
@@ -38,21 +36,18 @@ from pubs.models import (
     PubContributionLog,
 )
 from pubs.price_map import (
-    _FOAM,
-    _FOAM_MUTED,
-    _GROUND,
-    _HAIR,
-    _MUTED,
-    CHEAPEST_MIN_CZK,
     FRESH_DAYS,
     WINDOW_DAYS,
     _chunks,
-    _fitted,
-    _font,
     _in_czechia,
     _round,
     prague_district,
+    public_floor,
+    share_card,
+    shows_price,
 )
+from pubs.web.places import is_private_pub
+from pubs.web.words import plural
 
 # A beer gets its page once this many pubs confirmed it within FRESH_DAYS.
 MIN_PUBS = 3
@@ -82,13 +77,16 @@ def _price(beer: dict) -> int | None:
     return price if BEER_PRICE_MIN_CZK <= price <= BEER_PRICE_MAX_CZK else None
 
 
-def _serving(beers: list[dict]) -> tuple[int | None, int | None]:
+def _serving(beers: list[dict], floor: int) -> tuple[int | None, int | None]:
     """The price the page shows for one pub: half a litre if it has one, else the biggest glass.
 
     The same beer twice in one glass size (tank and keg) shows the cheaper one.
     """
 
-    priced = [(price, beer.get("volume_ml")) for beer in beers if (price := _price(beer)) is not None]
+    priced = [
+        (price, beer.get("volume_ml")) for beer in beers
+        if (price := _price(beer)) is not None and shows_price(price, beer.get("volume_ml"), floor)
+    ]
     if not priced:
         return None, beers[0].get("volume_ml")
     return min(priced, key=lambda served: (served[1] != 500, -(served[1] or 0), served[0]))
@@ -168,11 +166,7 @@ def _summary(pubs: list[dict]) -> dict:
             [pub["price_czk"] for pub in half_litres], n=4, method="inclusive"
         )
         summary.update(median=_round(median), p25=_round(p25), p75=_round(p75))
-    cheapest = min(
-        (pub for pub in half_litres if pub["price_czk"] >= CHEAPEST_MIN_CZK),
-        key=lambda pub: pub["price_czk"],
-        default=None,
-    )
+    cheapest = min(half_litres, key=lambda pub: pub["price_czk"], default=None)
     if cheapest:
         summary["cheapest"] = {key: cheapest[key] for key in ("name", "city", "price_czk")}
     return summary
@@ -190,16 +184,17 @@ def build_beer_pages(now: datetime | None = None) -> dict:
     now = now or timezone.now()
     since = now - timedelta(days=WINDOW_DAYS)
     fresh_since = now - timedelta(days=FRESH_DAYS)
+    floor = public_floor()
     match_cache = BeerCatalogMatchCache()
     products: dict[str, BeerProduct] = {}
 
     def product_of(name) -> BeerProduct | None:
         # The exact spelling rules every menu write uses, so a page shows one beer, not a guess.
-        match = match_beer(str(name or ""), fuzzy=False, match_cache=match_cache)
-        if match is None or match.product is None:
-            return None
-        products.setdefault(match.product.key, match.product)
-        return match.product
+        # Poured from a tank it is still that beer, as the app's own index counts it.
+        product = poured_product(str(name or ""), match_cache)
+        if product is not None:
+            products.setdefault(product.key, product)
+        return product
 
     # A duplicate merged into another pub is that pub: it counts once, with its newest write.
     # Its old menu stands in only while the pub has no menu of its own, and writes under the
@@ -248,17 +243,18 @@ def build_beer_pages(now: datetime | None = None) -> dict:
         menu = menus[cache_key]
         pub_key = targets.get(cache_key, cache_key)
         place = places.get(pub_key)
-        if cache_key in excluded or pub_key in excluded or place is None:
+        if cache_key in excluded or pub_key in excluded or place is None or is_private_pub(place["name"]):
             continue
         # The menu must be this pub's, under its own name or the name of a duplicate merged into it.
         if not any(names_match(name, menu.name) for name in (place["name"], *alias_names.get(cache_key, []))):
             continue
         at = confirmed[(cache_key, product_key)]
-        price, volume = _serving(on_tap[(cache_key, product_key)])
+        price, volume = _serving(on_tap[(cache_key, product_key)], floor)
         city = place["city"] or menu.city or ""
         by_product[product_key][pub_key] = {
+            "cache_key": pub_key,
             "name": place["name"],
-            "city": prague_district(city) or city_name(city),
+            "city": prague_district(city, place["lat"], place["lng"]) or city_name(city),
             # The pub's own place, which the app's map already shows everyone.
             "lat": round(place["lat"], 5),
             "lng": round(place["lng"], 5),
@@ -341,51 +337,57 @@ def save_beer_pages(now: datetime | None = None) -> dict:
     return pages["list"]
 
 
-def render_og_image(page: BeerPage, lang: str) -> bytes:
-    """A flat 1200 × 630 share image: the beer, how many pubs have it and what it costs."""
+def render_og_image(page: BeerPage, lang: str, ranking: dict | None = None) -> bytes:
+    """Share image of a beer, a brand or the list: the rating once people rated it, else what it costs."""
 
     data = page.data
-    image = Image.new("RGB", (1200, 630), _GROUND)
-    draw = ImageDraw.Draw(image)
     with translation.override(lang):
-        if page.kind == BeerPage.Kind.LIST:
-            title = gettext("Kde se čepuje které pivo")
-            figures = [(gettext("Piva"), len(data["beers"]), ""), (gettext("Hospody"), data["pubs"], "")]
-        elif page.kind == BeerPage.Kind.BRAND:
-            title = gettext("Kde se čepuje %(beer)s") % {"beer": data["name"]}
-            figures = [(gettext("Piva"), len(data["beers"]), ""), (gettext("Hospody"), data["pubs"], "")]
-        else:
-            title = gettext("Kde se čepuje %(beer)s") % {"beer": data["name"]}
-            figures = [(gettext("Hospody"), data["pubs"], "")]
-            if data["median"] is not None:
-                figures.append((gettext("Obvykle za 0,5 l"), data["median"], gettext("Kč")))
-            if data["cheapest"]:
-                figures.append((gettext("Nejlevněji za 0,5 l"), data["cheapest"]["price_czk"], gettext("Kč")))
-
-        draw.text((80, 92), "Na pivo", font=_font("ExtraBold", 40), fill=_FOAM, anchor="ls")
-        draw.text((80, 196), title, font=_fitted(draw, title, "ExtraBold", 72, 1040), fill=_FOAM, anchor="ls")
-        draw.line((80, 252, 1120, 252), fill=_HAIR, width=2)
-        number_font = _font("ExtraBold", 132)
-        unit_font = _font("ExtraBold", 44)
-        for index, (label, number, unit) in enumerate(figures):
-            x = 80 + index * 360
-            value = str(number)
-            draw.text((x, 318), label, font=_fitted(draw, label, "SemiBold", 36, 330), fill=_FOAM_MUTED, anchor="ls")
-            draw.text((x, 462), value, font=number_font, fill=_FOAM, anchor="ls")
-            if unit:
-                unit_x = x + draw.textlength(value, font=number_font) + 14
-                draw.text((unit_x, 462), unit, font=unit_font, fill=_FOAM_MUTED, anchor="ls")
-
-        draw.line((80, 524, 1120, 524), fill=_HAIR, width=2)
-        footer = gettext("Potvrzeno za poslední 3 měsíce, stav k %(date)s") % {
-            "date": formats.date_format(page.day, "DATE_FORMAT"),
-        }
-        draw.text((80, 576), footer, font=_fitted(draw, footer, "SemiBold", 30, 640), fill=_MUTED, anchor="ls")
+        unit = gettext("Kč")
         address = settings.PUBLIC_WEB_ORIGIN.split("://", 1)[-1] + page_path(page.kind, page.key, lang)
-        draw.text(
-            (1120, 576), address, font=_fitted(draw, address, "SemiBold", 30, 420), fill=_FOAM_MUTED, anchor="rs"
+        if page.kind == BeerPage.Kind.LIST:
+            return share_card(
+                eyebrow=gettext("Potvrzeno za poslední 3 měsíce"),
+                title=gettext("Kde se čepuje které pivo"),
+                number=str(len(data["beers"])),
+                number_label=plural(len(data["beers"]), gettext("pivo s vlastní stránkou"),
+                                    gettext("piva s vlastní stránkou"), gettext("piv s vlastní stránkou")),
+                figures=[(str(data["pubs"]), plural(data["pubs"], gettext("hospoda"), gettext("hospody"), gettext("hospod")))],
+                address=address,
+            )
+        if page.kind == BeerPage.Kind.BRAND:
+            return share_card(
+                eyebrow=gettext("Značka"),
+                title=data["name"],
+                number=str(data["pubs"]),
+                number_label=plural(data["pubs"], gettext("hospoda je čepuje"), gettext("hospody je čepují"),
+                                    gettext("hospod je čepuje")),
+                figures=[(str(len(data["beers"])), plural(len(data["beers"]), gettext("pivo na stránce"),
+                                                          gettext("piva na stránce"), gettext("piv na stránce")))],
+                address=address,
+            )
+        figures = []
+        served = plural(data["pubs"], gettext("hospoda ho čepuje"), gettext("hospody ho čepují"), gettext("hospod ho čepuje"))
+        rated = ranking is not None and ranking["avg"] is not None
+        if rated:
+            number = formats.number_format(round(ranking["avg"], 1), 1)
+            number_label = gettext("z %(count)s hodnocení") % {"count": ranking["count"]}
+            if data["median"] is not None:
+                figures.append((f"{data['median']}\u00a0{unit}", gettext("obvykle za 0,5 l")))
+        elif data["median"] is not None:
+            number, number_label = f"{data['median']}\u00a0{unit}", gettext("obvykle za 0,5 l")
+        else:
+            number, number_label = str(data["pubs"]), served
+        if rated or data["median"] is not None:
+            figures.append((str(data["pubs"]), served))
+        if data["cheapest"]:
+            figures.append((f"{data['cheapest']['price_czk']}\u00a0{unit}", gettext("nejlevněji za 0,5 l")))
+        if rated and ranking["rank"]:
+            figures.append((f"{ranking['rank']}.", gettext("v žebříčku piv")))
+        return share_card(
+            eyebrow=data["brand_name"] if data["brand_name"] not in data["name"] else "",
+            title=data["name"],
+            number=number,
+            number_label=number_label,
+            figures=figures,
+            address=address,
         )
-
-    buffer = BytesIO()
-    image.save(buffer, format="PNG", optimize=True)
-    return buffer.getvalue()

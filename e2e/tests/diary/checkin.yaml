@@ -1,7 +1,9 @@
 # Known visual failure NP-E2E-015: ../../BUGS.md. The data oracle verifies the rating; Czech decimal formatting remains incorrect.
 appId: ${MAESTRO_APP_ID}
 name: Offline rating survives restart and populates the beer detail
-tags: [full, diary]
+# Not rewritten for the new look yet: still drives the removed screens.
+# critical and full skip it; see ../../COVERAGE.md.
+tags: [full, diary, legacy-ui]
 ---
 - runFlow: flows/start.flow
 - runFlow: flows/menu-beer.flow

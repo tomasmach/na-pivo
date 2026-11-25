@@ -1,4 +1,6 @@
 import * as Linking from 'expo-linking';
+import { geohash8 } from '@/data/geohash';
+import { trackPubReach } from '@/data/pubReachClient';
 import type { Pub } from '@/data/pubs';
 import { useSettingsStore, type HomePoint, type NavigationProvider } from '@/stores/settingsStore';
 
@@ -30,10 +32,9 @@ export function buildMapsUrl(pub: MapsLinkPub): string {
   return `https://www.google.com/maps/search/?${params.toString()}`;
 }
 
-/**
- * Convenience wrapper that uses expo-linking to open the URL.
- */
+/** Opens navigation to the pub; every pub in the app navigates through here, so the tap counts here. */
 export async function openPubInMaps(pub: MapsLinkPub): Promise<void> {
+  trackPubReach('navigation', geohash8(pub.lat, pub.lng));
   const url = buildNavigationUrl(
     pub,
     useSettingsStore.getState().navigationProvider,

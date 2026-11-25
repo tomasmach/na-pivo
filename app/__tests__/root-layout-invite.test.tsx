@@ -74,7 +74,14 @@ jest.mock('expo-router', () => {
     return null;
   };
   const router = { push: (...args: unknown[]) => mockPush(...args), replace: jest.fn() };
-  return { Stack, useRouter: () => router, usePathname: () => '/', useRootNavigationState: () => undefined };
+  return {
+    DarkTheme: { colors: {} },
+    Stack,
+    ThemeProvider: ({ children }: { children: React.ReactNode }) => children,
+    useRouter: () => router,
+    usePathname: () => '/',
+    useRootNavigationState: () => undefined,
+  };
 });
 
 jest.mock('expo-font', () => ({
@@ -99,7 +106,6 @@ jest.mock('react-native-safe-area-context', () => ({
 jest.mock('react-native-gesture-handler', () => ({
   GestureHandlerRootView: ({ children }: { children: React.ReactNode }) => children,
 }));
-jest.mock('@/theme/fonts', () => ({ fontAssets: {} }));
 
 jest.mock('@/data/pubReportQueue', () => mockResolved('flushPubReportQueue'));
 jest.mock('@/data/pubNameCorrectionsQueue', () => mockResolved('flushPubNameCorrectionsQueue'));
@@ -156,7 +162,8 @@ jest.mock('@/data/productTelemetry', () => ({
   trackScreenViewed: jest.fn(),
 }));
 jest.mock('@/data/walkingTelemetry', () => ({ flushWalkingDistance: jest.fn() }));
-jest.mock('@/data/account', () => mockResolved('getCachedAuthenticationState'));
+jest.mock('@/data/account', () => mockResolved('getCachedAuthenticationState', 'flushAccountPreferences'));
+jest.mock('@/data/sharingPrefsClient', () => mockResolved('flushSharingPrefs'));
 jest.mock('@/data/localeHeader', () => ({ installBackendLocaleHeader: jest.fn() }));
 jest.mock('@/stores/accountStore', () => {
   const state = {
@@ -188,6 +195,7 @@ jest.mock('@/stores/releaseStore', () => ({
 }));
 jest.mock('@/stores/tallyStore', () => ({
   useTallyStore: { getState: () => ({ current: null }), subscribe: jest.fn(() => () => undefined) },
+  onTallySessionClosed: jest.fn(() => () => undefined),
 }));
 jest.mock('@/notifications/friendPush', () => ({
   ...mockResolved('consumeInitialTourInviteTap', 'ensureFriendPushRegisteredIfGranted'),
@@ -202,19 +210,6 @@ jest.mock('@/stores/beerWatchStore', () => ({
   useBeerWatchStore: { getState: () => mockResolved('refresh') },
 }));
 jest.mock('@/location/locationCurrency', () => mockResolved('refreshCurrencyFromLastKnownLocation'));
-jest.mock('@/components/shared/WhatsNewModal', () => mockComponents('WhatsNewModal'));
-jest.mock('@/photos/ContestResultsModal', () => mockComponents('ContestResultsModal'));
-jest.mock('@/components/shared/PubReminderOnboardingModal', () =>
-  mockComponents('PubReminderOnboardingModal'),
-);
-jest.mock('@/components/shared/NicknameNudgeModal', () => mockComponents('NicknameNudgeModal'));
-jest.mock('@/components/shared/PubReminderEnableFailureModal', () =>
-  mockComponents('PubReminderEnableFailureModal'),
-);
-jest.mock('@/components/shared/AppDialog', () => mockComponents('AppDialogScreen'));
-jest.mock('@/reviews/AppReviewPromptGate', () => mockComponents('AppReviewPromptGate'));
-jest.mock('@/components/shared/Toast', () => mockComponents('Toast'));
-jest.mock('@/profile/BadgeHost', () => mockComponents('BadgeHost'));
 jest.mock('@/notifications/pubReminderNotifications', () => ({
   ...mockResolved(
     'cancelPendingPubReminder',
@@ -246,6 +241,9 @@ jest.mock('@/transit/homeTransitSync', () => ({
 import { Linking } from 'react-native';
 
 import { sendFriendRequest } from '@/data/friendsClient';
+import { refreshCurrencyFromLastKnownLocation } from '@/location/locationCurrency';
+import { markFirstScreenShown } from '@/navigation/firstScreen';
+import { consumeInitialPubReminderTap } from '@/notifications/pubReminderNotifications';
 import { restorePubAmenities } from '@/data/pubAmenitiesSync';
 import { restorePubRatings } from '@/data/pubRatingsSync';
 import { trackClientEvent } from '@/data/telemetryClient';
@@ -290,6 +288,13 @@ it('claims and syncs one invite link once, without pushing from the root layout'
     mockFontListeners.forEach((listener) => listener());
   });
   await settle();
+  expect(restorePubRatings).not.toHaveBeenCalled();
+  expect(refreshCurrencyFromLastKnownLocation).not.toHaveBeenCalled();
+  expect(consumeInitialPubReminderTap).toHaveBeenCalled();
+  await act(async () => {
+    markFirstScreenShown();
+  });
+  await settle();
 
   expect(mockPush).not.toHaveBeenCalled();
   expect(mockRemounts).toBe(0);
@@ -297,6 +302,7 @@ it('claims and syncs one invite link once, without pushing from the root layout'
   expect(sendFriendRequest).toHaveBeenCalledWith({ inviteCode: 'YVM4Q4rcJmNs' });
   expect(restorePubRatings).toHaveBeenCalledTimes(1);
   expect(restorePubAmenities).toHaveBeenCalledTimes(1);
+  expect(refreshCurrencyFromLastKnownLocation).toHaveBeenCalledTimes(2);
   expect(
     (trackClientEvent as jest.Mock).mock.calls.filter(([event]) => event.event === 'app_open'),
   ).toHaveLength(1);

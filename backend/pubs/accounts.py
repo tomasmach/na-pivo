@@ -55,7 +55,7 @@ from django.utils.translation import gettext
 from PIL import Image, ImageOps, UnidentifiedImageError
 from PIL.Image import DecompressionBombError
 
-from pubs import community_trust, emailer, oauth
+from pubs import community_trust, emailer, oauth, pub_reach
 from pubs.beer_catalog import BeerCatalogMatchCache, sync_pub_beer_indexes_for_menu
 from pubs.beer_photo_deletions import (
     enqueue_account_avatar_file_deletion,
@@ -65,6 +65,7 @@ from pubs.beer_photo_deletions import (
 )
 from pubs.enrichment.normalizer import community_hours_to_osm
 from pubs.i18n import current_locale, locale_for_account, remember_account_locale
+from pubs.identity import matching_pub_row
 from pubs.models import (
     Account,
     AccountDeletionOperation,
@@ -99,6 +100,7 @@ from pubs.models import (
     FriendBlock,
     FriendInviteCode,
     FriendNotification,
+    FriendPlanGuest,
     FriendPubActivity,
     FriendPubActivityRecipient,
     Friendship,
@@ -135,6 +137,7 @@ from pubs.models import (
     PubVisit,
     PushDevice,
     UserAddedPub,
+    XpEvent,
     account_deletion_fingerprint_candidates,
     account_merge_fingerprint,
     account_merge_fingerprint_matches,
@@ -901,6 +904,11 @@ def set_password(account: Account, raw_password: str, *, email: str | None = Non
     return cred
 
 
+def new_registration_account() -> Account:
+    """Fresh account for an e-mail registration that has no anonymous account to claim."""
+    return Account.objects.create(device_id=f"reg-{uuid.uuid4()}")
+
+
 def register_email(
     current_account: Account | None,
     *,
@@ -1067,7 +1075,7 @@ def verify_provider_token(provider: str, token: str) -> dict:
     raise AccountError(gettext("Neznámý poskytovatel přihlášení."), code="bad_provider")
 
 
-def apple_refresh_from_code(authorization_code: str) -> str:
+def apple_refresh_from_code(authorization_code: str, *, client_id: str = "", redirect_uri: str = "") -> str:
     """Exchange an Apple auth code for a refresh token.
 
     Returns an empty string when no code is provided or the exchange fails; callers
@@ -1076,7 +1084,9 @@ def apple_refresh_from_code(authorization_code: str) -> str:
     if not authorization_code:
         return ""
     try:
-        data = oauth.exchange_apple_auth_code(authorization_code)
+        data = oauth.exchange_apple_auth_code(
+            authorization_code, client_id=client_id, redirect_uri=redirect_uri
+        )
         return data.get("refresh_token", "") or ""
     except oauth.OAuthError as exc:
         logger.warning(
@@ -1723,9 +1733,7 @@ def _merge_contest_entry_tree(
     source_entry: PhotoContestEntry, target_entry: PhotoContestEntry
 ) -> None:
     target_voters = set(
-        PhotoContestVote.objects.filter(contest=target_entry.contest)
-        .exclude(entry=source_entry)
-        .values_list("voter_id", flat=True)
+        PhotoContestVote.objects.filter(entry=target_entry).values_list("voter_id", flat=True)
     )
     for vote in PhotoContestVote.objects.filter(entry=source_entry).order_by("pk"):
         if vote.voter_id in target_voters:
@@ -1752,6 +1760,8 @@ def _merge_beer_photo_tree(
             "pub_cache_key",
             "pub_name",
             "pub_city",
+            "beer_name",
+            "beer_key",
         ):
             if not getattr(target_photo, field_name) and getattr(source_photo, field_name):
                 setattr(target_photo, field_name, getattr(source_photo, field_name))
@@ -1770,10 +1780,10 @@ def _merge_beer_photo_tree(
         entry.photo = target_photo
         entry.save(update_fields=["photo"])
         target_entries[entry.contest_id] = entry
-    # Never turn a reference to a PRIVATE source into a visible FRIENDS photo.
+    # Never turn a reference to a PRIVATE source into a visible shared photo.
     if not (
         source_photo.visibility == BeerPhoto.Visibility.PRIVATE
-        and target_photo.visibility == BeerPhoto.Visibility.FRIENDS
+        and target_photo.visibility != BeerPhoto.Visibility.PRIVATE
     ):
         _replace_published_night_reference(
             "photo_ids",
@@ -1945,6 +1955,13 @@ def _merge_friend_activity_tree(
             target_parent=target_activity,
             unique_fields=("account_id",),
         )
+    _move_parent_rows(
+        FriendPlanGuest,
+        parent_field="activity",
+        source_parent=source_activity,
+        target_parent=target_activity,
+        unique_fields=("device_hash",),
+    )
     FriendNotification.objects.filter(activity=source_activity).update(activity=target_activity)
     source_activity.delete()
 
@@ -2174,17 +2191,9 @@ def _merge_community_events(source: Account, target: Account) -> None:
 
 
 def _merge_photo_contest_entries(source: Account, target: Account) -> None:
-    target_by_contest = {
-        row.contest_id: row for row in PhotoContestEntry.objects.filter(account=target)
-    }
-    for entry in PhotoContestEntry.objects.filter(account=source).order_by("pk"):
-        conflict = target_by_contest.get(entry.contest_id)
-        if conflict is not None:
-            _merge_contest_entry_tree(entry, conflict)
-            continue
-        entry.account = target
-        entry.save(update_fields=["account"])
-        target_by_contest[entry.contest_id] = entry
+    # An account may hold several entries per round, so every source entry
+    # simply moves. Entries of one photo were already merged with the photo.
+    PhotoContestEntry.objects.filter(account=source).update(account=target)
 
 
 def _merge_tour_invites(source: Account, target: Account) -> None:
@@ -2234,6 +2243,31 @@ def _merge_beer_watches(source: Account, target: Account) -> None:
         update_fields += ["beer_watch_lat", "beer_watch_lng", "beer_watch_located_at"]
     if update_fields:
         target.save(update_fields=update_fields)
+
+
+def _move_visit_reactions(dropped: PubVisit, kept: PubVisit) -> None:
+    """Cheers received on a duplicate visit follow the copy that stays."""
+    from pubs.models import PubVisitReaction
+
+    _delete_or_move_account_rows(
+        PubVisitReaction, source=dropped, target=kept, unique_fields=("account_id",), account_field="visit"
+    )
+
+
+def _merge_nv_rows(source: Account, target: Account) -> None:
+    """The claimed account keeps its own answer when both voted or joined the same evening."""
+    from pubs.models import BeerStyleVote, FriendHomeCheckin, PubVisitReaction
+
+    _delete_or_move_account_rows(
+        BeerStyleVote, source=source, target=target, unique_fields=("product_id",)
+    )
+    _delete_or_move_account_rows(
+        FriendHomeCheckin, source=source, target=target, unique_fields=("activity_id",)
+    )
+    _delete_or_move_account_rows(
+        PubVisitReaction, source=source, target=target, unique_fields=("visit_id",)
+    )
+    PubVisitReaction.objects.filter(account=target, visit__account=target).delete()
 
 
 def _merge_anonymous_account(source: Account | None, target: Account) -> None:
@@ -2405,8 +2439,11 @@ def _merge_anonymous_account(source: Account | None, target: Account) -> None:
             if visit.closed_at is None and previous.closed_at is not None:
                 visit.closed_at = previous.closed_at
                 visit.save(update_fields=["closed_at"])
+            _move_visit_reactions(previous, visit)
             previous.delete()
-        elif previous.closed_at is None and visit.closed_at is not None:
+            continue
+        _move_visit_reactions(visit, previous)
+        if previous.closed_at is None and visit.closed_at is not None:
             previous.closed_at = visit.closed_at
             previous.save(update_fields=["closed_at"])
     _delete_or_move_account_rows(
@@ -2517,7 +2554,7 @@ def _merge_anonymous_account(source: Account | None, target: Account) -> None:
         source=source,
         target=target,
         account_field="voter",
-        unique_fields=("contest_id",),
+        unique_fields=("entry_id",),
     )
     PhotoContestVote.objects.filter(voter=target, entry__account=target).delete()
 
@@ -2650,14 +2687,17 @@ def _merge_anonymous_account(source: Account | None, target: Account) -> None:
         unique_fields=("push_token",),
     )
     _merge_beer_watches(source, target)
+    _merge_nv_rows(source, target)
 
     PubCommunityData.objects.filter(account=source).update(account=target)
     PubBeerBrand.objects.filter(account=source).update(account=target)
     PubBeerProduct.objects.filter(account=source).update(account=target)
     PubAmenity.objects.filter(first_mapper=source).update(first_mapper=target)
     ClientEvent.objects.filter(account=source).update(account=target)
+    pub_reach.merge_accounts(source.pk, target.pk)
     ContentReport.objects.filter(reporter=source).update(reporter=target)
     ContentReport.objects.filter(target_account=source).update(target_account=target)
+    XpEvent.objects.filter(account=source).update(account=target)
     _merge_usage_stats(source, target)
 
     # Future Account-owned models must be added above. Failing the transaction
@@ -2721,6 +2761,7 @@ def resolve_social(
     claims: dict,
     full_name: str = "",
     apple_refresh_token: str = "",
+    apple_client_id: str = "",
     merge_operation_id: uuid.UUID | None = None,
 ) -> tuple[Account, str, bool]:
     """Resolve a verified social login to an account and issue a token.
@@ -2767,7 +2808,8 @@ def resolve_social(
             updated = []
             if apple_refresh_token and apple_refresh_token != existing.apple_refresh_token:
                 existing.apple_refresh_token = apple_refresh_token
-                updated.append("apple_refresh_token")
+                existing.apple_client_id = apple_client_id
+                updated += ["apple_refresh_token", "apple_client_id"]
             if email and email != existing.email:
                 existing.email = email
                 updated.append("email")
@@ -2864,6 +2906,7 @@ def resolve_social(
                 subject=subject,
                 email=email,
                 apple_refresh_token=apple_refresh_token,
+                apple_client_id=apple_client_id,
             )
             _maybe_set_display_name(account, full_name or claims.get("name", ""))
             # The verified provider subject is the proof, not the email: stamp
@@ -2938,7 +2981,8 @@ def link_social(
             if provider == AuthIdentity.Provider.APPLE:
                 if apple_refresh_token and apple_refresh_token != existing.apple_refresh_token:
                     existing.apple_refresh_token = apple_refresh_token
-                    existing.save(update_fields=["apple_refresh_token"])
+                    existing.apple_client_id = ""
+                    existing.save(update_fields=["apple_refresh_token", "apple_client_id"])
                 elif not existing.apple_refresh_token:
                     raise AccountError(
                         gettext("Propojení přes Apple teď potřebuje nový autorizační kód."),
@@ -3014,7 +3058,7 @@ def unlink(account: Account, *, provider: str) -> None:
         # Revoke at Apple before dropping the identity so we do not lose the only
         # token that can satisfy Apple's deletion/unlink requirement.
         try:
-            oauth.revoke_apple_token(identity.apple_refresh_token)
+            oauth.revoke_apple_token(identity.apple_refresh_token, client_id=identity.apple_client_id)
         except oauth.OAuthError as exc:
             logger.warning(
                 "apple token revoke on unlink failed (%s)",
@@ -3128,6 +3172,60 @@ def request_password_reset(email: str, *, link_base: str | None = None) -> None:
     emailer.send_password_reset_email(
         cred.email, link=link, code=raw, locale=locale_for_account(cred.account)
     )
+
+
+DELETION_LINK_TTL = timedelta(hours=1)
+
+
+def request_account_deletion_link(email: str, *, link_base: str) -> None:
+    """Email a link that confirms account deletion. Silent for unknown e-mails."""
+    norm = normalize_email(email)
+    if not norm:
+        return
+    # A Google or Apple account has no password e-mail; the provider vouched for its address.
+    holder = (
+        EmailCredential.objects.select_related("account")
+        .filter(email=norm, account__status=Account.Status.ACTIVE)
+        .first()
+    ) or (
+        AuthIdentity.objects.select_related("account")
+        .filter(email__iexact=norm, account__status=Account.Status.ACTIVE)
+        .first()
+    )
+    if holder is None:
+        return
+    raw = _create_one_time_token(
+        holder.account, purpose=OneTimeToken.Purpose.DELETE_ACCOUNT, ttl=DELETION_LINK_TTL
+    )
+    emailer.send_account_deletion_link_email(
+        norm,
+        link=_append_token(link_base, raw),
+        locale=locale_for_account(holder.account),
+    )
+
+
+def account_for_deletion_link(raw_token: str) -> Account | None:
+    """The account a still valid deletion link belongs to, without using it up."""
+    return (
+        Account.objects.filter(
+            one_time_tokens__token_hash=hash_account_token(raw_token),
+            one_time_tokens__purpose=OneTimeToken.Purpose.DELETE_ACCOUNT,
+            one_time_tokens__used_at__isnull=True,
+            one_time_tokens__expires_at__gt=timezone.now(),
+        ).first()
+        if raw_token
+        else None
+    )
+
+
+def delete_account_with_link(raw_token: str) -> Account:
+    """Use up a deletion link and start the same deletion as the app's DELETE."""
+    with transaction.atomic():
+        owner = _consume_one_time_token(raw_token, purpose=OneTimeToken.Purpose.DELETE_ACCOUNT)
+        account = Account.objects.select_for_update().get(pk=owner.pk)
+        if account.status == Account.Status.ACTIVE:
+            schedule_deletion(account)
+    return account
 
 
 def reset_password(raw_token: str, *, new_password: str) -> tuple[Account, str]:
@@ -3536,19 +3634,6 @@ def _rebuild_community_signals_after_purge(cache_key: str) -> None:
     consulted. Community-sourced signal rows always restart from that
     provenance; independent EXTERNAL price data is never touched.
     """
-    hours_log = (
-        PubContributionLog.objects.exclude(account=None)
-        .filter(cache_key=cache_key, kind=PubContributionLog.Kind.HOURS)
-        .order_by("-created_at", "-id")
-        .first()
-    )
-    beers_log = (
-        PubContributionLog.objects.exclude(account=None)
-        .filter(cache_key=cache_key, kind=PubContributionLog.Kind.BEERS)
-        .order_by("-created_at", "-id")
-        .first()
-    )
-
     # Community-sourced state loses its provenance with the deleted author and
     # is rebuilt from scratch below. A DRINK-derived price survives only while
     # a surviving account still stands behind the pub's brand/product rows;
@@ -3573,9 +3658,35 @@ def _rebuild_community_signals_after_purge(cache_key: str) -> None:
             cache_key=cache_key, source=PubPriceIndex.Source.DRINK
         ).delete()
 
+    rows = list(PubCommunityData.objects.filter(cache_key=cache_key).order_by("pk"))
+    logs = list(
+        PubContributionLog.objects.exclude(account=None)
+        .filter(
+            cache_key=cache_key,
+            kind__in=[PubContributionLog.Kind.HOURS, PubContributionLog.Kind.BEERS],
+        )
+        .order_by("-created_at", "-id")
+    )
+    for row in rows:
+        own_logs = [log for log in logs if matching_pub_row(rows, log.name) is row]
+        _rebuild_community_row_after_purge(
+            row,
+            hours_log=next((log for log in own_logs if log.kind == PubContributionLog.Kind.HOURS), None),
+            beers_log=next((log for log in own_logs if log.kind == PubContributionLog.Kind.BEERS), None),
+        )
+
+
+def _rebuild_community_row_after_purge(
+    row: PubCommunityData,
+    *,
+    hours_log: PubContributionLog | None,
+    beers_log: PubContributionLog | None,
+) -> None:
+    """Rebuild one pub's menu and hours from its latest surviving logs."""
+    cache_key = row.cache_key
     if hours_log is None and beers_log is None:
         # Nobody survives behind this pub's community state — remove it.
-        PubCommunityData.objects.filter(cache_key=cache_key).delete()
+        row.delete()
         return
 
     newest = max(
@@ -3620,7 +3731,9 @@ def _rebuild_community_signals_after_purge(cache_key: str) -> None:
         defaults["beer_menu_rotates"] = False
         defaults["beers_updated_at"] = None
 
-    PubCommunityData.objects.update_or_create(cache_key=cache_key, defaults=defaults)
+    for field, value in defaults.items():
+        setattr(row, field, value)
+    row.save()
 
     if beers_log is None or not beers:
         return
@@ -3688,6 +3801,7 @@ def _hard_delete_locked(account: Account) -> None:
     UserAddedPub.objects.filter(account=account).delete()
     PubContributionLog.objects.filter(account=account).delete()
     ClientEvent.objects.filter(account=account).delete()
+    pub_reach.forget_account(account.pk)
     # The beer-index account FK is SET_NULL, so without this the purged
     # author's rows would linger anonymously; survivor-owned rows stay.
     PubBeerBrand.objects.filter(account=account).delete()
@@ -3821,7 +3935,7 @@ def _revoke_apple_identities(account: Account, *, fail_on_error: bool = False) -
         if not identity.apple_refresh_token:
             continue
         try:
-            oauth.revoke_apple_token(identity.apple_refresh_token)
+            oauth.revoke_apple_token(identity.apple_refresh_token, client_id=identity.apple_client_id)
         except oauth.OAuthError as exc:
             logger.warning(
                 "apple token revoke on deletion failed (%s)",

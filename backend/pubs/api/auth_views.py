@@ -28,12 +28,11 @@ Account deletion is DELETE /v1/account/me (see pubs.api.views.AccountMeView).
 from __future__ import annotations
 
 import logging
-import uuid
 from urllib.parse import urlencode
 
 from django.conf import settings
 from django.db import transaction as dj_transaction
-from django.http import HttpResponse
+from django.http import HttpResponse, HttpResponseRedirect
 from django.urls import reverse
 from django.utils import timezone as dj_timezone
 from django.utils.translation import gettext, gettext_lazy
@@ -49,9 +48,10 @@ from pubs.accounts import AccountError
 from pubs.api.throttling import SharedScopedRateThrottle as ScopedRateThrottle
 from pubs.i18n import current_locale
 from pubs.models import Account, AuthIdentity, PushDevice
+from pubs.web.routes import web_reverse
 
 from . import auth_serializers as s
-from .authentication import AccountTokenAuthentication
+from .authentication import AccountTokenAuthentication, WebSessionAuthentication
 from .serializers import AccountMeSerializer
 
 logger = logging.getLogger("pubs.api.auth")
@@ -288,7 +288,7 @@ class RegisterView(_AuthView):
             account = _optional_bearer_account(request)
             merge_operation_id = ser.validated_data.get("merge_operation_id")
             if account is None and merge_operation_id is None:
-                account = Account.objects.create(device_id=f"reg-{uuid.uuid4()}")
+                account = accounts.new_registration_account()
             account, token = accounts.register_email(
                 account,
                 email=ser.validated_data["email"],
@@ -463,7 +463,7 @@ class LinkView(_AuthView):
 
 
 class UnlinkView(_AuthView):
-    authentication_classes = [AccountTokenAuthentication]
+    authentication_classes = [AccountTokenAuthentication, WebSessionAuthentication]
     permission_classes = [IsAuthenticated]
     throttle_scope = "auth"
 
@@ -481,7 +481,7 @@ class UnlinkView(_AuthView):
 
 
 class SetPasswordView(_AuthView):
-    authentication_classes = [AccountTokenAuthentication]
+    authentication_classes = [AccountTokenAuthentication, WebSessionAuthentication]
     permission_classes = [IsAuthenticated]
     throttle_scope = "auth"
 
@@ -572,6 +572,13 @@ class RequestPasswordResetView(_AuthView):
 
 
 class ResetPasswordLandingView(APIView):
+    """The link of every reset e-mail, sent ones included: hands the token to the web page.
+
+    That page sets the new password in the browser and, on a phone, also offers
+    ``napivo://auth/reset?token=…`` for the app. The redirect stays relative so
+    the API host forwards it to the web host itself (``canonical_host``).
+    """
+
     authentication_classes: list = []
     permission_classes = [AllowAny]
     throttle_classes = [ScopedRateThrottle]
@@ -579,32 +586,11 @@ class ResetPasswordLandingView(APIView):
 
     def get(self, request: Request) -> HttpResponse:
         raw_token = str(request.query_params.get("token") or "").strip()
-        if not raw_token:
-            return _verify_email_page(
-                title=gettext("Tenhle odkaz nefunguje"),
-                body=gettext(
-                    "Odkazu chybí kód. Otevři e-mail znovu a klepni na tlačítko, "
-                    "nebo si v appce řekni o nový."
-                ),
-                success=False,
-                status_code=status.HTTP_400_BAD_REQUEST,
-            )
-
-        app_link = (
-            f"{settings.APP_DEEP_LINK_SCHEME}://auth/reset?"
-            f"{urlencode({'token': raw_token})}"
-        )
-        return _verify_email_page(
-            title=gettext("Nové heslo"),
-            body=gettext(
-                "Klepni na tlačítko a nastav si nové heslo přímo v appce. "
-                "Otevři tenhle odkaz na telefonu, kde máš Na Pivo nainstalované."
-            ),
-            success=True,
-            status_code=status.HTTP_200_OK,
-            action_link=app_link,
-            action_label=gettext("Nastavit nové heslo v appce"),
-        )
+        query = f"?{urlencode({'token': raw_token})}" if raw_token else ""
+        response = HttpResponseRedirect(f"{web_reverse('web-reset-password', current_locale())}{query}")
+        response.headers["Referrer-Policy"] = "no-referrer"
+        response.headers["Cache-Control"] = "no-store"
+        return response
 
 
 class ResetPasswordView(_AuthView):

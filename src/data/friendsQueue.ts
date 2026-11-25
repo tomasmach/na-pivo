@@ -13,6 +13,7 @@
  * actions on the same activity from colliding:
  *   - rsvp:<activityId>   → respond / clear response
  *   - cheer:<activityId>  → react / clear reaction
+ *   - fcheer:<accountId>  → "Na zdraví" to a friend sitting out / take it back
  *   - act:<clientId>      → live-or-plan broadcast, and its later end (supersedes)
  *   - req:<identity>      → a friend request (invite code / account id / nickname)
  *
@@ -23,7 +24,9 @@
  */
 
 import {
+  cheerFriend,
   clearActivityReaction,
+  clearFriendCheer,
   clearActivityResponse,
   createFriendPlan,
   endFriendPubActivity,
@@ -36,6 +39,7 @@ import {
   type FriendActionResult,
   type TourPing,
 } from './friendsClient';
+import { checkInAtHome, createPartaPlan, leaveHome, type PlaceKind } from './partaPlansClient';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { createQueueStorage, createQueueLock, createCoalescingFlush } from './createQueue';
 import type { QueueSyncResult } from './apiFetch';
@@ -60,6 +64,11 @@ interface ActivityPayload {
   startedAt?: string;
   /** Set when the broadcast comes from a Tour de pub run. Missing on legacy ops. */
   tour?: TourPing;
+  /** New-look plan: a pub, home or custom place. Missing on legacy ops. For a
+   *  home or custom place `pub` only carries the title and 0/0 coordinates. */
+  place?: { kind: PlaceKind; address: string };
+  /** Cinknutí to one friend that joins my live ping. Missing on legacy ops. */
+  addRecipients?: boolean;
 }
 
 /** One pending Parta write, keyed (and deduped) by {@link dedupKey}. */
@@ -68,9 +77,13 @@ export type FriendQueueItem =
   | { op: 'rsvp-clear'; activityId: string }
   | { op: 'cheer'; activityId: string }
   | { op: 'cheer-clear'; activityId: string }
+  | { op: 'friend-cheer'; accountId: string }
+  | { op: 'friend-cheer-clear'; accountId: string }
   | { op: 'activity'; clientId: string; payload: ActivityPayload }
   | { op: 'end'; clientId: string; activityId?: string }
-  | { op: 'request'; key: string; inviteCode?: string; accountId?: string; nickname?: string };
+  | { op: 'request'; key: string; inviteCode?: string; accountId?: string; nickname?: string }
+  | { op: 'home-checkin'; activityId: string; clientId: string }
+  | { op: 'home-leave'; activityId: string };
 
 /**
  * Composite dedup key: the SAME key means last-write-wins. `act:<clientId>` is
@@ -85,13 +98,21 @@ function dedupKey(item: FriendQueueItem): string {
     case 'cheer':
     case 'cheer-clear':
       return `cheer:${item.activityId}`;
+    case 'friend-cheer':
+    case 'friend-cheer-clear':
+      return `fcheer:${item.accountId}`;
     case 'activity':
     case 'end':
       return `act:${item.clientId}`;
     case 'request':
       return `req:${item.key}`;
+    case 'home-checkin':
+    case 'home-leave':
+      return `home:${item.activityId}`;
   }
 }
+
+const PLACE_KINDS: readonly PlaceKind[] = ['pub', 'home', 'custom'];
 
 function isPub(value: unknown): value is Pub {
   const p = value as Pub;
@@ -113,6 +134,9 @@ function isQueueItem(value: unknown): value is FriendQueueItem {
     case 'cheer':
     case 'cheer-clear':
       return typeof (i as { activityId?: unknown }).activityId === 'string';
+    case 'friend-cheer':
+    case 'friend-cheer-clear':
+      return typeof (i as { accountId?: unknown }).accountId === 'string';
     case 'activity':
       return (
         typeof i.clientId === 'string' &&
@@ -122,8 +146,14 @@ function isQueueItem(value: unknown): value is FriendQueueItem {
         ((i as { payload?: ActivityPayload }).payload?.recipientIds === undefined ||
           Array.isArray((i as { payload?: ActivityPayload }).payload?.recipientIds)) &&
         (i.payload.tour === undefined ||
-          (typeof i.payload.tour?.title === 'string' && typeof i.payload.tour.heading === 'boolean'))
+          (typeof i.payload.tour?.title === 'string' && typeof i.payload.tour.heading === 'boolean')) &&
+        (i.payload.place === undefined ||
+          (PLACE_KINDS.includes(i.payload.place?.kind) && typeof i.payload.place.address === 'string'))
       );
+    case 'home-checkin':
+      return typeof i.activityId === 'string' && typeof i.clientId === 'string';
+    case 'home-leave':
+      return typeof i.activityId === 'string';
     case 'end':
       return typeof i.clientId === 'string';
     case 'request':
@@ -194,12 +224,31 @@ async function deliver(item: FriendQueueItem): Promise<QueueSyncResult> {
       return classify(await reactToActivity(item.activityId, 'cheers'));
     case 'cheer-clear':
       return classify(await clearActivityReaction(item.activityId));
+    case 'friend-cheer':
+      return classify(await cheerFriend(item.accountId));
+    case 'friend-cheer-clear':
+      return classify(await clearFriendCheer(item.accountId));
     case 'activity': {
       if (isFinishedBroadcast(item)) return 'ok';
-      const { pub, message, scheduledFor } = item.payload;
-      const result = scheduledFor
+      const { pub, message, scheduledFor, place } = item.payload;
+      const result = place
+        ? await createPartaPlan({
+            clientId: item.clientId,
+            placeKind: place.kind,
+            name: pub.name,
+            ...(place.kind === 'pub' ? { lat: pub.lat, lng: pub.lng, externalId: pub.id || '' } : {}),
+            city: pub.city ?? '',
+            address: place.address,
+            message: message ?? '',
+            scheduledFor: scheduledFor ?? null,
+            startedAt: item.payload.startedAt,
+            recipientIds: item.payload.recipientIds,
+          })
+        : scheduledFor
         ? await createFriendPlan(pub, scheduledFor, message, item.clientId, item.payload.recipientIds)
-        : await shareFriendPubActivity(pub, message, item.clientId, item.payload.recipientIds, item.payload.startedAt, item.payload.tour);
+        : item.payload.addRecipients === true
+          ? await shareFriendPubActivity(pub, message, item.clientId, item.payload.recipientIds, item.payload.startedAt, item.payload.tour, true)
+          : await shareFriendPubActivity(pub, message, item.clientId, item.payload.recipientIds, item.payload.startedAt, item.payload.tour);
       const verdict = classify(result);
       if (verdict === 'ok') await markDelivered(item.clientId);
       return verdict;
@@ -217,6 +266,10 @@ async function deliver(item: FriendQueueItem): Promise<QueueSyncResult> {
           nickname: item.nickname,
         }),
       );
+    case 'home-checkin':
+      return classify(await checkInAtHome(item.activityId, item.clientId));
+    case 'home-leave':
+      return classify(await leaveHome(item.activityId));
   }
 }
 
@@ -322,15 +375,17 @@ export async function friendActivityState(clientId: string): Promise<'queued' | 
   return delivered.has(clientId) || (await readDelivered()).includes(clientId) ? 'sent' : 'gone';
 }
 
-/** Dopito also cancels broadcasts that have not reached the server yet. */
-export function cancelQueuedPubBroadcasts(pubKey: string, closedAt: string): Promise<void> {
+export function cancelQueuedPubBroadcasts(pubKey: string, closedAt: string): Promise<number> {
   return runMutation(async () => {
     const queue = await loadQueue();
-    await saveQueue(queue.filter((item) => {
+    const kept = queue.filter((item) => {
       if (item.op !== 'activity' || geohash8(item.payload.pub.lat, item.payload.pub.lng) !== pubKey) return true;
       const activityAt = item.payload.scheduledFor ?? item.payload.startedAt;
       return !!activityAt && Date.parse(activityAt) > Date.parse(closedAt);
-    }));
+    });
+    if (kept.length === queue.length) return 0;
+    await saveQueue(kept);
+    return queue.filter((item) => item.op === 'activity' && !item.payload.scheduledFor && !kept.includes(item)).length;
   });
 }
 

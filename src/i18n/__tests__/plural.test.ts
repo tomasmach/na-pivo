@@ -1,24 +1,4 @@
-import { czechPluralForm, czechPlural, beerNoun, beerCountLabel } from '../plural';
-
-describe('czechPluralForm', () => {
-  it('uses singular for 1', () => {
-    expect(czechPluralForm(1)).toBe('one');
-  });
-
-  it('uses the few (paucal) form for 2–4', () => {
-    expect(czechPluralForm(2)).toBe('few');
-    expect(czechPluralForm(3)).toBe('few');
-    expect(czechPluralForm(4)).toBe('few');
-  });
-
-  it('uses the many form for 0 and 5+', () => {
-    expect(czechPluralForm(0)).toBe('many');
-    expect(czechPluralForm(5)).toBe('many');
-    expect(czechPluralForm(11)).toBe('many');
-    expect(czechPluralForm(21)).toBe('many');
-    expect(czechPluralForm(100)).toBe('many');
-  });
-});
+import { czechPlural, beerNoun, beerCountLabel } from '../plural';
 
 describe('beerNoun / beerCountLabel', () => {
   it('declines pivo correctly across the three forms', () => {

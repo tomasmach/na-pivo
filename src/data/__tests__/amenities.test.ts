@@ -12,6 +12,7 @@ import {
 const EXPECTED: { key: AmenityKey; group: string; icon: string; order: number }[] = [
   { key: 'payment_card', group: 'payment', icon: 'CreditCardIcon', order: 10 },
   { key: 'seating_garden', group: 'seating', icon: 'TreePineIcon', order: 30 },
+  { key: 'practical_vape_friendly', group: 'practical', icon: 'WindIcon', order: 35 },
   { key: 'seating_barrier_free', group: 'seating', icon: 'AccessibilityIcon', order: 40 },
   { key: 'game_darts', group: 'games', icon: 'TargetIcon', order: 60 },
   { key: 'game_billiards', group: 'games', icon: 'CircleDotIcon', order: 70 },
@@ -24,8 +25,8 @@ const EXPECTED: { key: AmenityKey; group: string; icon: string; order: number }[
 ];
 
 describe('amenity catalogue integrity', () => {
-  it('ships exactly 11 active amenities', () => {
-    expect(AMENITIES).toHaveLength(11);
+  it('ships exactly 12 active amenities', () => {
+    expect(AMENITIES).toHaveLength(12);
   });
 
   it('matches the canonical key/group/icon/order table from the spec', () => {

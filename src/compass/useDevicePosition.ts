@@ -6,6 +6,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { AppState, AppStateStatus } from 'react-native';
 import * as Location from 'expo-location';
 import { updateCurrencyFromCoordinates } from '@/location/locationCurrency';
+import { haversineMeters } from './distance';
 
 export interface DevicePosition {
   lat: number;
@@ -23,6 +24,18 @@ export interface UseDevicePositionResult {
  * from briefly pointing the compass at the wrong city. */
 const LAST_KNOWN_POSITION_MAX_AGE_MS = 5 * 60 * 1000;
 const LAST_KNOWN_POSITION_REQUIRED_ACCURACY_M = 100;
+
+/** iOS repeats a standing fix about once a second; each copy would re-render
+ * every screen that reads the position, including all map markers. */
+const SAME_POSITION_M = 2;
+
+function samePosition(a: DevicePosition | null, b: DevicePosition): boolean {
+  return (
+    a !== null &&
+    Math.abs(a.accuracyMeters - b.accuracyMeters) < SAME_POSITION_M &&
+    haversineMeters(a, b) < SAME_POSITION_M
+  );
+}
 
 export function useDevicePosition(enabled: boolean): UseDevicePositionResult {
   const [position, setPosition] = useState<DevicePosition | null>(null);
@@ -44,11 +57,8 @@ export function useDevicePosition(enabled: boolean): UseDevicePositionResult {
       if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return;
 
       hasPositionRef.current = true;
-      setPosition({
-        lat: latitude,
-        lng: longitude,
-        accuracyMeters: accuracy ?? 999,
-      });
+      const next = { lat: latitude, lng: longitude, accuracyMeters: accuracy ?? 999 };
+      setPosition((prev) => (samePosition(prev, next) ? prev : next));
     },
     [],
   );

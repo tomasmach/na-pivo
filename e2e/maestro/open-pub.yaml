@@ -1,0 +1,16 @@
+appId: ${MAESTRO_APP_ID}
+---
+# Opens a seeded pub detail through the real search.
+- runFlow:
+    file: route.yaml
+    env:
+      ROUTE: /nv/hledani
+- tapOn: { id: pub-search-input }
+- inputText: ${PUB}
+# The typed query shows the same text; the result row sits below it.
+- tapOn:
+    text: ${PUB}
+    below: { id: pub-search-input }
+- extendedWaitUntil:
+    visible: 'Další'
+    timeout: 15000

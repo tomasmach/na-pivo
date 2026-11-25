@@ -58,7 +58,7 @@ it('does not force the toggle back on when the user has opted out', async () => 
 it('lights up push for an existing grantee who has not opted out', async () => {
   await ensureFriendPushRegisteredIfGranted();
 
-  expect(mockEnsurePushTokenRegistered).toHaveBeenCalledWith('granted');
+  expect(mockEnsurePushTokenRegistered).toHaveBeenCalledWith('granted', undefined, { unlessRecent: true });
   expect(useSettingsStore.getState().friendPushEnabled).toBe(true);
 });
 
@@ -132,7 +132,7 @@ it('keeps the device registered on Parta toggle-off instead of deleting it', asy
 
   await expect(disableFriendPush()).resolves.toBe(true);
   expect(useSettingsStore.getState().friendPushOptedOut).toBe(true);
-  expect(mockEnsurePushTokenRegistered).toHaveBeenCalledWith('granted');
+  expect(mockEnsurePushTokenRegistered).toHaveBeenCalledWith('granted', undefined, { unlessRecent: false });
 });
 
 it('re-registers an opted-out grantee on launch without lighting Parta up', async () => {
@@ -141,7 +141,7 @@ it('re-registers an opted-out grantee on launch without lighting Parta up', asyn
 
   await ensureFriendPushRegisteredIfGranted();
 
-  expect(mockEnsurePushTokenRegistered).toHaveBeenCalledWith('granted');
+  expect(mockEnsurePushTokenRegistered).toHaveBeenCalledWith('granted', undefined, { unlessRecent: true });
   expect(useSettingsStore.getState().friendPushEnabled).toBe(false);
 });
 
@@ -157,6 +157,7 @@ describe('requestPushRegistration (beer watch)', () => {
   it('asks only while undecided and keeps the Parta choice', async () => {
     jest.mocked(Notifications.getPermissionsAsync).mockResolvedValueOnce({
       status: 'undetermined',
+      canAskAgain: true,
     } as Notifications.NotificationPermissionsStatus);
     useSettingsStore.setState({ friendPushOptedOut: true, friendPushEnabled: false });
 
@@ -172,12 +173,27 @@ describe('requestPushRegistration (beer watch)', () => {
   it('does not prompt again after a denial and reports it', async () => {
     jest.mocked(Notifications.getPermissionsAsync).mockResolvedValueOnce({
       status: 'denied',
+      canAskAgain: false,
     } as Notifications.NotificationPermissionsStatus);
 
     await expect(requestPushRegistration()).resolves.toBe('denied');
 
     expect(Notifications.requestPermissionsAsync).not.toHaveBeenCalled();
     expect(mockEnsurePushTokenRegistered).not.toHaveBeenCalled();
+  });
+});
+
+describe('registerFriendPush on Android 13+', () => {
+  it('asks when a never-asked permission reads as denied', async () => {
+    jest.mocked(Notifications.getPermissionsAsync).mockResolvedValueOnce({
+      status: 'denied',
+      canAskAgain: true,
+    } as Notifications.NotificationPermissionsStatus);
+
+    await expect(registerFriendPush()).resolves.toEqual({ ok: true });
+
+    expect(Notifications.requestPermissionsAsync).toHaveBeenCalledTimes(1);
+    expect(useSettingsStore.getState().friendPushEnabled).toBe(true);
   });
 });
 

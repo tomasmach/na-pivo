@@ -92,6 +92,53 @@ def has_explicit_beer_signal(
     return bool(text_tokens & _BEER_TEXT_TOKENS)
 
 
+PLACE_PUB = "pub"
+PLACE_RESTAURANT = "restaurant"
+
+_PUB_NAME_STEMS = (
+    "hospod",
+    "hospud",
+    "hostin",
+    "pohostin",
+    "pivnic",
+    "pivovar",
+    "minipivovar",
+    "pivotek",
+    "vycep",
+    "tankovn",
+)
+_PUB_NAME_TOKENS = frozenset({"bar", "beer", "pivni", "pivo", "pub", "senk"})
+_RESTAURANT_NAME_STEMS = (
+    "restaura",
+    "pizz",
+    "bistr",
+    "trattori",
+    "ristorant",
+    "osteri",
+    "sushi",
+    "steak",
+    "burger",
+    "kebab",
+    "gyros",
+)
+
+
+def place_kind_for(*, name: str, venue_kind: str) -> str:
+    """Tell a pub from a restaurant that pours beer, for the evening compass.
+
+    A pub word in the name always wins. Otherwise a restaurant word in the
+    name, or a reviewed listing without any pub category ('maybe'), marks a
+    restaurant. Places without a verdict stay pubs, as they were before.
+    """
+
+    tokens = normalize_discovery_text(name).split()
+    if any(token in _PUB_NAME_TOKENS or token.startswith(_PUB_NAME_STEMS) for token in tokens):
+        return PLACE_PUB
+    if venue_kind == "maybe" or any(token.startswith(_RESTAURANT_NAME_STEMS) for token in tokens):
+        return PLACE_RESTAURANT
+    return PLACE_PUB
+
+
 def discovery_metadata(
     *,
     name: str,
