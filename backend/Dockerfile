@@ -12,6 +12,11 @@ ENV PYTHONUNBUFFERED=1 \
     UV_PROJECT_ENVIRONMENT=/app/.venv \
     PATH="/app/.venv/bin:$PATH"
 
+# Django under ASGI runs each sync request on a fresh thread, and glibc gives
+# threads up to 8 malloc arenas per CPU. The workers' memory grew in those
+# arenas, so cap them.
+ENV MALLOC_ARENA_MAX=2
+
 WORKDIR /app
 
 # --- System packages --------------------------------------------------------
