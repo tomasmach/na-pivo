@@ -181,7 +181,7 @@ DB_POOL_TIMEOUT: float = float(os.environ.get("DB_POOL_TIMEOUT", "10"))
 # most ONE connection per window, so the default of 600 s would leave a spike's
 # worth of idle connections parked for hours after the evening peak.
 DB_POOL_MAX_IDLE: float = float(os.environ.get("DB_POOL_MAX_IDLE", "60"))
-# Web requests (everything but /v1/, the admin and files like robots.txt) one worker serves at once.
+# Web requests (everything but /v1/ and files like robots.txt) one worker serves at once.
 # Each holds at most one pooled connection, so the rest of the pool stays free for the app's API even
 # while a crawler walks every pub page. A quarter of the pool by default: 5 of 20, 2 of the 8 a deploy
 # candidate runs with. At least one connection always stays the API's.

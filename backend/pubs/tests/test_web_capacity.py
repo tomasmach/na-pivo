@@ -31,7 +31,11 @@ def one_place(settings):
 
 @pytest.mark.parametrize(
     ("path", "text"),
-    [("/hospody/praha", "Je tu teď narváno"), ("/en/pub/u-kocoura-u2fkbfqw", "packed in here")],
+    [
+        ("/hospody/praha", "Je tu teď narváno"),
+        ("/en/pub/u-kocoura-u2fkbfqw", "packed in here"),
+        ("/admin/", "Je tu teď narváno"),
+    ],
 )
 async def test_a_web_page_past_the_last_place_gets_a_503_without_the_database(one_place, path, text):
     # No django_db mark: reading the database from any thread would turn the answer into a 500.
@@ -54,6 +58,7 @@ async def test_a_web_page_past_the_last_place_gets_a_503_without_the_database(on
     [
         "/v1/pubs/near?lat=50.08&lng=14.43&radius_km=1",
         "/robots.txt",
+        "/llms.txt",
         "/.well-known/assetlinks.json",
         asset_url(stylesheet_name(("pubs.css",))),
         "/favicon.ico",

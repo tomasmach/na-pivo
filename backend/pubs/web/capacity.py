@@ -28,21 +28,22 @@ from pubs.web_views import (
     android_asset_statements,
     apple_app_site_association,
     invite_asset,
+    llms_txt,
     robots_txt,
 )
 
 RETRY_AFTER_SECONDS = 30
-# The app's API and the admin keep the rest of the pool.
-_OWN_POOL = ("/v1/", "/admin/")
 # Files that never read the database. The 503 page needs its stylesheet, and robots and phones read
 # robots.txt and /.well-known/ about the whole site: a 503 on robots.txt stops Google crawling for hours.
-_FILES = frozenset({web_asset, invite_asset, robots_txt, apple_app_site_association, android_asset_statements})
+_FILES = frozenset(
+    {web_asset, invite_asset, robots_txt, llms_txt, apple_app_site_association, android_asset_statements}
+)
 
 _places: weakref.WeakKeyDictionary[asyncio.AbstractEventLoop, asyncio.Semaphore] = weakref.WeakKeyDictionary()
 
 
 def _limited(request: HttpRequest) -> bool:
-    if request.path_info.startswith(_OWN_POOL):
+    if request.path_info.startswith("/v1/"):
         return False
     try:
         return resolve(request.path_info).func not in _FILES
