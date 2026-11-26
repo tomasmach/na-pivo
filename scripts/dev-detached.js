@@ -54,11 +54,11 @@ child.once('spawn', () => {
     clearInterval(poll);
     if (code === 0 && isReady()) {
       console.log('==> Ready; the runner reused this checkout\'s running backend and Metro and exited.');
-      process.exit(0);
+      return;
     }
     console.error(`==> The runner exited (${code ?? 'signal'}) before it was ready. End of ${logPath}:`);
-    console.error(fs.readFileSync(logPath, 'utf8').split('\n').slice(-60).join('\n'));
-    process.exit(1);
+    console.error(fs.readFileSync(logPath, 'utf8').trimEnd().split('\n').slice(-60).join('\n'));
+    process.exitCode = 1;
   });
 });
 fs.closeSync(out);
