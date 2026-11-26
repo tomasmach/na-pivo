@@ -103,14 +103,17 @@ function copyMainCheckoutEnvLocal() {
   const mainCheckout = fs.realpathSync(path.dirname(output('git', ['rev-parse', '--path-format=absolute', '--git-common-dir'])));
   const source = path.join(mainCheckout, '.env.local');
   if (mainCheckout === root || !fs.existsSync(source)) return;
-  fs.copyFileSync(source, target, fs.constants.COPYFILE_EXCL);
-  console.log(`==> Copied .env.local from ${mainCheckout}`);
+  const mapsKeys = fs.readFileSync(source, 'utf8').split('\n').filter(line => /^EXPO_PUBLIC_GOOGLE_MAPS_(IOS|ANDROID)_API_KEY=/.test(line));
+  if (!mapsKeys.length) return;
+  fs.writeFileSync(target, `${mapsKeys.join('\n')}\n`, { flag: 'wx', mode: 0o600 });
+  console.log(`==> Copied the Google Maps keys from ${mainCheckout}/.env.local`);
 }
 function showSimulatorWindow() {
-  const developer = output('xcode-select', ['-p']);
+  let developer = '';
+  try { developer = output('xcode-select', ['-p']); } catch { /* Fall back to opening Simulator by name. */ }
   // Xcode 27 ships the simulator window as DeviceHub.
-  const apps = [path.join(developer, 'Applications/Simulator.app'), path.join(developer, '../Applications/DeviceHub.app')]
-    .filter(app => fs.existsSync(app));
+  const apps = developer ? [path.join(developer, 'Applications/Simulator.app'), path.join(developer, '../Applications/DeviceHub.app')]
+    .filter(app => fs.existsSync(app)) : [];
   for (const app of apps.length ? apps : ['Simulator']) {
     const opened = spawnSync('open', apps.length ? [app] : ['-a', app], { stdio: 'ignore', timeout: 15_000 });
     if (opened.status === 0) return;
