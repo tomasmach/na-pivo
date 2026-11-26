@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Local ASGI + Metro, with iOS builds only when the installed native client changes.
-const { spawn, execFileSync } = require('node:child_process');
+const { spawn, spawnSync, execFileSync } = require('node:child_process');
 const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
@@ -97,6 +97,29 @@ process.on('SIGINT', () => stop(130));
 process.on('SIGTERM', () => stop());
 process.on('SIGHUP', () => stop());
 
+function copyMainCheckoutEnvLocal() {
+  const target = path.join(root, '.env.local');
+  if (fs.existsSync(target)) return;
+  const mainCheckout = fs.realpathSync(path.dirname(output('git', ['rev-parse', '--path-format=absolute', '--git-common-dir'])));
+  const source = path.join(mainCheckout, '.env.local');
+  if (mainCheckout === root || !fs.existsSync(source)) return;
+  const mapsKeys = fs.readFileSync(source, 'utf8').split('\n').filter(line => /^EXPO_PUBLIC_GOOGLE_MAPS_(IOS|ANDROID)_API_KEY=/.test(line));
+  if (!mapsKeys.length) return;
+  fs.writeFileSync(target, `${mapsKeys.join('\n')}\n`, { flag: 'wx', mode: 0o600 });
+  console.log(`==> Copied the Google Maps keys from ${mainCheckout}/.env.local`);
+}
+function showSimulatorWindow() {
+  let developer = '';
+  try { developer = output('xcode-select', ['-p']); } catch { /* Fall back to opening Simulator by name. */ }
+  // Xcode 27 ships the simulator window as DeviceHub.
+  const apps = developer ? [path.join(developer, 'Applications/Simulator.app'), path.join(developer, '../Applications/DeviceHub.app')]
+    .filter(app => fs.existsSync(app)) : [];
+  for (const app of apps.length ? apps : ['Simulator']) {
+    const opened = spawnSync('open', apps.length ? [app] : ['-a', app], { stdio: 'ignore', timeout: 15_000 });
+    if (opened.status === 0) return;
+  }
+  console.warn('==> Could not open the simulator window; the app still starts on the booted simulator.');
+}
 async function iosClient() {
   const devices = JSON.parse(output('xcrun', ['simctl', 'list', 'devices', 'available', '--json']));
   const available = Object.entries(devices.devices).filter(([runtime]) => runtime.includes('.iOS-')).flatMap(([, items]) => items).filter(device => device.isAvailable);
@@ -163,6 +186,7 @@ async function main() {
   if (!metroOnly && process.platform !== 'darwin') throw new Error('iOS requires macOS. Use npm run dev -- --metro for the local backend and Metro.');
   process.chdir(root);
   process.env.NODE_ENV ||= 'development';
+  copyMainCheckoutEnvLocal();
   const expoRequire = require('node:module').createRequire(require.resolve('expo/package.json'));
   expoRequire('@expo/env').load(root);
   const backendPort = port(process.env.EXPO_PUBLIC_BACKEND_PORT, 8012);
@@ -219,8 +243,7 @@ async function main() {
   }
   if (!metroOnly) {
     const device = await iosClient();
-    // Xcode 27 ships the simulator window as DeviceHub.
-    await run('open', ['-a', 'Simulator']).catch(() => run('open', ['-a', 'DeviceHub']));
+    showSimulatorWindow();
     // Expo dev-launcher accepts --initialUrl on simulators. Restart just this app
     // so a client opened by another checkout cannot keep its previous Metro URL.
     await run('xcrun', ['simctl', 'launch', '--terminate-running-process', device.udid,

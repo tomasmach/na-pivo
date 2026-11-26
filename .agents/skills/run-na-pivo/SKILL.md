@@ -11,7 +11,7 @@ Nejdřív ověř OS, checkout, obsazené porty a vlastníky procesů. Zkontroluj
 
 Standardní cesta je `npm run dev` z kořene repa. [Runner](../../../scripts/dev-local.js) migruje vlastní lokální SQLite, spustí ASGI a Metro tohoto checkoutu a podle Expo fingerprintu znovu použije kompatibilního iOS klienta. Čistý prebuild a build proběhnou při nativní změně nebo chybějícím či dosud neověřeném klientu; `--rebuild` je vynutí. Před rebuildem zkontroluj ruční změny v generovaném `ios/`. Při více bootovaných iPhonech vyber `EXPO_IOS_DEVICE` (UDID).
 
-Runner nikdy nevypíná simulátory. Běžící backend a Metro znovu použije jen při shodě checkoutu, konfigurace a vlastnictví procesů; cizí port odmítne bez zásahu. Background běh nabízí `npm run dev:detached`; `npm run dev:stop` kontroluje proces podle stavu v `.expo/` tohoto worktree.
+Runner nikdy nevypíná simulátory. Běžící backend a Metro znovu použije jen při shodě checkoutu, konfigurace a vlastnictví procesů; cizí port odmítne bez zásahu. Background běh nabízí `npm run dev:detached`, který čeká na připravenost a při selhání skončí nenulovým kódem s koncem logu; `npm run dev:stop` kontroluje proces podle stavu v `.expo/` tohoto worktree.
 
 Pro screenshot použij konkrétní simulátor z `xcrun simctl list devices booted`, pak `xcrun simctl io <UDID> screenshot <path>`. Cold start dotčeného flow má bundle ID `com.tomasmach.na-pivo`. Neukončuj cizí session.
 
