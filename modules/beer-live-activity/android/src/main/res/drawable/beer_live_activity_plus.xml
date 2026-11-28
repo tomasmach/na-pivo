@@ -1,0 +1,9 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+  android:width="16dp"
+  android:height="16dp"
+  android:viewportWidth="24"
+  android:viewportHeight="24">
+  <path
+    android:fillColor="@color/beer_live_activity_cta_text"
+    android:pathData="M10.5,3.5h3v7h7v3h-7v7h-3v-7h-7v-3h7z" />
+</vector>

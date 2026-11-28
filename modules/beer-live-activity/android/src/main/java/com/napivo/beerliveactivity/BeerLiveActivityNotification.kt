@@ -9,18 +9,24 @@ import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.Canvas
+import android.graphics.Color
 import android.graphics.Paint
+import android.graphics.Rect
+import android.graphics.Typeface
 import android.net.Uri
 import android.os.Build
+import android.view.View
+import android.widget.RemoteViews
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
-import androidx.core.content.ContextCompat
+import androidx.core.content.res.ResourcesCompat
 import org.json.JSONArray
 import org.json.JSONObject
+import java.text.DateFormat
+import java.util.Date
+import java.util.Locale
 import java.util.UUID
-import kotlin.math.max
-import kotlin.math.min
-import kotlin.math.roundToInt
+import kotlin.math.ceil
 
 internal object BeerLiveActivityNotification {
   const val ACTION_DISMISSED = "com.napivo.beerliveactivity.DISMISSED"
@@ -37,6 +43,9 @@ internal object BeerLiveActivityNotification {
   private const val PUB_NAME_KEY = "pubName"
   private const val TOTAL_PRICE_KEY = "totalPrice"
   private const val LATEST_BEER_NAME_KEY = "latestBeerName"
+  private const val LATEST_BEER_LABEL_KEY = "latestBeerLabel"
+  private const val LATEST_TIME_LABEL_KEY = "latestTimeLabel"
+  private const val LATEST_TIME_TEMPLATE_KEY = "latestTimeTemplate"
   private const val REPEAT_BEER_NAME_KEY = "repeatBeerName"
   private const val REPEAT_BEER_PRICE_CZK_KEY = "repeatBeerPriceCzk"
   private const val REPEAT_BEER_VOLUME_ML_KEY = "repeatBeerVolumeMl"
@@ -47,13 +56,8 @@ internal object BeerLiveActivityNotification {
   private const val HOME_TRANSIT_DEPARTS_AT_KEY = "homeTransitDepartsAtMs"
   private const val HOME_TRANSIT_MISSED_KEY = "homeTransitMissedLabel"
   private const val FLAG_PROMOTED_ONGOING = 0x00040000
-  // Warm taproom palette mirrored from the iOS Live Activity: a glowing amber
-  // tally on a dark, toasted-malt surface.
-  private const val AMBER = 0xFFFFB84D.toInt()
-  private const val AMBER_TRACK = 0x30FFB84D
-  private const val TILE_SURFACE = 0xFF262019.toInt()
-  // The progress track fills like a glass over the course of an evening. A full
-  // bar reads as "a proper night out" rather than a hard limit on counting.
+  private const val YELLOW = 0xFFFFC400.toInt()
+  private const val YELLOW_TRACK = 0x52FFC400
   private const val PROGRESS_TOTAL = 100
   private const val PROGRESS_BEER_CAP = 10
 
@@ -83,12 +87,18 @@ internal object BeerLiveActivityNotification {
       preferences.getString(ACTIVE_SESSION_KEY, null) == payload.sessionId &&
         hasUnacknowledgedAdds &&
         payload.beerCount < storedCount
+    val latestTimeLabel =
+      if (preserveNativeCount) readState(context)?.latestTimeLabel ?: payload.latestTimeLabel
+      else payload.latestTimeLabel
     val state = NotificationState(
       sessionId = payload.sessionId,
       pubName = payload.pubName,
       beerCount = if (preserveNativeCount) storedCount else payload.beerCount,
       totalPrice = if (preserveNativeCount) "" else payload.totalPrice,
       latestBeerName = payload.latestBeerName,
+      latestBeerLabel = payload.latestBeerLabel,
+      latestTimeLabel = latestTimeLabel,
+      latestTimeTemplate = payload.latestTimeTemplate,
       repeatBeerName = payload.repeatBeerName,
       repeatBeerPriceCzk = payload.repeatBeerPriceCzk,
       repeatBeerVolumeMl = payload.repeatBeerVolumeMl,
@@ -124,6 +134,9 @@ internal object BeerLiveActivityNotification {
       .remove(PUB_NAME_KEY)
       .remove(TOTAL_PRICE_KEY)
       .remove(LATEST_BEER_NAME_KEY)
+      .remove(LATEST_BEER_LABEL_KEY)
+      .remove(LATEST_TIME_LABEL_KEY)
+      .remove(LATEST_TIME_TEMPLATE_KEY)
       .remove(REPEAT_BEER_NAME_KEY)
       .remove(REPEAT_BEER_PRICE_CZK_KEY)
       .remove(REPEAT_BEER_VOLUME_ML_KEY)
@@ -155,10 +168,11 @@ internal object BeerLiveActivityNotification {
     val state = readState(context) ?: return
     if (state.beerCount == Int.MAX_VALUE) return
     val pendingAdds = readPendingAdds(context).toMutableList()
+    val createdAt = System.currentTimeMillis()
     pendingAdds += PendingAdd(
       id = UUID.randomUUID().toString(),
       sessionId = sessionId,
-      createdAt = System.currentTimeMillis(),
+      createdAt = createdAt,
       beerName = state.repeatBeerName,
       priceCzk = state.repeatBeerPriceCzk,
       volumeMl = state.repeatBeerVolumeMl,
@@ -168,13 +182,17 @@ internal object BeerLiveActivityNotification {
       beerCount = state.beerCount + 1,
       // The native action does not know the selected beer's price. Hide the
       // now-stale total until JS applies the event and publishes fresh data.
-      totalPrice = ""
+      totalPrice = "",
+      latestTimeLabel = state.latestTimeTemplate.takeIf { it.contains("{time}") }
+        ?.replace("{time}", wallClock(state.locale, createdAt))
+        ?: state.latestTimeLabel
     )
 
     val stored = preferences.edit()
       .putString(PENDING_ADDS_KEY, serializePendingAdds(pendingAdds))
       .putInt(BEER_COUNT_KEY, updatedState.beerCount)
       .putString(TOTAL_PRICE_KEY, updatedState.totalPrice)
+      .putString(LATEST_TIME_LABEL_KEY, updatedState.latestTimeLabel)
       .commit()
     if (!stored) return
 
@@ -244,44 +262,50 @@ internal object BeerLiveActivityNotification {
     state: NotificationState
   ): Notification {
     val strings = Strings.forLocale(state.locale)
-    val detail = notificationDetail(strings, state)
-    // A golden glass that fills as the evening goes on: a solid amber run over a
-    // faint amber remainder, so every added beer visibly extends the fill. No
-    // tracker icon — a small white mug badge reads as a stray square at this size.
-    val filled = progressFill(state.beerCount)
-    val progressStyle = NotificationCompat.ProgressStyle()
-      .setProgress(filled)
-      .addProgressSegment(
-        NotificationCompat.ProgressStyle.Segment(filled).setColor(AMBER)
-      )
-    if (filled < PROGRESS_TOTAL) {
-      progressStyle.addProgressSegment(
-        NotificationCompat.ProgressStyle.Segment(PROGRESS_TOTAL - filled).setColor(AMBER_TRACK)
-      )
-    }
-
-    return NotificationCompat.Builder(context, CHANNEL_ID)
+    val builder = NotificationCompat.Builder(context, CHANNEL_ID)
       .setSmallIcon(R.drawable.beer_live_activity_notification)
-      .setColor(AMBER)
-      .setLargeIcon(buildLargeIcon(context))
+      .setColor(YELLOW)
       .setContentTitle(
         state.pubName.trim().takeIf { it.isNotEmpty() }?.take(80)
           ?: strings.beerCount(state.beerCount)
       )
-      .setContentText(detail)
-      .setSubText(
-        state.totalPrice.trim().takeIf { it.isNotEmpty() }
-          ?.let { strings.total(it.take(34)) }
-          ?: strings.nightRunning
-      )
-      .setCategory(NotificationCompat.CATEGORY_PROGRESS)
+      .setContentText(notificationDetail(strings, state))
       .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
       .setPriority(NotificationCompat.PRIORITY_DEFAULT)
       .setShowWhen(false)
-      .setShortCriticalText(shortCountLabel(strings, state.beerCount))
-      .setStyle(progressStyle)
       .setContentIntent(contentIntent(context))
       .setDeleteIntent(deleteIntent(context, state.sessionId))
+      .setOnlyAlertOnce(true)
+      .setSilent(true)
+      .setOngoing(true)
+      .setAutoCancel(false)
+
+    // Android shows a Live Update (status bar chip, full card on a compact lock
+    // screen) only for its own templates, so the custom card is the fallback
+    // wherever the system or the user does not allow one.
+    if (!NotificationManagerCompat.from(context).canPostPromotedNotifications()) {
+      return builder
+        .setSubText(strings.nightRunning)
+        .setStyle(NotificationCompat.DecoratedCustomViewStyle())
+        .setCustomContentView(card(context, state, strings, expanded = false))
+        .setCustomBigContentView(card(context, state, strings, expanded = true))
+        .setCategory(NotificationCompat.CATEGORY_STATUS)
+        .build()
+    }
+
+    val filled = progressFill(state.beerCount)
+    val progressStyle = NotificationCompat.ProgressStyle()
+      .setProgress(filled)
+      .addProgressSegment(NotificationCompat.ProgressStyle.Segment(filled).setColor(YELLOW))
+    if (filled < PROGRESS_TOTAL) {
+      progressStyle.addProgressSegment(
+        NotificationCompat.ProgressStyle.Segment(PROGRESS_TOTAL - filled).setColor(YELLOW_TRACK)
+      )
+    }
+    return builder
+      .setSubText(state.totalPrice.trim().take(34).ifEmpty { strings.nightRunning })
+      .setStyle(progressStyle)
+      .setShortCriticalText(shortCountLabel(strings, state.beerCount))
       .addAction(
         NotificationCompat.Action.Builder(
           R.drawable.beer_live_activity_add,
@@ -289,13 +313,100 @@ internal object BeerLiveActivityNotification {
           addBeerIntent(context, state.sessionId)
         ).build()
       )
-      .setOnlyAlertOnce(true)
-      .setSilent(true)
-      .setOngoing(true)
-      .setAutoCancel(false)
+      .setCategory(NotificationCompat.CATEGORY_PROGRESS)
       .setRequestPromotedOngoing(true)
       .build()
   }
+
+  /** Fills like a glass over the evening and tops out at a soft cap instead of a limit. */
+  private fun progressFill(beerCount: Int): Int {
+    val capped = beerCount.coerceIn(1, PROGRESS_BEER_CAP).toFloat() / PROGRESS_BEER_CAP
+    return (capped * PROGRESS_TOTAL).toInt().coerceIn(8, PROGRESS_TOTAL)
+  }
+
+  private fun shortCountLabel(strings: Strings, count: Int): String {
+    val label = strings.beerCount(count)
+    return if (label.length <= 7) label else count.coerceAtLeast(0).toString()
+  }
+
+  /** The iPhone Live Activity card: count, pub with total, latest beer, `+` and the ride home. */
+  private fun card(
+    context: Context,
+    state: NotificationState,
+    strings: Strings,
+    expanded: Boolean
+  ): RemoteViews {
+    val views = RemoteViews(
+      context.packageName,
+      if (expanded) R.layout.beer_live_activity_expanded else R.layout.beer_live_activity_collapsed
+    )
+    val count = state.beerCount.coerceAtLeast(0)
+    views.setImageViewBitmap(R.id.beer_live_activity_count, numeral(context, count.toString()))
+    views.setContentDescription(R.id.beer_live_activity_count, strings.beerCount(count))
+    views.setTextViewText(
+      R.id.beer_live_activity_pub,
+      state.pubName.trim().take(80).ifEmpty { strings.beerCount(count) }
+    )
+    val price = state.totalPrice.trim().take(34)
+    views.setTextViewText(R.id.beer_live_activity_price, price)
+    views.setViewVisibility(R.id.beer_live_activity_price, if (price.isEmpty()) View.GONE else View.VISIBLE)
+    val beer = latestBeer(state)
+    val time = state.latestTimeLabel.trim().take(40)
+    views.setTextViewText(R.id.beer_live_activity_latest, beer)
+    views.setTextViewText(
+      R.id.beer_live_activity_latest_time,
+      if (beer.isNotEmpty() && time.isNotEmpty()) " · $time" else time
+    )
+    views.setContentDescription(R.id.beer_live_activity_add, strings.addBeerA11y)
+    views.setOnClickPendingIntent(R.id.beer_live_activity_add, addBeerIntent(context, state.sessionId))
+    if (!expanded) return views
+
+    views.setTextViewText(R.id.beer_live_activity_word, strings.beerWord(count))
+    views.setTextViewText(R.id.beer_live_activity_add_label, strings.addBeer)
+
+    // No countdown: the redraw after departure is an inexact alarm, and a
+    // stale countdown would run into negative time until it arrives.
+    val transit = state.homeTransitLabel.trim().takeIf { homeTransitDepartsAt(state) != null }
+      ?: state.homeTransitMissedLabel.trim()
+    views.setTextViewText(R.id.beer_live_activity_transit_label, transit.take(80))
+    views.setViewVisibility(
+      R.id.beer_live_activity_transit,
+      if (transit.isEmpty()) View.GONE else View.VISIBLE
+    )
+    return views
+  }
+
+  /**
+   * Notifications cannot use the app's fonts, so the Sofia numeral travels as
+   * a white glyph that the layout tints for the light or dark system surface.
+   */
+  private fun numeral(context: Context, text: String): Bitmap {
+    val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+      typeface = ResourcesCompat.getFont(context, R.font.beer_live_activity_numeral) ?: Typeface.DEFAULT_BOLD
+      textSize = context.resources.displayMetrics.density * 96f
+      color = Color.WHITE
+      letterSpacing = -0.02f
+    }
+    val bounds = Rect()
+    paint.getTextBounds(text, 0, text.length, bounds)
+    val width = ceil(paint.measureText(text)).toInt().coerceAtLeast(1)
+    val bitmap = Bitmap.createBitmap(width, bounds.height().coerceAtLeast(1), Bitmap.Config.ALPHA_8)
+    Canvas(bitmap).drawText(text, 0f, -bounds.top.toFloat(), paint)
+    return bitmap
+  }
+
+  private fun latestBeer(state: NotificationState): String =
+    state.latestBeerLabel.trim().ifEmpty { state.latestBeerName.trim() }.take(80)
+
+  private fun latestLine(state: NotificationState): String =
+    listOf(latestBeer(state), state.latestTimeLabel.trim().take(40))
+      .filter { it.isNotEmpty() }
+      .joinToString(" · ")
+
+  /** Same tags as `intlLocaleFor` in JS, so the time does not change format once JS takes over. */
+  private fun wallClock(locale: String, epochMs: Long): String =
+    DateFormat.getTimeInstance(DateFormat.SHORT, Locale.forLanguageTag(if (locale == "en") "en-GB" else "cs-CZ"))
+      .format(Date(epochMs))
 
   private fun contentIntent(context: Context): PendingIntent {
     val intent = Intent(Intent.ACTION_VIEW, Uri.parse("napivo://beer"))
@@ -397,13 +508,12 @@ internal object BeerLiveActivityNotification {
   }
 
   private fun notificationDetail(strings: Strings, state: NotificationState): String {
-    val countLabel = strings.beerCount(state.beerCount)
-    // The way home matters more than the latest beer's name once there is one,
-    // and after it left the night bus is what is left.
+    // The way home matters more than the latest beer once there is one, and
+    // after it left the night bus is what is left.
     val second = state.homeTransitLabel.trim().takeIf { homeTransitDepartsAt(state) != null }?.take(80)
       ?: state.homeTransitMissedLabel.trim().takeIf { it.isNotEmpty() }?.take(80)
-      ?: state.latestBeerName.trim().takeIf { it.isNotEmpty() }?.take(80)
-    return listOfNotNull(countLabel, second).joinToString(" · ")
+      ?: latestLine(state).takeIf { it.isNotEmpty() }
+    return listOfNotNull(strings.beerCount(state.beerCount), second).joinToString(" · ")
   }
 
   /** The departure while it is still ahead and has a label to go with it. */
@@ -412,37 +522,6 @@ internal object BeerLiveActivityNotification {
       state.homeTransitLabel.isNotBlank() && it > System.currentTimeMillis()
     }
 
-  /**
-   * Maps the beer count onto the progress track. Clamped to a soft cap so the
-   * bar keeps a visible fill from the very first beer and tops out gracefully on
-   * a big night instead of implying a hard limit.
-   */
-  private fun progressFill(beerCount: Int): Int {
-    val capped = min(max(beerCount, 1), PROGRESS_BEER_CAP).toFloat() / PROGRESS_BEER_CAP
-    return (capped * PROGRESS_TOTAL).roundToInt().coerceIn(8, PROGRESS_TOTAL)
-  }
-
-  /**
-   * Renders the branded icon tile shown as the notification's large icon: a warm
-   * toasted-malt square with a glowing amber mug, echoing the iOS Live Activity's
-   * fallback badge so both platforms read as the same product.
-   */
-  private fun buildLargeIcon(context: Context): Bitmap {
-    val size = (context.resources.displayMetrics.density * 56f).roundToInt().coerceAtLeast(96)
-    val bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
-    val canvas = Canvas(bitmap)
-    val radius = size * 0.28f
-    val backgroundPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = TILE_SURFACE }
-    canvas.drawRoundRect(0f, 0f, size.toFloat(), size.toFloat(), radius, radius, backgroundPaint)
-    ContextCompat.getDrawable(context, R.drawable.beer_live_activity_notification)?.mutate()?.apply {
-      setTint(AMBER)
-      val inset = (size * 0.27f).roundToInt()
-      setBounds(inset, inset, size - inset, size - inset)
-      draw(canvas)
-    }
-    return bitmap
-  }
-
   private fun persistState(context: Context, state: NotificationState) {
     val editor = preferences(context).edit()
       .putString(ACTIVE_SESSION_KEY, state.sessionId)
@@ -450,6 +529,9 @@ internal object BeerLiveActivityNotification {
       .putString(PUB_NAME_KEY, state.pubName)
       .putString(TOTAL_PRICE_KEY, state.totalPrice)
       .putString(LATEST_BEER_NAME_KEY, state.latestBeerName)
+      .putString(LATEST_BEER_LABEL_KEY, state.latestBeerLabel)
+      .putString(LATEST_TIME_LABEL_KEY, state.latestTimeLabel)
+      .putString(LATEST_TIME_TEMPLATE_KEY, state.latestTimeTemplate)
       .putString(REPEAT_BEER_NAME_KEY, state.repeatBeerName)
       .putString(LOCALE_KEY, state.locale)
       .putString(HOME_TRANSIT_LABEL_KEY, state.homeTransitLabel)
@@ -481,6 +563,9 @@ internal object BeerLiveActivityNotification {
       beerCount = preferences.getInt(BEER_COUNT_KEY, 0),
       totalPrice = preferences.getString(TOTAL_PRICE_KEY, "").orEmpty(),
       latestBeerName = preferences.getString(LATEST_BEER_NAME_KEY, "").orEmpty(),
+      latestBeerLabel = preferences.getString(LATEST_BEER_LABEL_KEY, "").orEmpty(),
+      latestTimeLabel = preferences.getString(LATEST_TIME_LABEL_KEY, "").orEmpty(),
+      latestTimeTemplate = preferences.getString(LATEST_TIME_TEMPLATE_KEY, "").orEmpty(),
       repeatBeerName = preferences.getString(REPEAT_BEER_NAME_KEY, "").orEmpty(),
       locale = preferences.getString(LOCALE_KEY, "cs").orEmpty(),
       repeatBeerPriceCzk =
@@ -556,7 +641,8 @@ internal object BeerLiveActivityNotification {
     val channelDescription: String,
     val nightRunning: String,
     val addBeer: String,
-    val total: (String) -> String,
+    val addBeerA11y: String,
+    val beerWord: (Int) -> String,
     val beerCount: (Int) -> String
   ) {
     companion object {
@@ -564,8 +650,15 @@ internal object BeerLiveActivityNotification {
         channelName = "Večer na pivu",
         channelDescription = "Živý počet piv během večera",
         nightRunning = "Večer běží",
-        addBeer = "Přidat další",
-        total = { "Celkem $it" },
+        addBeer = "Ještě jedno",
+        addBeerA11y = "Přidat stejné pivo",
+        beerWord = { count ->
+          when (count) {
+            1 -> "pivo"
+            in 2..4 -> "piva"
+            else -> "piv"
+          }
+        },
         beerCount = { count ->
           when (count) {
             1 -> "1 pivo"
@@ -579,17 +672,13 @@ internal object BeerLiveActivityNotification {
         channelDescription = "Live beer count during the night",
         nightRunning = "Night in progress",
         addBeer = "One more",
-        total = { "Total $it" },
+        addBeerA11y = "Log the same beer",
+        beerWord = { count -> if (count == 1) "beer" else "beers" },
         beerCount = { count -> if (count == 1) "1 beer" else "$count beers" }
       )
 
       fun forLocale(locale: String): Strings = if (locale == "en") EN else CS
     }
-  }
-
-  private fun shortCountLabel(strings: Strings, count: Int): String {
-    val label = strings.beerCount(count)
-    return if (label.length <= 7) label else max(count, 0).toString()
   }
 
   private fun validate(payload: BeerLiveActivityPayload) {
@@ -606,6 +695,9 @@ internal object BeerLiveActivityNotification {
     val beerCount: Int,
     val totalPrice: String,
     val latestBeerName: String,
+    val latestBeerLabel: String = "",
+    val latestTimeLabel: String = "",
+    val latestTimeTemplate: String = "",
     val repeatBeerName: String,
     val repeatBeerPriceCzk: Double?,
     val repeatBeerVolumeMl: Int?,

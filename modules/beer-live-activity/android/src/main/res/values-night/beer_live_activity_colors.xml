@@ -1,0 +1,6 @@
+<resources>
+  <color name="beer_live_activity_count">#FFC400</color>
+  <color name="beer_live_activity_primary">#F7F7F2</color>
+  <color name="beer_live_activity_secondary">#D4D4CE</color>
+  <color name="beer_live_activity_muted">#8F8F8A</color>
+</resources>

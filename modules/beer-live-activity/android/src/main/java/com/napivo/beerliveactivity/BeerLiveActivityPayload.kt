@@ -19,6 +19,18 @@ internal class BeerLiveActivityPayload : Record {
   @Field
   var latestBeerName: String = ""
 
+  /** The latest beer's name, or the line for an evening without one. */
+  @Field
+  var latestBeerLabel: String = ""
+
+  /** "zapsáno v 21:47", or the line for an evening with no beer time yet. */
+  @Field
+  var latestTimeLabel: String = ""
+
+  /** "zapsáno v {time}", so a native `+` can write its own time. */
+  @Field
+  var latestTimeTemplate: String = ""
+
   @Field
   var repeatBeerName: String = ""
 

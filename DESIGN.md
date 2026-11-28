@@ -117,6 +117,18 @@ sloupci 76 bodů velké žluté číslo `#FFC400` (Sofia Sans Extra Condensed 80
 „3 piva“, rozbalený ostrov číslo, hospodu a tlačítko. Písma Sofia jsou přibalená
 v rozšíření widgetu (`plugins/withLiveActivityFonts.js`).
 
+Android (28. 11. 2026, `modules/beer-live-activity`) je hybrid. Když systém dovolí
+Live Update (Android 16 a povolení u appky), zůstává systémová šablona, protože jen ta
+dostane čip „3 piva“ ve stavovém řádku a celé místo na kompaktní zamčené obrazovce:
+žlutý `#FFC400` progress, útrata v hlavičce, „3 piva · pivo · zapsáno v 19:54“ (se
+spojem domů spoj) a tlačítko „Ještě jedno“, jehož barvu určuje systém. Jinde je
+trvalá notifikace s kartou z iPhonu. Rámeček, ikonu a šipku dodává systém a pozadí je
+jeho plocha notifikace, ne `#0A0A0A`. Rozbalená karta má sloupec s číslem v Sofia Sans
+Extra Condensed (vykreslené jako obrázek, notifikace písma appky nepoužijí), hospodu s
+útratou, poslední pivo s časem, žluté „Ještě jedno“ přes celou šířku a spoj domů. Odpočet
+na Androidu chybí, protože překreslení po odjezdu je jen nepřesný alarm. Sbalený řádek má číslo, hospodu s útratou, pivo s časem a kulaté žluté „+“.
+Ve světlém systému je číslo skoro černé, žlutá zůstává tlačítkům.
+
 ## Web na na-pivo.cz (3. 11. 2026)
 
 Web je šedý jako nový vzhled appky, jen tmavý režim. Stojí na Djangu (šablony, žádný
