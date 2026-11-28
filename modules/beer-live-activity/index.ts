@@ -10,6 +10,12 @@ export type BeerLiveActivityPayload = {
   totalPrice: string;
   /** An empty string falls back to the app name. */
   latestBeerName: string;
+  /** The latest beer's name, or the line for an evening without one. */
+  latestBeerLabel?: string;
+  /** "zapsáno v 21:47", or the line for an evening with no beer time yet. */
+  latestTimeLabel?: string;
+  /** "zapsáno v {time}", so the native `+` can write its own time. */
+  latestTimeTemplate?: string;
   repeatBeerName: string;
   repeatBeerPriceCzk?: number;
   repeatBeerVolumeMl?: number;
