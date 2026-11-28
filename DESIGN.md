@@ -125,8 +125,8 @@ spojem domů spoj) a tlačítko „Ještě jedno“, jehož barvu určuje systé
 trvalá notifikace s kartou z iPhonu. Rámeček, ikonu a šipku dodává systém a pozadí je
 jeho plocha notifikace, ne `#0A0A0A`. Rozbalená karta má sloupec s číslem v Sofia Sans
 Extra Condensed (vykreslené jako obrázek, notifikace písma appky nepoužijí), hospodu s
-útratou, poslední pivo s časem, žluté „Ještě jedno“ přes celou šířku a spoj domů s
-odpočtem. Sbalený řádek má číslo, hospodu s útratou, pivo s časem a kulaté žluté „+“.
+útratou, poslední pivo s časem, žluté „Ještě jedno“ přes celou šířku a spoj domů. Odpočet
+na Androidu chybí, protože překreslení po odjezdu je jen nepřesný alarm. Sbalený řádek má číslo, hospodu s útratou, pivo s časem a kulaté žluté „+“.
 Ve světlém systému je číslo skoro černé, žlutá zůstává tlačítkům.
 
 ## Web na na-pivo.cz (3. 11. 2026)

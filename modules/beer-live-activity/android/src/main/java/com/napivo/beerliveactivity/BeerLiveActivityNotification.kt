@@ -15,7 +15,6 @@ import android.graphics.Rect
 import android.graphics.Typeface
 import android.net.Uri
 import android.os.Build
-import android.os.SystemClock
 import android.view.View
 import android.widget.RemoteViews
 import androidx.core.app.NotificationCompat
@@ -169,10 +168,11 @@ internal object BeerLiveActivityNotification {
     val state = readState(context) ?: return
     if (state.beerCount == Int.MAX_VALUE) return
     val pendingAdds = readPendingAdds(context).toMutableList()
+    val createdAt = System.currentTimeMillis()
     pendingAdds += PendingAdd(
       id = UUID.randomUUID().toString(),
       sessionId = sessionId,
-      createdAt = System.currentTimeMillis(),
+      createdAt = createdAt,
       beerName = state.repeatBeerName,
       priceCzk = state.repeatBeerPriceCzk,
       volumeMl = state.repeatBeerVolumeMl,
@@ -184,7 +184,7 @@ internal object BeerLiveActivityNotification {
       // now-stale total until JS applies the event and publishes fresh data.
       totalPrice = "",
       latestTimeLabel = state.latestTimeTemplate.takeIf { it.contains("{time}") }
-        ?.replace("{time}", wallClock(state.locale, System.currentTimeMillis()))
+        ?.replace("{time}", wallClock(state.locale, createdAt))
         ?: state.latestTimeLabel
     )
 
@@ -350,7 +350,13 @@ internal object BeerLiveActivityNotification {
     val price = state.totalPrice.trim().take(34)
     views.setTextViewText(R.id.beer_live_activity_price, price)
     views.setViewVisibility(R.id.beer_live_activity_price, if (price.isEmpty()) View.GONE else View.VISIBLE)
-    views.setTextViewText(R.id.beer_live_activity_latest, latestLine(state))
+    val beer = latestBeer(state)
+    val time = state.latestTimeLabel.trim().take(40)
+    views.setTextViewText(R.id.beer_live_activity_latest, beer)
+    views.setTextViewText(
+      R.id.beer_live_activity_latest_time,
+      if (beer.isNotEmpty() && time.isNotEmpty()) " · $time" else time
+    )
     views.setContentDescription(R.id.beer_live_activity_add, strings.addBeerA11y)
     views.setOnClickPendingIntent(R.id.beer_live_activity_add, addBeerIntent(context, state.sessionId))
     if (!expanded) return views
@@ -358,31 +364,15 @@ internal object BeerLiveActivityNotification {
     views.setTextViewText(R.id.beer_live_activity_word, strings.beerWord(count))
     views.setTextViewText(R.id.beer_live_activity_add_label, strings.addBeer)
 
-    val departsAt = homeTransitDepartsAt(state)
-    val missed = state.homeTransitMissedLabel.trim().take(80)
-    when {
-      departsAt != null -> {
-        views.setViewVisibility(R.id.beer_live_activity_transit, View.VISIBLE)
-        views.setTextViewText(R.id.beer_live_activity_transit_label, state.homeTransitLabel.trim().take(80))
-        views.setTextViewText(R.id.beer_live_activity_transit_prefix, strings.transitIn)
-        views.setViewVisibility(R.id.beer_live_activity_transit_prefix, View.VISIBLE)
-        views.setViewVisibility(R.id.beer_live_activity_transit_countdown, View.VISIBLE)
-        views.setChronometer(
-          R.id.beer_live_activity_transit_countdown,
-          SystemClock.elapsedRealtime() + (departsAt - System.currentTimeMillis()),
-          null,
-          true
-        )
-        views.setChronometerCountDown(R.id.beer_live_activity_transit_countdown, true)
-      }
-      missed.isNotEmpty() -> {
-        views.setViewVisibility(R.id.beer_live_activity_transit, View.VISIBLE)
-        views.setTextViewText(R.id.beer_live_activity_transit_label, missed)
-        views.setViewVisibility(R.id.beer_live_activity_transit_prefix, View.GONE)
-        views.setViewVisibility(R.id.beer_live_activity_transit_countdown, View.GONE)
-      }
-      else -> views.setViewVisibility(R.id.beer_live_activity_transit, View.GONE)
-    }
+    // No countdown: the redraw after departure is an inexact alarm, and a
+    // stale countdown would run into negative time until it arrives.
+    val transit = state.homeTransitLabel.trim().takeIf { homeTransitDepartsAt(state) != null }
+      ?: state.homeTransitMissedLabel.trim()
+    views.setTextViewText(R.id.beer_live_activity_transit_label, transit.take(80))
+    views.setViewVisibility(
+      R.id.beer_live_activity_transit,
+      if (transit.isEmpty()) View.GONE else View.VISIBLE
+    )
     return views
   }
 
@@ -405,15 +395,18 @@ internal object BeerLiveActivityNotification {
     return bitmap
   }
 
-  private fun latestLine(state: NotificationState): String {
-    val beer = state.latestBeerLabel.trim().ifEmpty { state.latestBeerName.trim() }.take(80)
-    return listOf(beer, state.latestTimeLabel.trim().take(40))
+  private fun latestBeer(state: NotificationState): String =
+    state.latestBeerLabel.trim().ifEmpty { state.latestBeerName.trim() }.take(80)
+
+  private fun latestLine(state: NotificationState): String =
+    listOf(latestBeer(state), state.latestTimeLabel.trim().take(40))
       .filter { it.isNotEmpty() }
       .joinToString(" · ")
-  }
 
+  /** Same tags as `intlLocaleFor` in JS, so the time does not change format once JS takes over. */
   private fun wallClock(locale: String, epochMs: Long): String =
-    DateFormat.getTimeInstance(DateFormat.SHORT, Locale.forLanguageTag(locale)).format(Date(epochMs))
+    DateFormat.getTimeInstance(DateFormat.SHORT, Locale.forLanguageTag(if (locale == "en") "en-GB" else "cs-CZ"))
+      .format(Date(epochMs))
 
   private fun contentIntent(context: Context): PendingIntent {
     val intent = Intent(Intent.ACTION_VIEW, Uri.parse("napivo://beer"))
@@ -649,7 +642,6 @@ internal object BeerLiveActivityNotification {
     val nightRunning: String,
     val addBeer: String,
     val addBeerA11y: String,
-    val transitIn: String,
     val beerWord: (Int) -> String,
     val beerCount: (Int) -> String
   ) {
@@ -660,7 +652,6 @@ internal object BeerLiveActivityNotification {
         nightRunning = "Večer běží",
         addBeer = "Ještě jedno",
         addBeerA11y = "Přidat stejné pivo",
-        transitIn = "za",
         beerWord = { count ->
           when (count) {
             1 -> "pivo"
@@ -682,7 +673,6 @@ internal object BeerLiveActivityNotification {
         nightRunning = "Night in progress",
         addBeer = "One more",
         addBeerA11y = "Log the same beer",
-        transitIn = "in",
         beerWord = { count -> if (count == 1) "beer" else "beers" },
         beerCount = { count -> if (count == 1) "1 beer" else "$count beers" }
       )
